@@ -5,6 +5,10 @@ hace una encuesta de satisfacción configurable y devuelve el resultado a
 **Bitrix24**: comentario en el timeline, puntaje en un campo propio y la llamada
 registrada en el módulo de telefonía.
 
+Las respuestas van **del 0 al 10**: con 9 o 10 el cliente queda conforme, y
+cualquier puntaje menor **dispara una advertencia de seguimiento** que aparece
+arriba del comentario en Bitrix y en el dashboard.
+
 Todo el stack es **open source y self-hosted**. No hay APIs pagas ni licencias:
 el reconocimiento de voz, la síntesis y el análisis corren en tu servidor.
 
@@ -33,7 +37,7 @@ el reconocimiento de voz, la síntesis y el análisis corren en tu servidor.
                                 ▼
                     ┌────────────────────────────────────────────┐
                     │  voice-agent                               │
-                    │   Piper TTS ──────► "¿del 1 al 5...?"      │
+                    │   Piper TTS ──────► "¿del 0 al 10...?"     │
                     │   webrtcvad ──────► detecta fin de habla   │
                     │   faster-whisper ─► transcribe (GPU)       │
                     └───────────┬────────────────────────────────┘
@@ -267,24 +271,67 @@ PENDING ──(vence T0+48h)──► SCHEDULED ──► QUEUED ──► CALLI
                                         NO_ANSWER (agotó intentos)
 ```
 
-### Cómo se calcula el puntaje
+### Puntajes y advertencias
 
-Cada respuesta puntuable se normaliza a 0–100 y se promedia:
+Las preguntas se responden **del 0 al 10**. El criterio es binario:
 
-| Tipo | Normalización |
+| Puntaje | Significado | Consecuencia |
+|---|---|---|
+| **9 – 10** | satisfactorio | ✅ nada que hacer |
+| **0 – 8** | no satisfactorio | ⚠ **dispara advertencia de seguimiento** |
+
+No hay zona gris: un 8 es una advertencia igual que un 3. Es el criterio de NPS
+aplicado estricto — un cliente que pone 8 no está conforme, está siendo amable.
+
+**Qué dispara la advertencia.** Alcanza con que **una sola** respuesta puntuable
+quede por debajo de 9, aunque el promedio dé bien. Un 10, un 10 y un 6 promedian
+8,7 pero el 6 es lo que hay que atender, y el promedio lo escondería.
+
+Cuando se dispara, `requires_followup` queda en `True` y el motivo nombra las
+preguntas concretas con su puntaje. Eso aparece en tres lugares:
+
+1. **Arriba del comentario en Bitrix**, antes de las respuestas — el timeline se
+   lee de arriba y truncado, así que la advertencia no puede ir al pie.
+2. **En el dashboard**, en el bloque *Advertencias — requieren seguimiento*.
+3. **Por respuesta**, con ✅ o ⚠ al lado de cada valor, para ver cuál falló.
+
+La regla del negocio **manda sobre el LLM**: si una respuesta bajó de 9, hay
+advertencia opine lo que opine el modelo. El LLM solo puede *agregar* motivos
+(un problema concreto que el cliente mencionó en la respuesta libre), nunca
+quitar la advertencia por puntaje.
+
+**El umbral se cambia en un solo lugar** —
+[`SATISFACTORY_MIN`](services/api/app/services/scoring.py) en `scoring.py`. Todo
+lo demás lo deriva de ahí: promedios, sentimiento, iconos, textos del panel y el
+comentario de Bitrix.
+
+**Escalas heredadas.** `scale_1_5` y `yes_no` siguen funcionando y se reescalan a
+0–10 para poder promediar campañas viejas con nuevas sin migrar datos:
+
+| Tipo | A escala 0–10 |
 |---|---|
-| `scale_1_5` | `(v - 1) / 4 × 100` |
-| `scale_1_10` | `v / 10 × 100` |
-| `yes_no` | `v × 100` |
+| `scale_1_10` | `v` (ya es 0–10) |
+| `scale_1_5` | `(v - 1) / 4 × 10` |
+| `yes_no` | sí = 10, no = 0 |
 | `open` | no puntúa |
 
-La interpretación de la respuesta hablada la hace
+**Interpretación de la respuesta hablada.** La hace
 [scoring.py](services/api/app/services/scoring.py) **con reglas, no con LLM**:
-números en dígitos o en palabras (`"cinco"`, `"un cinco"`), sí/no con sus
-variantes rioplatenses, y adjetivos mapeados a la escala (`"excelente"` → 5,
-`"más o menos"` → 3). También detecta frases de opt-out (`"no me llamen"`,
+números en dígitos o en palabras (`"nueve"`, `"un diez"`, `"cero"`), sí/no con
+sus variantes rioplatenses, y adjetivos mapeados a la escala (`"excelente"` →
+10, `"más o menos"` → 5). También detecta frases de opt-out (`"no me llamen"`,
 `"estoy manejando"`) y las alucinaciones fijas que Whisper produce cuando le das
 silencio.
+
+El guion **tiene que decir el rango en voz alta** (*"del cero al diez..."*). Si
+no, el cliente responde en la escala que se le ocurra y la respuesta queda
+inservible.
+
+Chequeo del umbral y las conversiones:
+
+```bash
+docker compose exec api python -m app.services.scoring
+```
 
 ---
 

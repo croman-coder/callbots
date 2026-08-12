@@ -2,7 +2,7 @@
 
 Se ejecuta en vivo durante la llamada: el voice-agent manda la transcripción y
 necesita saber al instante si entendió o tiene que repreguntar. Un LLM acá
-metería latencia; para "del uno al cinco" y "sí/no" alcanzan las reglas.
+metería latencia; para "del cero al diez" y "sí/no" alcanzan las reglas.
 
 Lo que las reglas no resuelven queda como `understood=False` y lo levanta
 después el análisis con Ollama.
@@ -16,9 +16,17 @@ from dataclasses import dataclass
 
 from app.models import QuestionType
 
+# Umbral de satisfacción sobre la escala 0-10: con 9 o 10 el cliente queda
+# conforme, cualquier valor menor dispara una advertencia de seguimiento.
+# Este es el único lugar donde se define el criterio.
+SATISFACTORY_MIN = 9.0
+
 # --- Números hablados en español ------------------------------------------
+# Ojo: "un" y "una" NO van acá. En "le doy un diez" son artículo, no número, y
+# al recorrer los tokens en orden ganarían al número real: "un diez" daría 1.
+# Como respuesta suelta nadie dice "un", dice "uno".
 NUMBER_WORDS: dict[str, int] = {
-    "cero": 0, "uno": 1, "una": 1, "un": 1, "dos": 2, "tres": 3,
+    "cero": 0, "uno": 1, "dos": 2, "tres": 3,
     "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7, "ocho": 8,
     "nueve": 9, "diez": 10,
 }
@@ -198,12 +206,59 @@ def _qualitative_to_scale(text: str, top: int) -> int | None:
     return None
 
 
-def to_percentage(value: float, qtype: QuestionType) -> float | None:
-    """Normaliza cualquier respuesta puntuable a 0-100 para poder promediar."""
-    if qtype is QuestionType.SCALE_1_5:
-        return (value - 1) / 4 * 100
+def to_scale_10(value: float, qtype: QuestionType) -> float | None:
+    """Lleva cualquier respuesta puntuable a la escala 0-10 para poder promediar.
+
+    Las escalas 1-5 y sí/no siguen soportadas pero se reescalan: así una campaña
+    vieja se puede comparar con una nueva sin migrar datos.
+    """
     if qtype is QuestionType.SCALE_1_10:
-        return value / 10 * 100
+        return value
+    if qtype is QuestionType.SCALE_1_5:
+        return (value - 1) / 4 * 10
     if qtype is QuestionType.YES_NO:
-        return value * 100
+        return value * 10
     return None
+
+
+def is_satisfactory(score_10: float | None) -> bool:
+    """9 y 10 son satisfactorios. Todo lo demás dispara advertencia."""
+    return score_10 is not None and score_10 >= SATISFACTORY_MIN
+
+
+if __name__ == "__main__":
+    # Chequeo mínimo del umbral y las conversiones de escala.
+    #   python -m app.services.scoring
+    assert to_scale_10(10, QuestionType.SCALE_1_10) == 10
+    assert to_scale_10(0, QuestionType.SCALE_1_10) == 0
+    assert to_scale_10(5, QuestionType.SCALE_1_5) == 10      # 5/5 -> 10/10
+    assert to_scale_10(1, QuestionType.SCALE_1_5) == 0       # 1/5 -> 0/10
+    assert to_scale_10(1.0, QuestionType.YES_NO) == 10       # sí -> 10
+    assert to_scale_10(0.0, QuestionType.YES_NO) == 0        # no -> 0
+    assert to_scale_10(3, QuestionType.OPEN) is None
+
+    assert is_satisfactory(10) and is_satisfactory(9)
+    assert not is_satisfactory(8.9) and not is_satisfactory(0)
+    assert not is_satisfactory(None)
+
+    # La frontera del negocio: 8 es advertencia, 9 no.
+    assert not is_satisfactory(to_scale_10(8, QuestionType.SCALE_1_10))
+    assert is_satisfactory(to_scale_10(9, QuestionType.SCALE_1_10))
+
+    # Interpretación de respuestas habladas en la escala nueva
+    assert interpret("nueve", QuestionType.SCALE_1_10).value == 9
+    assert interpret("cero", QuestionType.SCALE_1_10).value == 0
+    assert interpret("10", QuestionType.SCALE_1_10).value == 10
+    assert interpret("excelente", QuestionType.SCALE_1_10).value == 10
+
+    # "un" es artículo, no el número 1: si se cuela, "un diez" da 1 y el
+    # cliente conforme queda registrado como el peor puntaje posible.
+    assert interpret("un diez", QuestionType.SCALE_1_10).value == 10
+    assert interpret("le doy un nueve", QuestionType.SCALE_1_10).value == 9
+    assert interpret("un cinco", QuestionType.SCALE_1_5).value == 5
+    assert interpret("uno", QuestionType.SCALE_1_10).value == 1
+
+    assert interpret("no me llamen mas", QuestionType.SCALE_1_10).is_optout
+    assert not interpret("", QuestionType.SCALE_1_10).understood
+
+    print("scoring: OK")

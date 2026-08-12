@@ -19,7 +19,12 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Answer, CallAnalysis, CallAttempt, QuestionType
-from app.services.scoring import interpret, to_percentage
+from app.services.scoring import (
+    SATISFACTORY_MIN,
+    interpret,
+    is_satisfactory,
+    to_scale_10,
+)
 
 log = logging.getLogger(__name__)
 
@@ -27,10 +32,15 @@ SYSTEM_PROMPT = """Sos un analista de calidad de atención al cliente de un tall
 mecánico en Paraguay. Recibís la transcripción de una encuesta telefónica \
 automática y devolvés un análisis objetivo en JSON.
 
+Las preguntas se puntúan del 0 al 10. Solo 9 y 10 cuentan como cliente \
+conforme; de 8 para abajo hay algo que mejorar, incluso si el cliente fue \
+amable al responder.
+
 Reglas:
 - Respondé SOLO con un objeto JSON válido, sin texto adicional.
 - El resumen debe tener como máximo 2 oraciones, en español rioplatense neutro.
-- "sentiment" solo puede ser: "positivo", "neutral" o "negativo".
+- "sentiment" solo puede ser: "positivo", "neutral" o "negativo". Reservá \
+"positivo" para cuando las respuestas fueron 9 o 10.
 - "requires_followup" es true solo si el cliente expresó un problema concreto \
 sin resolver, pidió que lo contacten, o mostró enojo claro.
 - "topics" son entre 1 y 4 etiquetas cortas en minúscula (ej: "demora", \
@@ -50,27 +60,46 @@ def build_transcript(call: CallAttempt) -> str:
     return "\n".join(lines)
 
 
-def compute_satisfaction(answers: list[Answer]) -> float | None:
-    """Promedio 0-100 de las preguntas marcadas como puntuables."""
-    percentages: list[float] = []
+def _scored(answers: list[Answer]) -> list[tuple[Answer, float]]:
+    """Respuestas puntuables con su valor ya en escala 0-10."""
+    out: list[tuple[Answer, float]] = []
     for answer in answers:
         if not answer.question.counts_for_score or answer.value_numeric is None:
             continue
-        pct = to_percentage(answer.value_numeric, answer.question.qtype)
-        if pct is not None:
-            percentages.append(pct)
+        score = to_scale_10(answer.value_numeric, answer.question.qtype)
+        if score is not None:
+            out.append((answer, score))
+    return out
 
-    if not percentages:
+
+def compute_satisfaction(answers: list[Answer]) -> float | None:
+    """Promedio en escala 0-10 de las preguntas marcadas como puntuables."""
+    scored = _scored(answers)
+    if not scored:
         return None
-    return round(sum(percentages) / len(percentages), 1)
+    return round(sum(score for _, score in scored) / len(scored), 1)
+
+
+def low_scores(answers: list[Answer]) -> list[tuple[str, float]]:
+    """Preguntas por debajo del umbral. Son el motivo concreto de la advertencia."""
+    return [
+        (answer.question.text, score)
+        for answer, score in _scored(answers)
+        if not is_satisfactory(score)
+    ]
 
 
 def _fallback_sentiment(score: float | None) -> str:
+    """Clasificación por puntaje cuando el LLM no está disponible.
+
+    Los cortes siguen el criterio del negocio: 9-10 conforme, 7-8 tibio,
+    6 o menos disconforme.
+    """
     if score is None:
         return "neutral"
-    if score >= 70:
+    if score >= SATISFACTORY_MIN:
         return "positivo"
-    if score >= 40:
+    if score >= 7:
         return "neutral"
     return "negativo"
 
@@ -134,6 +163,16 @@ def analyze_call(db: Session, call: CallAttempt) -> CallAnalysis:
     analysis = call.analysis or CallAnalysis(call_id=call.id)
     analysis.satisfaction_score = score
 
+    # La regla del negocio manda sobre el criterio del LLM: cualquier respuesta
+    # por debajo de 9 es advertencia, opine lo que opine el modelo.
+    below = low_scores(call.answers)
+    score_warning = None
+    if below:
+        detail = "; ".join(f"{text[:60]} = {value:.0f}/10" for text, value in below)
+        score_warning = (
+            f"{len(below)} respuesta(s) bajo {SATISFACTORY_MIN:.0f}/10 → {detail}"
+        )
+
     if llm_result:
         sentiment = str(llm_result.get("sentiment", "")).lower()
         analysis.sentiment = (
@@ -143,17 +182,19 @@ def analyze_call(db: Session, call: CallAttempt) -> CallAnalysis:
         analysis.summary = (llm_result.get("summary") or None)
         topics = llm_result.get("topics")
         analysis.topics = topics if isinstance(topics, list) else None
-        analysis.requires_followup = bool(llm_result.get("requires_followup"))
-        analysis.followup_reason = llm_result.get("followup_reason") or None
         analysis.model_used = settings.ollama_model
+
+        analysis.requires_followup = bool(below) or bool(
+            llm_result.get("requires_followup")
+        )
+        reasons = [score_warning, llm_result.get("followup_reason")]
+        analysis.followup_reason = " | ".join(r for r in reasons if r) or None
     else:
         analysis.sentiment = _fallback_sentiment(score)
         analysis.summary = None
         analysis.model_used = None
-        # Sin LLM, marcamos seguimiento por puntaje bajo
-        analysis.requires_followup = score is not None and score < 40
-        if analysis.requires_followup:
-            analysis.followup_reason = f"Puntaje bajo ({score}/100)"
+        analysis.requires_followup = bool(below)
+        analysis.followup_reason = score_warning
 
     if analysis.id is None:
         db.add(analysis)

@@ -8,8 +8,14 @@
 
 <div class="grid">
   <div class="kpi">
-    <div class="n">{{ avg_score if avg_score is not none else "—" }}{% if avg_score is not none %}<span style="font-size:15px;color:var(--muted)">/100</span>{% endif %}</div>
-    <div class="l">Satisfacción promedio</div>
+    <div class="n" {% if avg_score is not none and avg_score < satisfactory_min %}style="color:var(--bad)"{% endif %}>
+      {{ avg_score if avg_score is not none else "—" }}{% if avg_score is not none %}<span style="font-size:15px;color:var(--muted)">/10</span>{% endif %}
+    </div>
+    <div class="l">Satisfacción promedio
+      {%- if avg_score is not none %}
+        · {{ "satisfactorio" if avg_score >= satisfactory_min else "bajo el umbral" }}
+      {%- endif %}
+    </div>
   </div>
   <div class="kpi">
     <div class="n">{{ response_rate }}<span style="font-size:15px;color:var(--muted)">%</span></div>
@@ -61,9 +67,11 @@
     {% for text, qtype, avg, n in per_question %}
       <tr>
         <td>{{ text }}</td>
-        <td class="num"><strong>{{ avg | round(2) }}</strong>
+        <td class="num">
+          {%- set below = qtype.value == "scale_1_10" and avg < satisfactory_min -%}
+          <strong {% if below %}style="color:var(--bad)"{% endif %}>{{ avg | round(2) }}</strong>
           {%- if qtype.value == "scale_1_5" %} / 5
-          {%- elif qtype.value == "scale_1_10" %} / 10
+          {%- elif qtype.value == "scale_1_10" %} / 10{% if below %} ⚠{% endif %}
           {%- elif qtype.value == "yes_no" %} ({{ (avg * 100) | round(0) | int }}% sí)
           {%- endif %}</td>
         <td class="num">{{ n }}</td>
@@ -76,8 +84,11 @@
 {% endif %}
 
 {% if needs_followup %}
-<div class="card">
-  <h2>Requieren seguimiento</h2>
+<div class="card" style="border-left:3px solid var(--bad)">
+  <h2>⚠ Advertencias — requieren seguimiento</h2>
+  <p style="color:var(--muted);font-size:13px;margin:-6px 0 12px">
+    Toda encuesta con alguna respuesta por debajo de {{ satisfactory_min | round(0) | int }}/10 aparece acá.
+  </p>
   <div class="scroll">
   <table>
     <thead><tr><th>Cliente</th><th>Motivo</th><th class="num">Puntaje</th><th></th></tr></thead>
@@ -86,7 +97,7 @@
       <tr>
         <td>{{ a.call.target.contact_name or a.call.target.phone or "—" }}</td>
         <td>{{ a.followup_reason or a.summary or "—" }}</td>
-        <td class="num">{{ a.satisfaction_score | round(0) | int if a.satisfaction_score is not none else "—" }}</td>
+        <td class="num"><strong style="color:var(--bad)">{{ a.satisfaction_score | round(1) if a.satisfaction_score is not none else "—" }}</strong></td>
         <td><a href="/calls/{{ a.call_id }}">ver</a></td>
       </tr>
     {% endfor %}
@@ -114,7 +125,13 @@
         <td><span class="tag {{ c.outcome.value if c.outcome else '' }}">{{ c.outcome.value if c.outcome else "en curso" }}</span></td>
         <td class="num">{% if c.duration_seconds %}{{ c.duration_seconds // 60 }}m {{ c.duration_seconds % 60 }}s{% else %}—{% endif %}</td>
         <td class="num">{{ c.questions_answered }}/{{ c.questions_asked }}</td>
-        <td class="num">{{ c.analysis.satisfaction_score | round(0) | int if c.analysis and c.analysis.satisfaction_score is not none else "—" }}</td>
+        <td class="num">
+          {%- if c.analysis and c.analysis.satisfaction_score is not none -%}
+            {%- set s = c.analysis.satisfaction_score -%}
+            <strong {% if s < satisfactory_min %}style="color:var(--bad)"{% endif %}>{{ s | round(1) }}</strong>
+            {%- if s < satisfactory_min %} ⚠{% endif -%}
+          {%- else -%}—{%- endif -%}
+        </td>
         <td><a href="/calls/{{ c.id }}">ver</a></td>
       </tr>
     {% endfor %}

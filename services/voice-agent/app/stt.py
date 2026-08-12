@@ -89,10 +89,14 @@ def _transcribe_sync(pcm: bytes) -> Transcription:
         # Sin contexto previo: cada respuesta es independiente y arrastrar el
         # texto anterior hace que Whisper invente continuaciones.
         condition_on_previous_text=False,
-        # Sesgo hacia el dominio: mejora los números hablados de la escala 1-5
+        # Sesgo hacia el dominio: mejora el reconocimiento de los números
+        # hablados. Tiene que nombrar el rango real (0-10): si dice "uno al
+        # cinco", Whisper transcribe "nueve" y "diez" mucho peor, y son
+        # justamente los valores que definen si el cliente quedó conforme.
         initial_prompt=(
             "Encuesta telefónica de satisfacción de un taller mecánico. "
-            "El cliente responde con números del uno al cinco, o sí y no."
+            "El cliente califica con un número del cero al diez: "
+            "cero, uno, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez."
         ),
     )
 

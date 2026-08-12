@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.db import get_db
 from app.deps import require_admin
+from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
     Answer,
     CallAnalysis,
@@ -35,6 +36,16 @@ log = logging.getLogger(__name__)
 templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 router = APIRouter(tags=["panel"], dependencies=[Depends(require_admin)])
+
+# El identificador del enum dice "scale_1_10" pero el rango real es 0-10, así que
+# el panel muestra la etiqueta y no el valor crudo.
+QUESTION_TYPE_LABELS = {
+    QuestionType.SCALE_1_10: "escala 0-10",
+    QuestionType.SCALE_1_5: "escala 1-5 (heredada)",
+    QuestionType.YES_NO: "sí / no",
+    QuestionType.NUMERIC: "número",
+    QuestionType.OPEN: "respuesta libre",
+}
 
 
 def _redirect(path: str) -> RedirectResponse:
@@ -123,6 +134,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
             "recent_calls": recent_calls,
             "needs_followup": needs_followup,
             "TargetStatus": TargetStatus,
+            "satisfactory_min": SATISFACTORY_MIN,
         },
     )
 
@@ -206,6 +218,7 @@ def campaign_detail(
         {
             "campaign": campaign,
             "question_types": list(QuestionType),
+            "type_labels": QUESTION_TYPE_LABELS,
             "target_counts": target_counts,
             "total_targets": sum(target_counts.values()),
         },
@@ -267,7 +280,7 @@ def update_campaign(
 def add_question(
     campaign_id: int,
     text: str = Form(...),
-    qtype: QuestionType = Form(QuestionType.SCALE_1_5),
+    qtype: QuestionType = Form(QuestionType.SCALE_1_10),
     max_answer_seconds: int = Form(20),
     max_retries: int = Form(1),
     counts_for_score: bool = Form(False),
@@ -446,7 +459,13 @@ def call_detail(
         raise HTTPException(404, "Llamada inexistente")
 
     return templates.TemplateResponse(
-        request, "call_detail.html", {"call": call, "QuestionType": QuestionType}
+        request,
+        "call_detail.html",
+        {
+            "call": call,
+            "QuestionType": QuestionType,
+            "satisfactory_min": SATISFACTORY_MIN,
+        },
     )
 
 

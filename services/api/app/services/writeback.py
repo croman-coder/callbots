@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.bitrix.client import BitrixClient, BitrixError
 from app.config import settings
 from app.models import CallAttempt, QuestionType
+from app.services.scoring import SATISFACTORY_MIN, is_satisfactory, to_scale_10
 
 log = logging.getLogger(__name__)
 
@@ -31,18 +32,45 @@ def _format_answer(value: float | None, qtype: QuestionType, transcript: str | N
     return f"{value:.0f}"
 
 
+def _answer_flag(answer) -> str:  # noqa: ANN001
+    """Marca visual por respuesta: solo 9 y 10 pasan."""
+    if not answer.question.counts_for_score or answer.value_numeric is None:
+        return ""
+    score = to_scale_10(answer.value_numeric, answer.question.qtype)
+    if score is None:
+        return ""
+    return "  ✅" if is_satisfactory(score) else "  ⚠"
+
+
 def build_comment(call: CallAttempt) -> str:
     """Arma el comentario en BBCode, que es lo que renderiza el timeline."""
     target = call.target
     analysis = call.analysis
 
-    lines = ["[B]Encuesta de satisfacción automática[/B]", ""]
+    lines: list[str] = []
+
+    # La advertencia va primero: es lo que hay que accionar, y el timeline de
+    # Bitrix se lee de arriba y truncado.
+    if analysis and analysis.requires_followup:
+        reason = analysis.followup_reason or "el cliente manifestó un problema"
+        lines += [
+            "[B]⚠ ADVERTENCIA — REQUIERE SEGUIMIENTO[/B]",
+            reason,
+            "",
+        ]
+
+    lines += ["[B]Encuesta de satisfacción automática[/B]", ""]
 
     if analysis and analysis.satisfaction_score is not None:
         icon = SENTIMENT_ICON.get(analysis.sentiment or "", "")
+        verdict = (
+            "satisfactorio"
+            if is_satisfactory(analysis.satisfaction_score)
+            else f"por debajo de {SATISFACTORY_MIN:.0f}"
+        )
         lines.append(
-            f"{icon} [B]Satisfacción: {analysis.satisfaction_score:.0f}/100[/B] "
-            f"({analysis.sentiment or 'sin clasificar'})"
+            f"{icon} [B]Satisfacción: {analysis.satisfaction_score:.1f}/10[/B] "
+            f"({verdict}, {analysis.sentiment or 'sin clasificar'})"
         )
         lines.append("")
 
@@ -52,17 +80,13 @@ def build_comment(call: CallAttempt) -> str:
             answer.value_numeric, answer.question.qtype, answer.transcript
         )
         lines.append(f"[LIST][*]{answer.question.text}")
-        lines.append(f"→ {formatted}[/LIST]")
+        lines.append(f"→ {formatted}{_answer_flag(answer)}[/LIST]")
 
     if analysis and analysis.summary:
         lines += ["", "[B]Resumen:[/B]", analysis.summary]
 
     if analysis and analysis.topics:
         lines += ["", "[B]Temas:[/B] " + ", ".join(str(t) for t in analysis.topics)]
-
-    if analysis and analysis.requires_followup:
-        reason = analysis.followup_reason or "el cliente manifestó un problema"
-        lines += ["", f"[B]⚠ Requiere seguimiento:[/B] {reason}"]
 
     duration = call.duration_seconds or 0
     lines += [

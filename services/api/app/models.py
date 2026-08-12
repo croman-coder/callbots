@@ -38,9 +38,13 @@ from app.db import Base
 # Enums
 # ---------------------------------------------------------------------------
 class QuestionType(str, enum.Enum):
-    SCALE_1_5 = "scale_1_5"      # "del 1 al 5, ¿qué tan..."
-    SCALE_1_10 = "scale_1_10"    # NPS
-    YES_NO = "yes_no"
+    # Escala principal: acepta 0 a 10. Solo 9 y 10 se consideran satisfactorios,
+    # el resto dispara advertencia (ver services/scoring.py::SATISFACTORY_MIN).
+    # El identificador quedó como "scale_1_10" para no forzar una migración del
+    # tipo enum de Postgres; el rango real siempre fue 0-10.
+    SCALE_1_10 = "scale_1_10"
+    SCALE_1_5 = "scale_1_5"      # heredada, se reescala a 0-10 para promediar
+    YES_NO = "yes_no"            # sí = 10, no = 0
     NUMERIC = "numeric"
     OPEN = "open"                # respuesta libre, se guarda transcripta
 
@@ -144,7 +148,7 @@ class Question(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     qtype: Mapped[QuestionType] = mapped_column(
-        Enum(QuestionType, name="question_type"), default=QuestionType.SCALE_1_5
+        Enum(QuestionType, name="question_type"), default=QuestionType.SCALE_1_10
     )
     is_required: Mapped[bool] = mapped_column(Boolean, default=True)
     max_answer_seconds: Mapped[int] = mapped_column(Integer, default=20)
@@ -317,7 +321,8 @@ class CallAnalysis(Base):
         ForeignKey("call_attempts.id", ondelete="CASCADE"), unique=True, nullable=False
     )
 
-    # Promedio normalizado a escala 0-100 de las preguntas que puntúan
+    # Promedio en escala 0-10 de las preguntas que puntúan.
+    # >= 9 satisfactorio; por debajo, requires_followup queda en True.
     satisfaction_score: Mapped[float | None] = mapped_column(Float)
     sentiment: Mapped[str | None] = mapped_column(String(20))  # positivo|neutral|negativo
     summary: Mapped[str | None] = mapped_column(Text)

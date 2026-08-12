@@ -81,7 +81,7 @@ class SessionFinished(BaseModel):
 # ---------------------------------------------------------------------------
 class QuestionCreate(BaseModel):
     text: str = Field(min_length=3)
-    qtype: QuestionType = QuestionType.SCALE_1_5
+    qtype: QuestionType = QuestionType.SCALE_1_10
     position: int | None = None
     is_required: bool = True
     max_answer_seconds: int = 20

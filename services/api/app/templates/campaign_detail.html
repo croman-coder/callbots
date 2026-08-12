@@ -37,7 +37,7 @@
       <tr {% if not q.is_active %}style="opacity:.45"{% endif %}>
         <td class="num">{{ q.position }}</td>
         <td>{{ q.text }}</td>
-        <td><span class="tag">{{ q.qtype.value }}</span></td>
+        <td><span class="tag">{{ type_labels.get(q.qtype, q.qtype.value) }}</span></td>
         <td class="num">{{ q.max_answer_seconds }}</td>
         <td class="num">{{ q.max_retries }}</td>
         <td>{{ "sí" if q.counts_for_score else "no" }}</td>
@@ -67,14 +67,14 @@
   <form method="post" action="/campaigns/{{ campaign.id }}/questions" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
     <label>Nueva pregunta
       <input type="text" name="text" required
-             placeholder="Del 1 al 5, ¿qué tan satisfecho quedó con el trabajo realizado?">
+             placeholder="Del cero al diez, ¿qué tan satisfecho quedó con el trabajo realizado?">
     </label>
     <div class="row">
       <div>
         <label>Tipo</label>
         <select name="qtype">
           {% for t in question_types %}
-          <option value="{{ t.value }}" {% if t.value == "scale_1_5" %}selected{% endif %}>{{ t.value }}</option>
+          <option value="{{ t.value }}" {% if t.value == "scale_1_10" %}selected{% endif %}>{{ type_labels.get(t, t.value) }}</option>
           {% endfor %}
         </select>
       </div>
@@ -90,6 +90,7 @@
     <label class="check">
       <input type="checkbox" name="counts_for_score" value="true" checked>
       Cuenta para el puntaje de satisfacción
+      <span class="hint">— si la respuesta baja de 9, dispara advertencia</span>
     </label>
     <div class="actions">
       <button type="submit" class="primary">Agregar pregunta</button>

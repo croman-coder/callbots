@@ -25,22 +25,26 @@ from app.db import session_scope
 from app.models import Campaign, Question, QuestionType
 
 # (texto, tipo, cuenta_para_puntaje, segundos_max)
+#
+# Todas las escalas van de 0 a 10 y solo 9 o 10 cuentan como satisfactorio, así
+# que el guion dice el rango en voz alta: si no, el cliente responde en la escala
+# que se le ocurra y la respuesta queda inservible.
 PREGUNTAS = [
     (
-        "Del uno al cinco, ¿qué tan satisfecho quedó con el trabajo realizado en su vehículo?",
-        QuestionType.SCALE_1_5, True, 15,
+        "Del cero al diez, ¿qué tan satisfecho quedó con el trabajo realizado en su vehículo?",
+        QuestionType.SCALE_1_10, True, 15,
     ),
     (
-        "Del uno al cinco, ¿cómo calificaría la atención del personal que lo recibió?",
-        QuestionType.SCALE_1_5, True, 15,
+        "Del cero al diez, ¿cómo calificaría la atención del personal que lo recibió?",
+        QuestionType.SCALE_1_10, True, 15,
     ),
     (
-        "¿El vehículo estuvo listo en el plazo que le habían prometido?",
-        QuestionType.YES_NO, True, 12,
+        "Del cero al diez, ¿qué tan conforme quedó con el plazo de entrega?",
+        QuestionType.SCALE_1_10, True, 15,
     ),
     (
-        "Del uno al cinco, ¿qué tan claro le resultó el presupuesto antes del trabajo?",
-        QuestionType.SCALE_1_5, True, 15,
+        "Del cero al diez, ¿qué tan claro le resultó el presupuesto antes del trabajo?",
+        QuestionType.SCALE_1_10, True, 15,
     ),
     (
         "Del cero al diez, ¿qué tan probable es que nos recomiende a un conocido?",
@@ -54,8 +58,9 @@ PREGUNTAS = [
 
 INTRO = (
     "Hola {nombre}, buenos días. Le hablamos del servicio de posventa del taller. "
-    "Estamos haciendo una encuesta muy breve sobre su última visita, son cinco "
-    "preguntas cortas. ¿Nos regala un minuto?"
+    "Estamos haciendo una encuesta muy breve sobre su última visita, son seis "
+    "preguntas cortas y se responden con un número del cero al diez. "
+    "¿Nos regala un minuto?"
 )
 
 OUTRO = (

@@ -12,12 +12,17 @@
 
 <div class="grid" style="margin-bottom:18px">
   <div class="kpi">
-    <div class="n">
-      {% if call.analysis and call.analysis.satisfaction_score is not none %}
-        {{ call.analysis.satisfaction_score | round(0) | int }}<span style="font-size:15px;color:var(--muted)">/100</span>
+    {% set score = call.analysis.satisfaction_score if call.analysis else none %}
+    <div class="n" {% if score is not none and score < satisfactory_min %}style="color:var(--bad)"{% endif %}>
+      {% if score is not none %}
+        {{ score | round(1) }}<span style="font-size:15px;color:var(--muted)">/10</span>
       {% else %}—{% endif %}
     </div>
-    <div class="l">Satisfacción</div>
+    <div class="l">Satisfacción
+      {%- if score is not none %}
+        · {{ "satisfactorio" if score >= satisfactory_min else "advertencia" }}
+      {%- endif %}
+    </div>
   </div>
   <div class="kpi">
     <div class="n" style="font-size:18px">
@@ -54,7 +59,10 @@
           {% if a.value_numeric is none %}—
           {% elif a.question.qtype.value == "yes_no" %}{{ "Sí" if a.value_numeric >= 0.5 else "No" }}
           {% elif a.question.qtype.value == "scale_1_5" %}<strong>{{ a.value_numeric | round(0) | int }}</strong> / 5
-          {% elif a.question.qtype.value == "scale_1_10" %}<strong>{{ a.value_numeric | round(0) | int }}</strong> / 10
+          {% elif a.question.qtype.value == "scale_1_10" %}
+            {%- set ok = a.value_numeric >= satisfactory_min -%}
+            <strong {% if not ok %}style="color:var(--bad)"{% endif %}>{{ a.value_numeric | round(0) | int }}</strong> / 10
+            {% if a.question.counts_for_score %}{{ "✅" if ok else "⚠" }}{% endif %}
           {% else %}{{ a.value_numeric | round(1) }}{% endif %}
           {% if a.value_source %}<br><span class="tag">{{ a.value_source }}</span>{% endif %}
         </td>

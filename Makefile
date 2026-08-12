@@ -73,6 +73,9 @@ sync: ## Fuerza la sincronización con Bitrix ahora
 	$(COMPOSE) exec worker celery -A app.scheduler.worker.celery_app call callbot.sync_bitrix
 
 # --------------------------------------------------------------- base de datos
+check-scoring: ## Verifica el umbral de satisfacción y las conversiones de escala
+	$(COMPOSE) exec api python -m app.services.scoring
+
 migrate: ## Aplica las migraciones pendientes
 	$(COMPOSE) exec api alembic upgrade head
 
