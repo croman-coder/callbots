@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% set nav = "targets" %}
+{% block title %}Destinatarios · Callbot{% endblock %}
+
+{% block content %}
+<h1>Destinatarios</h1>
+<p class="sub">{{ total }} registros · página {{ page }} de {{ pages }}</p>
+
+<div class="card">
+  <form method="get" action="/targets">
+    <div class="row">
+      <div>
+        <label>Estado</label>
+        <select name="status" onchange="this.form.submit()">
+          <option value="">todos</option>
+          {% for s in statuses %}
+          <option value="{{ s.value }}" {% if current_status == s.value %}selected{% endif %}>{{ s.value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Campaña</label>
+        <select name="campaign_id" onchange="this.form.submit()">
+          <option value="">todas</option>
+          {% for c in campaigns %}
+          <option value="{{ c.id }}" {% if current_campaign == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  {% if targets %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Cliente</th><th>Teléfono</th><th>Bitrix</th>
+          <th>Ingreso taller (T0)</th><th>Agendado</th>
+          <th>Estado</th><th class="num">Int.</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for t in targets %}
+      <tr>
+        <td>{{ t.contact_name or "—" }}
+          {% if t.bitrix_title %}<br><span style="color:var(--muted);font-size:13px">{{ t.bitrix_title }}</span>{% endif %}</td>
+        <td><code>{{ t.phone or "sin teléfono" }}</code></td>
+        <td><code>{{ t.bitrix_entity_type_id }}#{{ t.bitrix_entity_id }}</code></td>
+        <td>{{ t.trigger_at.strftime("%d/%m/%Y %H:%M") }}</td>
+        <td>{{ t.scheduled_at.strftime("%d/%m/%Y %H:%M") }}</td>
+        <td><span class="tag {{ t.status.value }}">{{ t.status.value }}</span>
+          {% if t.last_error %}<br><span style="color:var(--bad);font-size:12px">{{ t.last_error[:70] }}</span>{% endif %}</td>
+        <td class="num">{{ t.attempts }}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/targets/{{ t.id }}/call-now" class="inline"
+                onsubmit="return confirm('¿Llamar ahora a {{ t.phone }}? Ignora la ventana horaria.')">
+            <button type="submit" class="mini">llamar</button>
+          </form>
+          <form method="post" action="/targets/{{ t.id }}/reschedule" class="inline">
+            <button type="submit" class="mini">reagendar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if pages > 1 %}
+  <div class="actions">
+    {% set qs = "&status=" ~ (current_status or "") ~ "&campaign_id=" ~ (current_campaign or "") %}
+    {% if page > 1 %}<a class="btn" href="/targets?page={{ page - 1 }}{{ qs }}">← Anterior</a>{% endif %}
+    {% if page < pages %}<a class="btn" href="/targets?page={{ page + 1 }}{{ qs }}">Siguiente →</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+    <p class="empty">
+      No hay destinatarios con estos filtros.<br>
+      Si acabás de crear la campaña, tocá <strong>Sincronizar Bitrix</strong> arriba a la derecha.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

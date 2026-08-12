@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% set nav = "campaigns" %}
+{% block title %}{{ campaign.name }} · Callbot{% endblock %}
+
+{% block content %}
+<h1>{{ campaign.name }}</h1>
+<p class="sub">
+  <a href="/campaigns">← Campañas</a> ·
+  <span class="tag {{ 'completed' if campaign.is_active else 'failed' }}">{{ "activa" if campaign.is_active else "pausada" }}</span>
+  {% if total_targets %} · {{ total_targets }} destinatarios{% endif %}
+</p>
+
+{% if target_counts %}
+<div class="grid" style="margin-bottom:18px">
+  {% for status, count in target_counts.items() %}
+  <div class="kpi">
+    <div class="n">{{ count }}</div>
+    <div class="l">{{ status.value }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ------------------------------------------------------ preguntas -->
+<div class="card">
+  <h2>Preguntas <span style="font-weight:400;color:var(--muted);font-size:13px">— se leen en este orden</span></h2>
+
+  {% if campaign.questions %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th class="num">#</th><th>Texto</th><th>Tipo</th>
+          <th class="num">Máx. seg.</th><th class="num">Repreg.</th><th>Puntúa</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for q in campaign.questions %}
+      <tr {% if not q.is_active %}style="opacity:.45"{% endif %}>
+        <td class="num">{{ q.position }}</td>
+        <td>{{ q.text }}</td>
+        <td><span class="tag">{{ q.qtype.value }}</span></td>
+        <td class="num">{{ q.max_answer_seconds }}</td>
+        <td class="num">{{ q.max_retries }}</td>
+        <td>{{ "sí" if q.counts_for_score else "no" }}</td>
+        <td style="white-space:nowrap">
+          <form method="post" action="/questions/{{ q.id }}/move" class="inline">
+            <input type="hidden" name="direction" value="up">
+            <button type="submit" class="mini" {% if loop.first %}disabled{% endif %}>↑</button>
+          </form>
+          <form method="post" action="/questions/{{ q.id }}/move" class="inline">
+            <input type="hidden" name="direction" value="down">
+            <button type="submit" class="mini" {% if loop.last %}disabled{% endif %}>↓</button>
+          </form>
+          <form method="post" action="/questions/{{ q.id }}/delete" class="inline"
+                onsubmit="return confirm('¿Borrar esta pregunta? Las respuestas ya guardadas se borran también.')">
+            <button type="submit" class="mini danger">borrar</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">Sin preguntas. Agregá la primera abajo — la campaña no se puede activar sin al menos una.</p>
+  {% endif %}
+
+  <form method="post" action="/campaigns/{{ campaign.id }}/questions" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+    <label>Nueva pregunta
+      <input type="text" name="text" required
+             placeholder="Del 1 al 5, ¿qué tan satisfecho quedó con el trabajo realizado?">
+    </label>
+    <div class="row">
+      <div>
+        <label>Tipo</label>
+        <select name="qtype">
+          {% for t in question_types %}
+          <option value="{{ t.value }}" {% if t.value == "scale_1_5" %}selected{% endif %}>{{ t.value }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label>Máx. segundos de respuesta</label>
+        <input type="number" name="max_answer_seconds" value="20">
+      </div>
+      <div>
+        <label>Repreguntas si no entiende</label>
+        <input type="number" name="max_retries" value="1">
+      </div>
+    </div>
+    <label class="check">
+      <input type="checkbox" name="counts_for_score" value="true" checked>
+      Cuenta para el puntaje de satisfacción
+    </label>
+    <div class="actions">
+      <button type="submit" class="primary">Agregar pregunta</button>
+    </div>
+  </form>
+</div>
+
+<!-- ------------------------------------------------------ configuración -->
+<div class="card">
+  <h2>Configuración</h2>
+  <form method="post" action="/campaigns/{{ campaign.id }}">
+    <label>Nombre
+      <input type="text" name="name" value="{{ campaign.name }}" required>
+    </label>
+    <label>Descripción
+      <input type="text" name="description" value="{{ campaign.description or '' }}">
+    </label>
+
+    <h2>Origen de los datos</h2>
+    <div class="row">
+      <div>
+        <label>entityTypeId</label>
+        <input type="number" name="bitrix_entity_type_id" value="{{ campaign.bitrix_entity_type_id }}" required>
+      </div>
+      <div>
+        <label>Campo disparador (T0)</label>
+        <input type="text" name="trigger_field" value="{{ campaign.trigger_field }}" required>
+      </div>
+      <div>
+        <label>Demora (horas)</label>
+        <input type="number" name="delay_hours" value="{{ campaign.delay_hours }}" required>
+      </div>
+    </div>
+
+    <h2>Reglas de llamada</h2>
+    <div class="row">
+      <div>
+        <label>Desde</label>
+        <input type="time" name="call_window_start" value="{{ campaign.call_window_start }}">
+      </div>
+      <div>
+        <label>Hasta</label>
+        <input type="time" name="call_window_end" value="{{ campaign.call_window_end }}">
+      </div>
+      <div>
+        <label>Días <span class="hint">0=lun … 6=dom</span></label>
+        <input type="text" name="call_window_days" value="{{ campaign.call_window_days }}">
+      </div>
+      <div>
+        <label>Máx. intentos</label>
+        <input type="number" name="max_attempts" value="{{ campaign.max_attempts }}">
+      </div>
+      <div>
+        <label>Reintento (min)</label>
+        <input type="number" name="retry_interval_minutes" value="{{ campaign.retry_interval_minutes }}">
+      </div>
+    </div>
+
+    <h2>Guion</h2>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 6px">
+      Podés usar <code>{nombre}</code> en cualquier texto: se reemplaza por el primer
+      nombre del contacto. Si el registro no tiene nombre, el placeholder
+      simplemente desaparece y la frase queda natural.
+    </p>
+    <label>Presentación <span class="hint">— lo primero que escucha el cliente</span>
+      <textarea name="intro_script" required>{{ campaign.intro_script }}</textarea>
+    </label>
+    <label>Cierre
+      <textarea name="outro_script" required>{{ campaign.outro_script }}</textarea>
+    </label>
+    <label>Cuando no entiende la respuesta
+      <textarea name="fallback_script" required>{{ campaign.fallback_script }}</textarea>
+    </label>
+    <label>Cuando el cliente no quiere responder
+      <textarea name="optout_script" required>{{ campaign.optout_script }}</textarea>
+    </label>
+
+    <label class="check">
+      <input type="checkbox" name="is_active" value="true" {% if campaign.is_active %}checked{% endif %}>
+      Campaña activa <span class="hint">— con esto se empieza a llamar</span>
+    </label>
+
+    <div class="actions">
+      <button type="submit" class="primary">Guardar cambios</button>
+      <a class="btn" href="/targets?campaign_id={{ campaign.id }}">Ver destinatarios</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

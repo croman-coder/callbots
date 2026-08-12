@@ -1,0 +1,62 @@
+"""Configuración del voice-agent. Todo por variables de entorno."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+# --- Constantes del protocolo AudioSocket de Asterisk ---
+# Asterisk entrega y espera slin: PCM 16-bit signed, mono, little-endian, 8 kHz.
+SAMPLE_RATE = 8000
+SAMPLE_WIDTH = 2
+FRAME_MS = 20
+SAMPLES_PER_FRAME = SAMPLE_RATE * FRAME_MS // 1000      # 160
+BYTES_PER_FRAME = SAMPLES_PER_FRAME * SAMPLE_WIDTH      # 320
+
+# Whisper trabaja a 16 kHz
+WHISPER_SAMPLE_RATE = 16000
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    return os.getenv(name, str(default)).strip().lower() in ("1", "true", "yes", "y")
+
+
+@dataclass(frozen=True)
+class Config:
+    api_base_url: str = os.getenv("API_BASE_URL", "http://api:8000")
+    internal_token: str = os.getenv("INTERNAL_TOKEN", "dev-internal-token")
+
+    listen_host: str = os.getenv("AUDIOSOCKET_HOST", "0.0.0.0")
+    listen_port: int = int(os.getenv("AUDIOSOCKET_PORT", "8090"))
+
+    # --- STT ---
+    whisper_model: str = os.getenv("WHISPER_MODEL", "medium")
+    whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
+    whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+    whisper_language: str = os.getenv("WHISPER_LANGUAGE", "es")
+
+    # --- TTS ---
+    piper_voice: str = os.getenv("PIPER_VOICE", "es_AR-daniela-high")
+    piper_dir: str = os.getenv("PIPER_DIR", "/models/piper")
+
+    # --- Detección de fin de respuesta ---
+    vad_aggressiveness: int = int(os.getenv("VAD_AGGRESSIVENESS", "2"))
+    silence_ms_to_stop: int = int(os.getenv("SILENCE_MS_TO_STOP", "1200"))
+    max_answer_seconds: int = int(os.getenv("MAX_ANSWER_SECONDS", "30"))
+    no_speech_timeout_seconds: int = int(os.getenv("NO_SPEECH_TIMEOUT_SECONDS", "8"))
+
+    save_audio: bool = _env_bool("SAVE_AUDIO", True)
+    recordings_dir: str = os.getenv("RECORDINGS_DIR", "/recordings")
+
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+
+    @property
+    def piper_model_path(self) -> str:
+        return f"{self.piper_dir}/{self.piper_voice}.onnx"
+
+    @property
+    def piper_config_path(self) -> str:
+        return f"{self.piper_dir}/{self.piper_voice}.onnx.json"
+
+
+config = Config()

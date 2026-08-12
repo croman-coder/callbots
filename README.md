@@ -1,0 +1,375 @@
+# Callbot — Encuestas de satisfacción post-taller
+
+Agente de voz que llama al cliente **48 horas después del ingreso al taller**, le
+hace una encuesta de satisfacción configurable y devuelve el resultado a
+**Bitrix24**: comentario en el timeline, puntaje en un campo propio y la llamada
+registrada en el módulo de telefonía.
+
+Todo el stack es **open source y self-hosted**. No hay APIs pagas ni licencias:
+el reconocimiento de voz, la síntesis y el análisis corren en tu servidor.
+
+---
+
+## Cómo funciona
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Bitrix24 (SPA del taller)                                              │
+│  crm.item.list  →  fecha real de facturación · entrega · INGRESO TALLER  │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │  cada 15 min (Celery beat)
+                                 ▼
+                    ┌────────────────────────┐
+                    │  scheduler             │  T0 + 48h, dentro de la
+                    │  survey_targets        │  ventana horaria permitida
+                    └───────────┬────────────┘
+                                │  ARI originate
+                                ▼
+                    ┌────────────────────────┐        SIP        ┌──────────┐
+                    │  Asterisk              ├──────────────────►│ softphone│
+                    │  dialplan + AudioSocket│                   │ o troncal│
+                    └───────────┬────────────┘                   └──────────┘
+                                │  PCM 8 kHz por TCP
+                                ▼
+                    ┌────────────────────────────────────────────┐
+                    │  voice-agent                               │
+                    │   Piper TTS ──────► "¿del 1 al 5...?"      │
+                    │   webrtcvad ──────► detecta fin de habla   │
+                    │   faster-whisper ─► transcribe (GPU)       │
+                    └───────────┬────────────────────────────────┘
+                                │  respuestas
+                                ▼
+                    ┌────────────────────────┐
+                    │  API + Postgres        │
+                    │  reglas → puntaje      │
+                    │  Ollama → resumen      │
+                    └───────────┬────────────┘
+                                │  crm.timeline.comment.add
+                                ▼
+                          Bitrix24 + panel web
+```
+
+**Modo guiado (determinista):** el bot lee cada pregunta, escucha, transcribe y
+avanza. No hay LLM en el camino crítico de la conversación, así que la latencia
+entre que el cliente termina de hablar y arranca la siguiente pregunta es solo
+la del reconocimiento de voz. El LLM interviene *después* de colgar, para
+resumir y clasificar — ahí la latencia no molesta a nadie.
+
+## Stack
+
+| Función | Herramienta | Licencia |
+|---|---|---|
+| Telefonía / PBX | [Asterisk](https://www.asterisk.org/) 20 | GPLv2 |
+| Transporte de audio | AudioSocket (módulo de Asterisk) | GPLv2 |
+| Reconocimiento de voz | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) | MIT |
+| Síntesis de voz | [Piper](https://github.com/rhasspy/piper) | MIT |
+| Detección de voz | [webrtcvad](https://github.com/wiseman/py-webrtcvad) | BSD |
+| Análisis post-llamada | [Ollama](https://ollama.com/) + Llama 3.1 8B | MIT / Llama license |
+| API + panel | FastAPI + Jinja2 | MIT / BSD |
+| Base de datos | PostgreSQL 16 | PostgreSQL License |
+| Cola de tareas | Celery + Redis | BSD |
+
+### Lo único que cuesta plata
+
+El **software no cuesta nada**, pero los **minutos telefónicos hacia celulares
+reales sí**: eso lo cobra el carrier o el proveedor de la troncal SIP. No existe
+forma gratuita de hacer sonar un teléfono de la red pública.
+
+Para desarrollo y pruebas ese costo es **cero**: se usa un softphone
+(Linphone/Zoiper) registrado contra el Asterisk local, y el flujo completo —
+agendado, llamada, preguntas, transcripción, guardado en Bitrix — funciona sin
+tocar la red telefónica.
+
+---
+
+## Requisitos
+
+- Ubuntu con Docker y Docker Compose v2
+- **GPU NVIDIA** (opcional pero recomendada) con `nvidia-container-toolkit`:
+  ```bash
+  sudo apt install -y nvidia-container-toolkit
+  sudo nvidia-ctk runtime configure --runtime=docker
+  sudo systemctl restart docker
+  ```
+  Sin GPU funciona igual: poné `WHISPER_DEVICE=cpu` y `WHISPER_MODEL=small`.
+- Un webhook entrante de Bitrix24
+- Puertos libres: `5060/udp` (SIP), `10000-10050/udp` (RTP), `8000` (panel)
+
+## Arranque
+
+```bash
+cp .env.example .env
+```
+
+Completá en el `.env` como mínimo:
+
+```bash
+BITRIX_WEBHOOK_URL=https://tu-portal.bitrix24.com/rest/1/TOKEN/
+POSTGRES_PASSWORD=...
+ADMIN_PASSWORD=...
+ARI_PASSWORD=...
+INTERNAL_TOKEN=$(openssl rand -hex 32)
+SOFTPHONE_PASSWORD=...
+```
+
+Descargá la voz y levantá:
+
+```bash
+make setup
+```
+
+```bash
+make up-gpu
+```
+
+(sin GPU: `make up`)
+
+El panel queda en `http://localhost:8000` con usuario/password de
+`ADMIN_USER`/`ADMIN_PASSWORD`.
+
+Descargá el modelo del LLM una vez:
+
+```bash
+docker compose exec ollama ollama pull llama3.1:8b
+```
+
+---
+
+## Configurar Bitrix24 — la parte que no se puede adivinar
+
+Los códigos de los campos custom **no son predecibles**. Bitrix los genera como
+`ufCrm5_1639669411830` si el campo se creó desde la interfaz, o
+`ufCrm5FechaIngresoTaller` si se creó por API con nombre explícito. Hay que
+leerlos del portal.
+
+**1. Crear el webhook entrante**
+
+En Bitrix24: *Aplicaciones → Desarrollador → Webhook entrante*. Permisos
+mínimos: `crm`, `telephony`, `user`. Copiá la URL completa.
+
+**2. Encontrar la entidad**
+
+```bash
+make discover
+```
+
+Lista todas las Smart Processes con su `entityTypeId`. Si el taller se maneja
+como negocio en vez de SPA, el `entityTypeId` es `2`.
+
+**3. Encontrar los campos**
+
+```bash
+make fields ID=1036
+```
+
+Imprime todos los campos, resalta los de tipo fecha (candidatos para el
+disparador de 48hs), detecta el campo de contacto y muestra un registro real con
+sus valores. Al final te da las líneas listas para pegar en el `.env`:
+
+```bash
+BITRIX_ENTITY_TYPE_ID=1036
+BITRIX_FIELD_WORKSHOP_ENTRY=ufCrm5_1639669411830   # ← el T0 del conteo
+BITRIX_FIELD_INVOICE_DATE=ufCrm5_1639669411900
+BITRIX_FIELD_DELIVERY_DATE=ufCrm5_1639669411950
+BITRIX_FIELD_CONTACT_ID=contactId
+```
+
+**4. Crear la campaña**
+
+```bash
+make seed
+```
+
+Crea una campaña con seis preguntas típicas de posventa, **pausada**. Ajustá el
+guion en el panel y recién después activala.
+
+### Lo que se escribe en Bitrix
+
+| Qué | Método REST | Cuándo |
+|---|---|---|
+| Llamada registrada | `telephony.externalcall.register` | al marcar |
+| Llamada cerrada con duración | `telephony.externalcall.finish` | al colgar |
+| Comentario con las respuestas | `crm.timeline.comment.add` | tras el análisis |
+| Puntaje en campo propio | `crm.item.update` | si `BITRIX_FIELD_SCORE_WRITEBACK` está seteado |
+
+---
+
+## Probar sin llamar a nadie
+
+```bash
+make test-call
+```
+
+1. Registrá Linphone o Zoiper:
+   - usuario `softphone-1`, password el de `SOFTPHONE_PASSWORD`
+   - servidor: la IP del host, puerto `5060`
+2. Marcá **9001** → eco. Si te escuchás, el audio va y viene.
+3. Marcá **9000** → corre la encuesta de la campaña activa en **modo demo**: se
+   escucha el guion completo pero no se guarda nada ni se toca Bitrix.
+
+Con `ASTERISK_DIAL_TEMPLATE=PJSIP/softphone-1`, **todas** las llamadas salientes
+suenan en tu softphone sin importar el número del cliente. Ideal para probar el
+flujo completo end-to-end sin riesgo.
+
+## Pasar a producción
+
+**1. Troncal SIP.** Descomentá el bloque de troncal en
+[pjsip.conf](docker/asterisk/etc/pjsip.conf), completá `TRUNK_*` en el `.env` y
+cambiá:
+
+```bash
+ASTERISK_DIAL_TEMPLATE=PJSIP/{number}@trunk-proveedor
+```
+
+`{number}` se reemplaza por el teléfono en E.164 sin el `+`.
+
+**2. NAT.** Esto es lo que más rompe el audio en producción. En
+[pjsip.conf](docker/asterisk/etc/pjsip.conf), en `[transport-udp]`:
+
+```ini
+external_media_address = TU.IP.PUBLICA
+external_signaling_address = TU.IP.PUBLICA
+local_net = 172.16.0.0/12
+```
+
+Sin esto la llamada se establece pero **no se escucha nada** en un sentido.
+
+**3. Concurrencia.** `MAX_CONCURRENT_CALLS` no debe superar los canales
+simultáneos que te vende el proveedor. Con softphone dejalo en `1`.
+
+**4. Cerrar el puerto de la API.** El `8000` expone el panel. Ponelo detrás de un
+reverse proxy con TLS o limitalo por firewall. El endpoint `/internal/*` está
+protegido por `INTERNAL_TOKEN`, pero el panel usa HTTP Basic: sin TLS las
+credenciales viajan en claro.
+
+---
+
+## Modelo de datos
+
+```
+Campaign ────┬──── Question        (el cuestionario, ordenado)
+             │
+             └──── SurveyTarget    (un cliente a encuestar, con su T0)
+                        │
+                        └──── CallAttempt        (1..N intentos)
+                                   ├──── Answer      (1 por pregunta)
+                                   └──── CallAnalysis (puntaje, resumen, temas)
+```
+
+Estados de un destinatario:
+
+```
+PENDING ──(vence T0+48h)──► SCHEDULED ──► QUEUED ──► CALLING ──► COMPLETED
+   │                             ▲                       │
+   │                             └──── no atendió ────────┤
+   │                                                      │
+   └──► SKIPPED (sin teléfono)          OPTED_OUT ◄───────┘
+                                        NO_ANSWER (agotó intentos)
+```
+
+### Cómo se calcula el puntaje
+
+Cada respuesta puntuable se normaliza a 0–100 y se promedia:
+
+| Tipo | Normalización |
+|---|---|
+| `scale_1_5` | `(v - 1) / 4 × 100` |
+| `scale_1_10` | `v / 10 × 100` |
+| `yes_no` | `v × 100` |
+| `open` | no puntúa |
+
+La interpretación de la respuesta hablada la hace
+[scoring.py](services/api/app/services/scoring.py) **con reglas, no con LLM**:
+números en dígitos o en palabras (`"cinco"`, `"un cinco"`), sí/no con sus
+variantes rioplatenses, y adjetivos mapeados a la escala (`"excelente"` → 5,
+`"más o menos"` → 3). También detecta frases de opt-out (`"no me llamen"`,
+`"estoy manejando"`) y las alucinaciones fijas que Whisper produce cuando le das
+silencio.
+
+---
+
+## Operación
+
+```bash
+make ps
+```
+
+```bash
+make logs-agent
+```
+
+Diagnóstico de todas las dependencias en `http://localhost:8000/health-detail`:
+verifica Postgres, Bitrix, Asterisk y Ollama de una pasada.
+
+| Comando | Para qué |
+|---|---|
+| `make sync` | fuerza la sincronización con Bitrix |
+| `make sip-status` | ver si el softphone está registrado |
+| `make asterisk-cli` | consola de Asterisk |
+| `make shell-db` | consola de Postgres |
+| `make migration M="..."` | generar una migración |
+
+### Si algo no funciona
+
+| Síntoma | Causa habitual |
+|---|---|
+| No se crean destinatarios | `BITRIX_FIELD_WORKSHOP_ENTRY` mal escrito. Corré `make fields ID=...` |
+| La llamada suena pero no se escucha nada | NAT: falta `external_media_address` en pjsip.conf |
+| El bot habla pero no entiende las respuestas | `VAD_AGGRESSIVENESS` muy alto, o `SILENCE_MS_TO_STOP` muy corto |
+| Transcripciones vacías o absurdas | Whisper cayó a CPU con modelo grande. Mirá `make logs-agent` |
+| Todo queda en `scheduled` | Fuera de ventana horaria, o `MAX_CONCURRENT_CALLS=0` |
+| El análisis no tiene resumen | Falta `ollama pull llama3.1:8b`. El puntaje se calcula igual |
+
+Los estados intermedios se recuperan solos: un watchdog cada 2 minutos cierra
+las llamadas colgadas y reprograma las que no atendieron, y cada 10 minutos se
+reintenta lo que no se pudo escribir en Bitrix.
+
+---
+
+## Antes de llamar a clientes reales
+
+Esto llama a personas y graba audio. Dos cosas que no son técnicas pero son
+tuyas:
+
+- **Grabación.** `SAVE_AUDIO=true` guarda el audio de cada respuesta en
+  `./recordings`. En muchas jurisdicciones hay que avisar al interlocutor que la
+  llamada se graba. Si no lo necesitás, poné `SAVE_AUDIO=false`.
+- **Opt-out.** El bot detecta y respeta pedidos de no ser contactado, y el
+  destinatario queda en `OPTED_OUT` sin reintentos. Verificá que el guion de
+  presentación identifique claramente a la empresa.
+
+Los datos de clientes (nombre, teléfono, audio, transcripciones) quedan en tu
+servidor. Nada sale hacia servicios de terceros: por eso el stack es local.
+
+## Estructura
+
+```
+callbots/
+├── docker-compose.yml            servicios
+├── docker-compose.gpu.yml        overlay para GPU NVIDIA
+├── docker/asterisk/              imagen y configuración del PBX
+│   ├── entrypoint.sh             renderiza los .conf con envsubst
+│   └── etc/                      pjsip, extensions, ari, rtp
+├── services/
+│   ├── api/                      FastAPI + Celery + panel
+│   │   ├── app/
+│   │   │   ├── models.py         esquema de datos
+│   │   │   ├── scheduling.py     ventanas horarias
+│   │   │   ├── bitrix/           cliente REST y sincronización
+│   │   │   ├── routers/          internal (voice-agent) y admin (panel)
+│   │   │   ├── scheduler/        tareas Celery
+│   │   │   ├── services/         scoring, ARI, análisis, writeback
+│   │   │   └── templates/        panel
+│   │   └── migrations/           Alembic
+│   └── voice-agent/              AudioSocket + Piper + Whisper
+│       └── app/
+│           ├── audiosocket.py    protocolo binario de Asterisk
+│           ├── listener.py       VAD, detección de fin de habla
+│           ├── dialog.py         máquina de estados de la encuesta
+│           ├── tts.py            Piper + resampleo a 8 kHz
+│           └── stt.py            faster-whisper
+└── scripts/
+    ├── bitrix_discover.py        descubre entityTypeId y campos
+    ├── seed_campaign.py          campaña de ejemplo
+    └── download_models.sh        voz de Piper
+```

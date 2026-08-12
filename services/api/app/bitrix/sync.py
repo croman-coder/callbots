@@ -74,9 +74,11 @@ def sync_campaign(db: Session, campaign: Campaign, client: BitrixClient) -> Sync
     now = datetime.now(timezone.utc)
     since = now - timedelta(days=LOOKBACK_DAYS, hours=campaign.delay_hours)
 
+    # Bitrix exige ISO 8601 CON offset de zona. Sin offset lo interpreta en la
+    # zona del portal y el rango se corre las horas de diferencia.
     bitrix_filter: dict[str, Any] = {
-        f">={trigger_field}": since.strftime("%Y-%m-%dT%H:%M:%S"),
-        f"<={trigger_field}": now.strftime("%Y-%m-%dT%H:%M:%S"),
+        f">={trigger_field}": since.isoformat(),
+        f"<={trigger_field}": now.isoformat(),
     }
     if campaign.extra_filter:
         bitrix_filter.update(campaign.extra_filter)

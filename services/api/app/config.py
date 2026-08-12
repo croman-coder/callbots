@@ -16,12 +16,14 @@ class Settings(BaseSettings):
     # --- Infra ---
     database_url: str = "postgresql+psycopg://callbot:callbot@postgres:5432/callbot"
     redis_url: str = "redis://redis:6379/0"
-    secret_key: str = "dev-insecure-key"
     log_level: str = "INFO"
     tz: str = "America/Asuncion"
 
     admin_user: str = "admin"
     admin_password: str = "admin"
+    # Token compartido con el voice-agent. Protege /internal/* de escrituras
+    # ajenas si el puerto de la API queda expuesto.
+    internal_token: str = "dev-internal-token"
 
     recordings_dir: str = "/recordings"
 
@@ -94,16 +96,6 @@ class Settings(BaseSettings):
     @property
     def bitrix_base(self) -> str:
         return self.bitrix_webhook_url.rstrip("/") + "/"
-
-    @property
-    def date_fields(self) -> dict[str, str]:
-        """Campos de fecha de Bitrix que traemos junto con cada registro."""
-        out = {"workshop_entry": self.bitrix_field_workshop_entry}
-        if self.bitrix_field_invoice_date:
-            out["invoice_date"] = self.bitrix_field_invoice_date
-        if self.bitrix_field_delivery_date:
-            out["delivery_date"] = self.bitrix_field_delivery_date
-        return out
 
 
 @lru_cache

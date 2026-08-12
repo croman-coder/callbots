@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% set nav = "targets" %}
+{% block title %}Llamada #{{ call.id }} · Callbot{% endblock %}
+
+{% block content %}
+<h1>Llamada #{{ call.id }}</h1>
+<p class="sub">
+  <a href="/targets">← Destinatarios</a> ·
+  {{ call.target.contact_name or call.target.phone or "sin nombre" }} ·
+  intento {{ call.attempt_number }}
+</p>
+
+<div class="grid" style="margin-bottom:18px">
+  <div class="kpi">
+    <div class="n">
+      {% if call.analysis and call.analysis.satisfaction_score is not none %}
+        {{ call.analysis.satisfaction_score | round(0) | int }}<span style="font-size:15px;color:var(--muted)">/100</span>
+      {% else %}—{% endif %}
+    </div>
+    <div class="l">Satisfacción</div>
+  </div>
+  <div class="kpi">
+    <div class="n" style="font-size:18px">
+      <span class="tag {{ call.outcome.value if call.outcome else '' }}">{{ call.outcome.value if call.outcome else "en curso" }}</span>
+    </div>
+    <div class="l">Resultado</div>
+  </div>
+  <div class="kpi">
+    <div class="n">{% if call.duration_seconds %}{{ call.duration_seconds // 60 }}m {{ call.duration_seconds % 60 }}s{% else %}—{% endif %}</div>
+    <div class="l">Duración</div>
+  </div>
+  <div class="kpi">
+    <div class="n">{{ call.questions_answered }}<span style="font-size:15px;color:var(--muted)">/{{ call.questions_asked }}</span></div>
+    <div class="l">Respondidas</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Respuestas</h2>
+  {% if call.answers %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th class="num">#</th><th>Pregunta</th><th>Transcripción</th>
+          <th>Valor</th><th class="num">Conf. ASR</th><th class="num">Repreg.</th></tr>
+    </thead>
+    <tbody>
+    {% for a in call.answers | sort(attribute="question.position") %}
+      <tr>
+        <td class="num">{{ a.question.position }}</td>
+        <td>{{ a.question.text }}</td>
+        <td><em>{{ a.transcript or "(sin respuesta)" }}</em></td>
+        <td>
+          {% if a.value_numeric is none %}—
+          {% elif a.question.qtype.value == "yes_no" %}{{ "Sí" if a.value_numeric >= 0.5 else "No" }}
+          {% elif a.question.qtype.value == "scale_1_5" %}<strong>{{ a.value_numeric | round(0) | int }}</strong> / 5
+          {% elif a.question.qtype.value == "scale_1_10" %}<strong>{{ a.value_numeric | round(0) | int }}</strong> / 10
+          {% else %}{{ a.value_numeric | round(1) }}{% endif %}
+          {% if a.value_source %}<br><span class="tag">{{ a.value_source }}</span>{% endif %}
+        </td>
+        <td class="num">
+          {% if a.asr_confidence is not none %}
+            <span {% if a.asr_confidence < 0.6 %}style="color:var(--bad)"{% endif %}>{{ (a.asr_confidence * 100) | round(0) | int }}%</span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="num">{{ a.retries_used }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No se registraron respuestas en esta llamada.</p>
+  {% endif %}
+</div>
+
+{% if call.analysis %}
+<div class="card">
+  <h2>Análisis</h2>
+  <table>
+    <tbody>
+      <tr><th style="width:180px">Sentimiento</th>
+          <td><span class="tag {{ call.analysis.sentiment }}">{{ call.analysis.sentiment or "—" }}</span></td></tr>
+      {% if call.analysis.summary %}
+      <tr><th>Resumen</th><td>{{ call.analysis.summary }}</td></tr>
+      {% endif %}
+      {% if call.analysis.topics %}
+      <tr><th>Temas</th><td>{% for t in call.analysis.topics %}<span class="tag">{{ t }}</span> {% endfor %}</td></tr>
+      {% endif %}
+      <tr><th>Requiere seguimiento</th>
+          <td>{% if call.analysis.requires_followup %}
+                <span class="tag negativo">sí</span> {{ call.analysis.followup_reason or "" }}
+              {% else %}no{% endif %}</td></tr>
+      <tr><th>Modelo usado</th><td>{{ call.analysis.model_used or "solo reglas (Ollama no disponible)" }}</td></tr>
+      <tr><th>Enviado a Bitrix</th>
+          <td>{% if call.analysis.synced_to_bitrix %}<span class="tag completed">sí</span>
+              {% else %}<span class="tag failed">no</span>
+                {% if call.analysis.sync_error %}<br><span style="color:var(--bad);font-size:13px">{{ call.analysis.sync_error }}</span>{% endif %}
+              {% endif %}</td></tr>
+    </tbody>
+  </table>
+  <div class="actions">
+    <form method="post" action="/calls/{{ call.id }}/reanalyze">
+      <button type="submit">Volver a analizar</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <p class="empty">Sin análisis todavía.</p>
+  <div class="actions">
+    <form method="post" action="/calls/{{ call.id }}/reanalyze">
+      <button type="submit" class="primary">Analizar ahora</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Datos técnicos</h2>
+  <table>
+    <tbody>
+      <tr><th style="width:180px">Sesión (UUID)</th><td><code>{{ call.session_uuid }}</code></td></tr>
+      <tr><th>Canal Asterisk</th><td><code>{{ call.asterisk_channel_id or "—" }}</code></td></tr>
+      <tr><th>Número marcado</th><td><code>{{ call.dialed_number or "—" }}</code></td></tr>
+      <tr><th>Registro Bitrix</th>
+          <td><code>{{ call.target.bitrix_entity_type_id }}#{{ call.target.bitrix_entity_id }}</code></td></tr>
+      <tr><th>CALL_ID de Bitrix</th><td><code>{{ call.bitrix_call_id or "—" }}</code></td></tr>
+      <tr><th>Iniciada</th><td>{{ call.started_at.strftime("%d/%m/%Y %H:%M:%S") if call.started_at else "—" }}</td></tr>
+      <tr><th>Atendida</th><td>{{ call.answered_at.strftime("%d/%m/%Y %H:%M:%S") if call.answered_at else "no atendió" }}</td></tr>
+      <tr><th>Finalizada</th><td>{{ call.ended_at.strftime("%d/%m/%Y %H:%M:%S") if call.ended_at else "—" }}</td></tr>
+      <tr><th>Causa de corte</th><td>{{ call.hangup_cause or "—" }}</td></tr>
+      <tr><th>Ingreso al taller (T0)</th><td>{{ call.target.trigger_at.strftime("%d/%m/%Y %H:%M") }}</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

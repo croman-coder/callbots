@@ -6,9 +6,10 @@ name: callbot
 x-api-env: &api-env
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://redis:6379/0
-  SECRET_KEY: ${SECRET_KEY}
   ADMIN_USER: ${ADMIN_USER}
   ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
+  RECORDINGS_DIR: /recordings
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
   TZ: ${TZ:-America/Asuncion}
   BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL}
@@ -28,6 +29,8 @@ x-api-env: &api-env
   MAX_CALL_ATTEMPTS: ${MAX_CALL_ATTEMPTS:-3}
   RETRY_INTERVAL_MINUTES: ${RETRY_INTERVAL_MINUTES:-180}
   BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES:-15}
+  MAX_CONCURRENT_CALLS: ${MAX_CONCURRENT_CALLS:-1}
+  CALL_ANSWER_TIMEOUT_SECONDS: ${CALL_ANSWER_TIMEOUT_SECONDS:-90}
   ARI_URL: ${ARI_URL:-http://asterisk:8088}
   ARI_USER: ${ARI_USER}
   ARI_PASSWORD: ${ARI_PASSWORD}
@@ -48,6 +51,9 @@ x-api-build: &api-build
   restart: unless-stopped
   volumes:
     - ./services/api:/app
+    # Los scripts viven en la raíz del repo, fuera del contexto de build de la
+    # imagen: sin este montaje `python scripts/...` no los encuentra.
+    - ./scripts:/app/scripts:ro
     - recordings:/recordings
   depends_on:
     postgres:
@@ -137,6 +143,9 @@ services:
     restart: unless-stopped
     environment:
       API_BASE_URL: http://api:8000
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-dev-internal-token}
+      RECORDINGS_DIR: /recordings
+      AUDIOSOCKET_HOST: 0.0.0.0
       AUDIOSOCKET_PORT: ${AUDIOSOCKET_PORT:-8090}
       WHISPER_MODEL: ${WHISPER_MODEL:-medium}
       WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}

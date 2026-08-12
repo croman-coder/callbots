@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% set nav = "health" %}
+{% block title %}Diagnóstico · Callbot{% endblock %}
+
+{% block content %}
+<h1>Diagnóstico</h1>
+<p class="sub">Estado de cada dependencia externa</p>
+
+<div class="card">
+  <table>
+    <tbody>
+    {% for c in checks %}
+      <tr>
+        <td style="width:180px"><strong>{{ c.name }}</strong></td>
+        <td style="width:90px"><span class="tag {{ 'completed' if c.ok else 'failed' }}">{{ "ok" if c.ok else "falla" }}</span></td>
+        <td>{{ c.detail }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Configuración activa</h2>
+  <table>
+    <tbody>
+      <tr><th style="width:260px">Zona horaria</th><td><code>{{ settings.tz }}</code></td></tr>
+      <tr><th>Demora de la encuesta</th><td>{{ settings.survey_delay_hours }} horas</td></tr>
+      <tr><th>Ventana horaria</th>
+          <td>{{ settings.call_window_start.strftime("%H:%M") }} – {{ settings.call_window_end.strftime("%H:%M") }}
+              · días <code>{{ settings.call_window_days }}</code></td></tr>
+      <tr><th>Llamadas simultáneas</th><td>{{ settings.max_concurrent_calls }}</td></tr>
+      <tr><th>Máx. intentos</th><td>{{ settings.max_call_attempts }} (reintento cada {{ settings.retry_interval_minutes }} min)</td></tr>
+      <tr><th>Entidad Bitrix por default</th><td><code>{{ settings.bitrix_entity_type_id }}</code></td></tr>
+      <tr><th>Campo disparador por default</th><td><code>{{ settings.bitrix_field_workshop_entry }}</code></td></tr>
+      <tr><th>Endpoint que se marca</th><td><code>{{ settings.asterisk_dial_template }}</code></td></tr>
+      <tr><th>Modelo de Ollama</th><td><code>{{ settings.ollama_model }}</code>{% if not settings.ollama_enabled %} <span class="tag">deshabilitado</span>{% endif %}</td></tr>
+    </tbody>
+  </table>
+  <p style="color:var(--muted);font-size:13px;margin:14px 0 0">
+    Estos valores vienen del <code>.env</code> y son los defaults. Cada campaña puede
+    sobrescribir la ventana horaria, los intentos y la demora.
+  </p>
+</div>
+{% endblock %}

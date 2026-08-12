@@ -1,0 +1,541 @@
+"""Panel de administración: campañas, preguntas, destinatarios y resultados.
+
+Renderizado en el servidor con Jinja2 y formularios HTML planos. Sin build step
+ni dependencias por CDN: el servidor puede no tener salida a internet.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import distinct, func, select
+from sqlalchemy.orm import Session, selectinload
+
+from app.config import settings
+from app.db import get_db
+from app.deps import require_admin
+from app.models import (
+    Answer,
+    CallAnalysis,
+    CallAttempt,
+    Campaign,
+    Question,
+    QuestionType,
+    SurveyTarget,
+    TargetStatus,
+)
+
+log = logging.getLogger(__name__)
+
+templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
+
+router = APIRouter(tags=["panel"], dependencies=[Depends(require_admin)])
+
+
+def _redirect(path: str) -> RedirectResponse:
+    """303 para que el navegador convierta el POST en GET y no reenvíe el form."""
+    return RedirectResponse(path, status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard
+# ---------------------------------------------------------------------------
+@router.get("/", response_class=HTMLResponse)
+def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    counts = dict(
+        db.execute(
+            select(SurveyTarget.status, func.count(SurveyTarget.id)).group_by(
+                SurveyTarget.status
+            )
+        ).all()
+    )
+
+    today_start = datetime.now(settings.timezone).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    calls_today = db.scalar(
+        select(func.count(CallAttempt.id)).where(CallAttempt.started_at >= today_start)
+    ) or 0
+
+    avg_score = db.scalar(select(func.avg(CallAnalysis.satisfaction_score)))
+
+    completed = counts.get(TargetStatus.COMPLETED, 0)
+    contacted = completed + counts.get(TargetStatus.NO_ANSWER, 0)
+    response_rate = (completed / contacted * 100) if contacted else 0.0
+
+    # Distribución de sentimiento
+    sentiment = dict(
+        db.execute(
+            select(CallAnalysis.sentiment, func.count(CallAnalysis.id)).group_by(
+                CallAnalysis.sentiment
+            )
+        ).all()
+    )
+
+    # Promedio por pregunta: dónde se cae el puntaje
+    per_question = db.execute(
+        select(
+            Question.text,
+            Question.qtype,
+            func.avg(Answer.value_numeric),
+            func.count(Answer.id),
+        )
+        .join(Answer, Answer.question_id == Question.id)
+        .where(Answer.value_numeric.isnot(None))
+        .group_by(Question.id, Question.text, Question.qtype)
+        .order_by(func.avg(Answer.value_numeric))
+    ).all()
+
+    recent_calls = db.scalars(
+        select(CallAttempt)
+        .options(
+            selectinload(CallAttempt.target),
+            selectinload(CallAttempt.analysis),
+        )
+        .order_by(CallAttempt.started_at.desc())
+        .limit(15)
+    ).all()
+
+    needs_followup = db.scalars(
+        select(CallAnalysis)
+        .options(selectinload(CallAnalysis.call).selectinload(CallAttempt.target))
+        .where(CallAnalysis.requires_followup.is_(True))
+        .order_by(CallAnalysis.created_at.desc())
+        .limit(10)
+    ).all()
+
+    return templates.TemplateResponse(
+        request,
+        "dashboard.html",
+        {
+            "counts": counts,
+            "total": sum(counts.values()),
+            "calls_today": calls_today,
+            "avg_score": round(avg_score, 1) if avg_score else None,
+            "response_rate": round(response_rate, 1),
+            "sentiment": sentiment,
+            "per_question": per_question,
+            "recent_calls": recent_calls,
+            "needs_followup": needs_followup,
+            "TargetStatus": TargetStatus,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Campañas
+# ---------------------------------------------------------------------------
+@router.get("/campaigns", response_class=HTMLResponse)
+def list_campaigns(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    campaigns = db.scalars(
+        select(Campaign).options(selectinload(Campaign.questions)).order_by(Campaign.id)
+    ).all()
+
+    stats = {
+        campaign_id: {"targets": targets, "completed": completed}
+        for campaign_id, targets, completed in db.execute(
+            select(
+                SurveyTarget.campaign_id,
+                func.count(distinct(SurveyTarget.id)),
+                func.count(distinct(SurveyTarget.id)).filter(
+                    SurveyTarget.status == TargetStatus.COMPLETED
+                ),
+            ).group_by(SurveyTarget.campaign_id)
+        ).all()
+    }
+
+    return templates.TemplateResponse(
+        request,
+        "campaigns.html",
+        {"campaigns": campaigns, "stats": stats, "default_entity": settings.bitrix_entity_type_id},
+    )
+
+
+@router.post("/campaigns")
+def create_campaign(
+    name: str = Form(...),
+    bitrix_entity_type_id: int = Form(...),
+    trigger_field: str = Form(...),
+    delay_hours: int = Form(48),
+    description: str = Form(""),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    campaign = Campaign(
+        name=name.strip(),
+        description=description.strip() or None,
+        bitrix_entity_type_id=bitrix_entity_type_id,
+        trigger_field=trigger_field.strip(),
+        delay_hours=delay_hours,
+        call_window_start=settings.call_window_start.strftime("%H:%M"),
+        call_window_end=settings.call_window_end.strftime("%H:%M"),
+        call_window_days=settings.call_window_days,
+        max_attempts=settings.max_call_attempts,
+        retry_interval_minutes=settings.retry_interval_minutes,
+        is_active=False,  # se activa a mano recién cuando tiene preguntas
+    )
+    db.add(campaign)
+    db.commit()
+    log.info("Campaña creada: %s (id=%s)", campaign.name, campaign.id)
+    return _redirect(f"/campaigns/{campaign.id}")
+
+
+@router.get("/campaigns/{campaign_id}", response_class=HTMLResponse)
+def campaign_detail(
+    campaign_id: int, request: Request, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(404, "Campaña inexistente")
+
+    target_counts = dict(
+        db.execute(
+            select(SurveyTarget.status, func.count(SurveyTarget.id))
+            .where(SurveyTarget.campaign_id == campaign_id)
+            .group_by(SurveyTarget.status)
+        ).all()
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "campaign_detail.html",
+        {
+            "campaign": campaign,
+            "question_types": list(QuestionType),
+            "target_counts": target_counts,
+            "total_targets": sum(target_counts.values()),
+        },
+    )
+
+
+@router.post("/campaigns/{campaign_id}")
+def update_campaign(
+    campaign_id: int,
+    name: str = Form(...),
+    description: str = Form(""),
+    bitrix_entity_type_id: int = Form(...),
+    trigger_field: str = Form(...),
+    delay_hours: int = Form(48),
+    call_window_start: str = Form("09:00"),
+    call_window_end: str = Form("19:00"),
+    call_window_days: str = Form("0,1,2,3,4,5"),
+    max_attempts: int = Form(3),
+    retry_interval_minutes: int = Form(180),
+    intro_script: str = Form(...),
+    outro_script: str = Form(...),
+    fallback_script: str = Form(...),
+    optout_script: str = Form(...),
+    is_active: bool = Form(False),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(404, "Campaña inexistente")
+
+    active_questions = [q for q in campaign.questions if q.is_active]
+    if is_active and not active_questions:
+        raise HTTPException(400, "No se puede activar una campaña sin preguntas activas")
+
+    campaign.name = name.strip()
+    campaign.description = description.strip() or None
+    campaign.bitrix_entity_type_id = bitrix_entity_type_id
+    campaign.trigger_field = trigger_field.strip()
+    campaign.delay_hours = delay_hours
+    campaign.call_window_start = call_window_start
+    campaign.call_window_end = call_window_end
+    campaign.call_window_days = call_window_days
+    campaign.max_attempts = max_attempts
+    campaign.retry_interval_minutes = retry_interval_minutes
+    campaign.intro_script = intro_script
+    campaign.outro_script = outro_script
+    campaign.fallback_script = fallback_script
+    campaign.optout_script = optout_script
+    campaign.is_active = is_active
+
+    db.commit()
+    return _redirect(f"/campaigns/{campaign_id}")
+
+
+# ---------------------------------------------------------------------------
+# Preguntas
+# ---------------------------------------------------------------------------
+@router.post("/campaigns/{campaign_id}/questions")
+def add_question(
+    campaign_id: int,
+    text: str = Form(...),
+    qtype: QuestionType = Form(QuestionType.SCALE_1_5),
+    max_answer_seconds: int = Form(20),
+    max_retries: int = Form(1),
+    counts_for_score: bool = Form(False),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(404, "Campaña inexistente")
+
+    next_position = (
+        max((q.position for q in campaign.questions), default=0) + 1
+    )
+
+    db.add(
+        Question(
+            campaign_id=campaign_id,
+            position=next_position,
+            text=text.strip(),
+            qtype=qtype,
+            max_answer_seconds=max_answer_seconds,
+            max_retries=max_retries,
+            counts_for_score=counts_for_score,
+        )
+    )
+    db.commit()
+    return _redirect(f"/campaigns/{campaign_id}")
+
+
+@router.post("/questions/{question_id}/delete")
+def delete_question(question_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    question = db.get(Question, question_id)
+    if question is None:
+        raise HTTPException(404, "Pregunta inexistente")
+
+    campaign_id = question.campaign_id
+    db.delete(question)
+    db.flush()
+
+    # Recompactamos posiciones para que no queden huecos
+    remaining = db.scalars(
+        select(Question)
+        .where(Question.campaign_id == campaign_id)
+        .order_by(Question.position)
+    ).all()
+    for index, q in enumerate(remaining, start=1):
+        q.position = index
+
+    db.commit()
+    return _redirect(f"/campaigns/{campaign_id}")
+
+
+@router.post("/questions/{question_id}/move")
+def move_question(
+    question_id: int, direction: str = Form(...), db: Session = Depends(get_db)
+) -> RedirectResponse:
+    question = db.get(Question, question_id)
+    if question is None:
+        raise HTTPException(404, "Pregunta inexistente")
+
+    siblings = db.scalars(
+        select(Question)
+        .where(Question.campaign_id == question.campaign_id)
+        .order_by(Question.position)
+    ).all()
+
+    index = next(i for i, q in enumerate(siblings) if q.id == question_id)
+    swap_with = index - 1 if direction == "up" else index + 1
+
+    if not 0 <= swap_with < len(siblings):
+        return _redirect(f"/campaigns/{question.campaign_id}")
+
+    siblings[index], siblings[swap_with] = siblings[swap_with], siblings[index]
+
+    # (campaign_id, position) es única: pasamos por posiciones negativas para no
+    # chocar con la constraint a mitad de la reasignación.
+    for i, q in enumerate(siblings, start=1):
+        q.position = -i
+    db.flush()
+    for i, q in enumerate(siblings, start=1):
+        q.position = i
+    db.commit()
+
+    return _redirect(f"/campaigns/{question.campaign_id}")
+
+
+# ---------------------------------------------------------------------------
+# Destinatarios
+# ---------------------------------------------------------------------------
+@router.get("/targets", response_class=HTMLResponse)
+def list_targets(
+    request: Request,
+    status: str | None = None,
+    campaign_id: int | None = None,
+    page: int = 1,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    per_page = 50
+
+    # Los filtros se arman una vez y se aplican a las dos consultas. Contar sobre
+    # una query con selectinload() no es válido: el eager-load no sobrevive al
+    # subquery.
+    filters = []
+    if status:
+        filters.append(SurveyTarget.status == TargetStatus(status))
+    if campaign_id:
+        filters.append(SurveyTarget.campaign_id == campaign_id)
+
+    total = db.scalar(
+        select(func.count(SurveyTarget.id)).where(*filters)
+    ) or 0
+
+    targets = db.scalars(
+        select(SurveyTarget)
+        .options(selectinload(SurveyTarget.campaign))
+        .where(*filters)
+        .order_by(SurveyTarget.scheduled_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    ).all()
+
+    campaigns = db.scalars(select(Campaign).order_by(Campaign.name)).all()
+
+    return templates.TemplateResponse(
+        request,
+        "targets.html",
+        {
+            "targets": targets,
+            "campaigns": campaigns,
+            "statuses": list(TargetStatus),
+            "current_status": status,
+            "current_campaign": campaign_id,
+            "page": page,
+            "total": total,
+            "pages": max(1, (total + per_page - 1) // per_page),
+        },
+    )
+
+
+@router.post("/targets/{target_id}/call-now")
+def trigger_call(target_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    target = db.get(SurveyTarget, target_id)
+    if target is None:
+        raise HTTPException(404, "Destinatario inexistente")
+
+    from app.scheduler.tasks import call_now
+
+    call_now.delay(target_id)
+    log.info("Llamada manual disparada para target %s", target_id)
+    return _redirect("/targets")
+
+
+@router.post("/targets/{target_id}/reschedule")
+def reschedule_target(target_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Vuelve a poner un destinatario en cola, reseteando los intentos."""
+    target = db.get(SurveyTarget, target_id)
+    if target is None:
+        raise HTTPException(404, "Destinatario inexistente")
+
+    target.status = TargetStatus.SCHEDULED
+    target.attempts = 0
+    target.last_error = None
+    target.scheduled_at = datetime.now(timezone.utc)
+    db.commit()
+    return _redirect("/targets")
+
+
+# ---------------------------------------------------------------------------
+# Llamadas
+# ---------------------------------------------------------------------------
+@router.get("/calls/{call_id}", response_class=HTMLResponse)
+def call_detail(
+    call_id: int, request: Request, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    call = db.get(CallAttempt, call_id)
+    if call is None:
+        raise HTTPException(404, "Llamada inexistente")
+
+    return templates.TemplateResponse(
+        request, "call_detail.html", {"call": call, "QuestionType": QuestionType}
+    )
+
+
+@router.post("/calls/{call_id}/reanalyze")
+def reanalyze(call_id: int) -> RedirectResponse:
+    from app.scheduler.tasks import reanalyze_call
+
+    reanalyze_call.delay(call_id)
+    return _redirect(f"/calls/{call_id}")
+
+
+# ---------------------------------------------------------------------------
+# Acciones globales
+# ---------------------------------------------------------------------------
+@router.post("/sync-now")
+def sync_now() -> RedirectResponse:
+    from app.scheduler.tasks import sync_bitrix
+
+    sync_bitrix.delay()
+    log.info("Sincronización con Bitrix disparada a mano")
+    return _redirect("/")
+
+
+@router.get("/health-detail", response_class=HTMLResponse)
+def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    """Diagnóstico: verifica Bitrix, Asterisk y Ollama de una sola pasada."""
+    checks: list[dict] = []
+
+    # Postgres
+    try:
+        db.execute(select(func.now()))
+        checks.append({"name": "Postgres", "ok": True, "detail": "conectado"})
+    except Exception as exc:  # noqa: BLE001
+        checks.append({"name": "Postgres", "ok": False, "detail": str(exc)[:200]})
+
+    # Bitrix
+    try:
+        from app.bitrix.client import BitrixClient
+
+        with BitrixClient() as client:
+            profile = client.call("profile")
+        checks.append(
+            {
+                "name": "Bitrix24",
+                "ok": True,
+                "detail": f"portal de {profile.get('NAME', '?')} {profile.get('LAST_NAME', '')}".strip(),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.append({"name": "Bitrix24", "ok": False, "detail": str(exc)[:200]})
+
+    # Asterisk
+    try:
+        from app.services.asterisk_ari import AriClient
+
+        with AriClient() as ari:
+            info = ari.ping()
+        checks.append(
+            {
+                "name": "Asterisk (ARI)",
+                "ok": True,
+                "detail": f"versión {info.get('system', {}).get('version', '?')}",
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        checks.append({"name": "Asterisk (ARI)", "ok": False, "detail": str(exc)[:200]})
+
+    # Ollama
+    if settings.ollama_enabled:
+        try:
+            import httpx
+
+            response = httpx.get(f"{settings.ollama_url.rstrip('/')}/api/tags", timeout=10)
+            models = [m["name"] for m in response.json().get("models", [])]
+            has_model = any(settings.ollama_model.split(":")[0] in m for m in models)
+            checks.append(
+                {
+                    "name": "Ollama",
+                    "ok": has_model,
+                    "detail": (
+                        f"modelo {settings.ollama_model} disponible"
+                        if has_model
+                        else f"falta {settings.ollama_model}. Modelos: {', '.join(models) or 'ninguno'}"
+                    ),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append({"name": "Ollama", "ok": False, "detail": str(exc)[:200]})
+
+    return templates.TemplateResponse(
+        request, "health.html", {"checks": checks, "settings": settings}
+    )

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Callbot{% endblock %}</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --ink: #1a1d21;
+    --muted: #6b7280;
+    --line: #e3e6ea;
+    --accent: #2563eb;
+    --ok: #15803d;
+    --warn: #b45309;
+    --bad: #b91c1c;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    padding: 0 24px;
+    display: flex; align-items: center; gap: 28px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header .brand { font-weight: 650; padding: 16px 0; margin-right: 8px; }
+  header nav { display: flex; gap: 20px; }
+  header nav a { padding: 16px 0; color: var(--muted); font-weight: 500; }
+  header nav a.on { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+  header form { margin-left: auto; }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 28px 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px; margin-bottom: 18px;
+  }
+  .card > h2:first-child { margin-top: 0; }
+
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .kpi .n { font-size: 26px; font-weight: 650; letter-spacing: -0.5px; }
+  .kpi .l { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); font-weight: 600; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .scroll { overflow-x: auto; }
+
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 12px; font-weight: 600; background: #eef1f5; color: var(--muted);
+    white-space: nowrap;
+  }
+  .tag.completed, .tag.positivo { background: #dcfce7; color: var(--ok); }
+  .tag.pending, .tag.scheduled, .tag.queued, .tag.neutral { background: #fef3c7; color: var(--warn); }
+  .tag.calling { background: #dbeafe; color: var(--accent); }
+  .tag.failed, .tag.no_answer, .tag.opted_out, .tag.negativo { background: #fee2e2; color: var(--bad); }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+  label .hint { font-weight: 400; color: var(--muted); }
+  input[type=text], input[type=number], input[type=time], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: 6px; font: inherit; background: #fff; color: var(--ink);
+  }
+  textarea { min-height: 74px; resize: vertical; }
+  .row { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; }
+  .check input { width: auto; }
+
+  button, .btn {
+    padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px;
+    background: #fff; color: var(--ink); font: inherit; font-weight: 550;
+    cursor: pointer;
+  }
+  button:hover { background: #f3f4f6; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger { color: var(--bad); }
+  button.mini { padding: 3px 8px; font-size: 12px; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
+  .inline { display: inline; }
+
+  .empty { color: var(--muted); padding: 26px; text-align: center; }
+  code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .bar { height: 6px; background: #eef1f5; border-radius: 3px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --panel: #1c1f24; --ink: #e6e8ea; --muted: #9aa3ad;
+      --line: #2b3038; --accent: #60a5fa;
+      --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
+    }
+    input, select, textarea, button, .btn { background: #22262c !important; color: var(--ink); }
+    button.primary { background: var(--accent) !important; color: #0b0d10; }
+    .tag { background: #262b32; }
+    .tag.completed, .tag.positivo { background: #14361f; }
+    .tag.pending, .tag.scheduled, .tag.queued, .tag.neutral { background: #3a2e10; }
+    .tag.calling { background: #16304f; }
+    .tag.failed, .tag.no_answer, .tag.opted_out, .tag.negativo { background: #3d1a1a; }
+    code, .bar { background: #262b32; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">Callbot</span>
+  <nav>
+    <a href="/" class="{{ 'on' if nav == 'dashboard' }}">Dashboard</a>
+    <a href="/campaigns" class="{{ 'on' if nav == 'campaigns' }}">Campañas</a>
+    <a href="/targets" class="{{ 'on' if nav == 'targets' }}">Destinatarios</a>
+    <a href="/health-detail" class="{{ 'on' if nav == 'health' }}">Diagnóstico</a>
+  </nav>
+  <form method="post" action="/sync-now">
+    <button type="submit">Sincronizar Bitrix</button>
+  </form>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

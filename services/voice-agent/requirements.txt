@@ -1,0 +1,14 @@
+# STT: CTranslate2, corre en GPU (float16) o CPU (int8)
+faster-whisper>=1.1,<2.0
+
+# TTS offline, muy liviano en CPU
+piper-tts>=1.2
+
+# VAD de WebRTC con wheels precompiladas (el paquete original exige compilar)
+webrtcvad-wheels>=2.0.14
+
+# Resampleo 22050<->8000<->16000. Rápido y sin arrastrar scipy entero.
+soxr>=0.5
+
+numpy>=1.26,<3.0
+httpx>=0.28,<1.0

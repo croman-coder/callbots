@@ -26,8 +26,6 @@ from app.config import settings
 
 log = logging.getLogger(__name__)
 
-PAGE_SIZE = 50
-
 
 class BitrixError(RuntimeError):
     """Error devuelto por la API de Bitrix o de transporte."""

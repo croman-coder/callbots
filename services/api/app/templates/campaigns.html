@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% set nav = "campaigns" %}
+{% block title %}Campañas · Callbot{% endblock %}
+
+{% block content %}
+<h1>Campañas</h1>
+<p class="sub">Cada campaña define de dónde salen los destinatarios y qué se les pregunta</p>
+
+<div class="card">
+  {% if campaigns %}
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr><th>Nombre</th><th>Entidad Bitrix</th><th>Campo disparador</th>
+          <th class="num">Demora</th><th class="num">Preguntas</th>
+          <th class="num">Destinatarios</th><th class="num">Completadas</th><th>Estado</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for c in campaigns %}
+      <tr>
+        <td><strong>{{ c.name }}</strong>
+          {% if c.description %}<br><span style="color:var(--muted);font-size:13px">{{ c.description }}</span>{% endif %}</td>
+        <td><code>{{ c.bitrix_entity_type_id }}</code></td>
+        <td><code>{{ c.trigger_field }}</code></td>
+        <td class="num">{{ c.delay_hours }}h</td>
+        <td class="num">{{ c.questions | selectattr("is_active") | list | length }}</td>
+        <td class="num">{{ stats.get(c.id, {}).get("targets", 0) }}</td>
+        <td class="num">{{ stats.get(c.id, {}).get("completed", 0) }}</td>
+        <td><span class="tag {{ 'completed' if c.is_active else 'failed' }}">{{ "activa" if c.is_active else "pausada" }}</span></td>
+        <td><a href="/campaigns/{{ c.id }}">editar</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="empty">No hay campañas todavía. Creá la primera abajo.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Nueva campaña</h2>
+  <form method="post" action="/campaigns">
+    <label>Nombre
+      <input type="text" name="name" required placeholder="Satisfacción post-taller">
+    </label>
+    <label>Descripción <span class="hint">(opcional)</span>
+      <input type="text" name="description" placeholder="Encuesta 48hs después del ingreso al taller">
+    </label>
+    <div class="row">
+      <div>
+        <label>entityTypeId de Bitrix</label>
+        <input type="number" name="bitrix_entity_type_id" value="{{ default_entity }}" required>
+      </div>
+      <div>
+        <label>Campo disparador (T0)</label>
+        <input type="text" name="trigger_field" required placeholder="ufCrm5_1639669411830">
+      </div>
+      <div>
+        <label>Demora (horas)</label>
+        <input type="number" name="delay_hours" value="48" required>
+      </div>
+    </div>
+    <p class="sub" style="margin:14px 0 0;font-size:13px">
+      ¿No sabés el <code>entityTypeId</code> ni el código del campo? Corré:<br>
+      <code>docker compose exec api python scripts/bitrix_discover.py</code>
+    </p>
+    <div class="actions">
+      <button type="submit" class="primary">Crear campaña</button>
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin:10px 0 0">
+      Se crea pausada. Agregale preguntas y después activala.
+    </p>
+  </form>
+</div>
+{% endblock %}
