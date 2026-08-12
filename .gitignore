@@ -1,0 +1,28 @@
+.env
+*.pyc
+__pycache__/
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Datos y modelos (no versionar)
+data/
+models/
+recordings/
+*.onnx
+*.onnx.json
+*.wav
+*.gsm
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

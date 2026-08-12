@@ -1,0 +1,204 @@
+name: callbot
+
+# -----------------------------------------------------------------------------
+# Variables compartidas por api / worker / beat (misma imagen, distinto comando)
+# -----------------------------------------------------------------------------
+x-api-env: &api-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  SECRET_KEY: ${SECRET_KEY}
+  ADMIN_USER: ${ADMIN_USER}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  TZ: ${TZ:-America/Asuncion}
+  BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL}
+  BITRIX_ENTITY_TYPE_ID: ${BITRIX_ENTITY_TYPE_ID}
+  BITRIX_FIELD_WORKSHOP_ENTRY: ${BITRIX_FIELD_WORKSHOP_ENTRY}
+  BITRIX_FIELD_INVOICE_DATE: ${BITRIX_FIELD_INVOICE_DATE}
+  BITRIX_FIELD_DELIVERY_DATE: ${BITRIX_FIELD_DELIVERY_DATE}
+  BITRIX_FIELD_CONTACT_ID: ${BITRIX_FIELD_CONTACT_ID}
+  BITRIX_FIELD_SCORE_WRITEBACK: ${BITRIX_FIELD_SCORE_WRITEBACK}
+  BITRIX_TIMELINE_COMMENT: ${BITRIX_TIMELINE_COMMENT:-true}
+  BITRIX_REGISTER_CALL: ${BITRIX_REGISTER_CALL:-true}
+  BITRIX_TELEPHONY_USER_ID: ${BITRIX_TELEPHONY_USER_ID:-1}
+  SURVEY_DELAY_HOURS: ${SURVEY_DELAY_HOURS:-48}
+  CALL_WINDOW_START: ${CALL_WINDOW_START:-09:00}
+  CALL_WINDOW_END: ${CALL_WINDOW_END:-19:00}
+  CALL_WINDOW_DAYS: ${CALL_WINDOW_DAYS:-0,1,2,3,4,5}
+  MAX_CALL_ATTEMPTS: ${MAX_CALL_ATTEMPTS:-3}
+  RETRY_INTERVAL_MINUTES: ${RETRY_INTERVAL_MINUTES:-180}
+  BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES:-15}
+  ARI_URL: ${ARI_URL:-http://asterisk:8088}
+  ARI_USER: ${ARI_USER}
+  ARI_PASSWORD: ${ARI_PASSWORD}
+  ARI_APP: ${ARI_APP:-callbot}
+  ASTERISK_DIAL_TEMPLATE: ${ASTERISK_DIAL_TEMPLATE:-PJSIP/softphone-1}
+  ASTERISK_CONTEXT: ${ASTERISK_CONTEXT:-callbot-outbound}
+  ASTERISK_EXTENSION: ${ASTERISK_EXTENSION:-start}
+  ASTERISK_CALLERID: ${ASTERISK_CALLERID}
+  ASTERISK_DIAL_TIMEOUT: ${ASTERISK_DIAL_TIMEOUT:-45}
+  OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
+  OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
+  OLLAMA_ENABLED: ${OLLAMA_ENABLED:-true}
+
+x-api-build: &api-build
+  build:
+    context: ./services/api
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  volumes:
+    - ./services/api:/app
+    - recordings:/recordings
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ:-America/Asuncion}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # API REST + panel de administración
+  api:
+    <<: [*api-build]
+    environment:
+      <<: *api-env
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers"
+    ports:
+      - "${API_PORT:-8000}:8000"
+
+  # ---------------------------------------------------------------------------
+  # Worker: origina llamadas, analiza resultados, escribe en Bitrix
+  worker:
+    <<: [*api-build]
+    environment:
+      <<: *api-env
+    command: celery -A app.scheduler.worker.celery_app worker --loglevel=info --concurrency=4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  # ---------------------------------------------------------------------------
+  # Beat: sincroniza Bitrix cada N minutos y dispara las llamadas vencidas
+  beat:
+    <<: [*api-build]
+    environment:
+      <<: *api-env
+    command: celery -A app.scheduler.worker.celery_app beat --loglevel=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Agente de voz: AudioSocket + Piper (TTS) + faster-whisper (STT)
+  voice-agent:
+    build:
+      context: ./services/voice-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://api:8000
+      AUDIOSOCKET_PORT: ${AUDIOSOCKET_PORT:-8090}
+      WHISPER_MODEL: ${WHISPER_MODEL:-medium}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-es}
+      PIPER_VOICE: ${PIPER_VOICE:-es_AR-daniela-high}
+      VAD_AGGRESSIVENESS: ${VAD_AGGRESSIVENESS:-2}
+      SILENCE_MS_TO_STOP: ${SILENCE_MS_TO_STOP:-1200}
+      MAX_ANSWER_SECONDS: ${MAX_ANSWER_SECONDS:-30}
+      NO_SPEECH_TIMEOUT_SECONDS: ${NO_SPEECH_TIMEOUT_SECONDS:-8}
+      SAVE_AUDIO: ${SAVE_AUDIO:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TZ: ${TZ:-America/Asuncion}
+    volumes:
+      - ./services/voice-agent:/app
+      - ./models:/models
+      - recordings:/recordings
+    ports:
+      - "${AUDIOSOCKET_PORT:-8090}:8090"
+    depends_on:
+      - api
+
+  # ---------------------------------------------------------------------------
+  asterisk:
+    build:
+      context: ./docker/asterisk
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ARI_USER: ${ARI_USER}
+      ARI_PASSWORD: ${ARI_PASSWORD}
+      AUDIOSOCKET_HOST: voice-agent
+      AUDIOSOCKET_PORT: ${AUDIOSOCKET_PORT:-8090}
+      RTP_START: ${RTP_START:-10000}
+      RTP_END: ${RTP_END:-10050}
+      SOFTPHONE_PASSWORD: ${SOFTPHONE_PASSWORD:-callbot123}
+      TRUNK_HOST: ${TRUNK_HOST:-}
+      TRUNK_USER: ${TRUNK_USER:-}
+      TRUNK_PASSWORD: ${TRUNK_PASSWORD:-}
+      TZ: ${TZ:-America/Asuncion}
+    ports:
+      - "${SIP_PORT:-5060}:5060/udp"
+      - "${SIP_PORT:-5060}:5060/tcp"
+      - "8088:8088"
+      - "${RTP_START:-10000}-${RTP_END:-10050}:${RTP_START:-10000}-${RTP_END:-10050}/udp"
+    volumes:
+      # Plantillas: el entrypoint las renderiza con envsubst a /etc/asterisk
+      - ./docker/asterisk/etc:/etc/asterisk-tpl:ro
+      - asterisk-spool:/var/spool/asterisk
+
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+
+volumes:
+  pgdata:
+  redisdata:
+  ollama:
+  recordings:
+  asterisk-spool:
