@@ -34,6 +34,13 @@
       <tr><th>Entidad Bitrix por default</th><td><code>{{ settings.bitrix_entity_type_id }}</code></td></tr>
       <tr><th>Campo disparador por default</th><td><code>{{ settings.bitrix_field_workshop_entry }}</code></td></tr>
       <tr><th>Endpoint que se marca</th><td><code>{{ settings.asterisk_dial_template }}</code></td></tr>
+      <tr><th>Voz del bot</th>
+          <td>{% if settings.voicebox_url %}
+                Voicebox · motor <code>{{ settings.voicebox_engine }}</code> ·
+                perfil <code>{{ settings.voicebox_profile_id or "(sin definir)" }}</code>
+              {% else %}
+                Piper (voz genérica) — <span style="color:var(--muted)">configurá VOICEBOX_URL para usar una voz clonada</span>
+              {% endif %}</td></tr>
       <tr><th>Modelo de Ollama</th><td><code>{{ settings.ollama_model }}</code>{% if not settings.ollama_enabled %} <span class="tag">deshabilitado</span>{% endif %}</td></tr>
     </tbody>
   </table>

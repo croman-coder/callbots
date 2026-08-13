@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% set nav = "voices" %}
+{% block title %}Voz del bot · Callbot{% endblock %}
+
+{% block content %}
+<h1>Voz del bot</h1>
+<p class="sub">Cloná la voz de una persona para que el callbot llame con ella</p>
+
+{% if ok %}
+  <div class="card" style="border-left:3px solid var(--ok)">
+    <strong style="color:var(--ok)">✓ {{ ok }}</strong>
+  </div>
+{% endif %}
+{% if error %}
+  <div class="card" style="border-left:3px solid var(--bad)">
+    <strong style="color:var(--bad)">No se pudo completar</strong>
+    <p style="margin:6px 0 0">{{ error }}</p>
+  </div>
+{% endif %}
+
+{% if not configured %}
+  <div class="card" style="border-left:3px solid var(--warn)">
+    <h2 style="margin-top:0">Voicebox no está configurado</h2>
+    <p>Ahora mismo el bot habla con <strong>Piper</strong>: funciona bien, pero suena sintético.
+       Para llamar con una voz humana clonada hace falta levantar Voicebox aparte:</p>
+    <pre style="background:#0000000d;padding:12px;border-radius:6px;overflow-x:auto"><code>git clone https://github.com/jamiepine/voicebox.git
+cd voicebox &amp;&amp; docker compose up -d</code></pre>
+    <p>Después poné en el <code>.env</code> del callbot y reiniciá:</p>
+    <pre style="background:#0000000d;padding:12px;border-radius:6px;overflow-x:auto"><code>VOICEBOX_URL=http://host.docker.internal:17600</code></pre>
+  </div>
+{% else %}
+
+  <!-- ------------------------------------------------ voz activa -->
+  <div class="card">
+    <h2>Voz en uso</h2>
+    {% if active %}
+      <table>
+        <tbody>
+          <tr><th style="width:160px">Perfil</th><td><strong>{{ active.name }}</strong></td></tr>
+          <tr><th>ID</th><td><code>{{ active.id }}</code></td></tr>
+          <tr><th>Idioma</th><td>{{ active.language or "—" }}</td></tr>
+          <tr><th>Motor TTS</th><td><code>{{ settings.voicebox_engine }}</code></td></tr>
+        </tbody>
+      </table>
+      <div class="actions">
+        <a class="btn" href="/voices?preview={{ active.id }}">Escuchar</a>
+      </div>
+    {% elif active_id %}
+      <p style="color:var(--bad)">
+        El <code>VOICEBOX_PROFILE_ID</code> configurado (<code>{{ active_id }}</code>)
+        no coincide con ningún perfil de Voicebox. El bot está hablando con Piper.
+      </p>
+    {% else %}
+      <p style="color:var(--muted)">
+        Todavía no hay ninguna voz seleccionada: el bot habla con Piper.
+        Cloná una abajo y pegá su ID en el <code>.env</code>.
+      </p>
+    {% endif %}
+  </div>
+
+  <!-- ------------------------------------------------ reproductor -->
+  {% if preview %}
+  <div class="card">
+    <h2>Muestra</h2>
+    <p style="color:var(--muted);font-size:13px;margin:-6px 0 12px">
+      Generando puede tardar varios segundos la primera vez. En la llamada real
+      va a sonar más apagado: la telefonía trabaja a 8 kHz.
+    </p>
+    <audio controls preload="auto" style="width:100%"
+           src="/voices/preview?profile_id={{ preview }}">
+      Tu navegador no puede reproducir audio.
+    </audio>
+  </div>
+  {% endif %}
+
+  <!-- ------------------------------------------------ clonar -->
+  <div class="card">
+    <h2>Clonar una voz nueva</h2>
+
+    <div style="border-left:3px solid var(--warn);padding-left:12px;margin:0 0 16px">
+      <p style="margin:0 0 6px"><strong>Antes de subir nada</strong></p>
+      <p style="margin:0;color:var(--muted);font-size:14px">
+        Necesitás el permiso explícito de la persona cuya voz vas a clonar: es su
+        voz, y en varias jurisdicciones también un dato biométrico. Y una voz
+        humana convincente hace <em>más</em> fuerte la obligación de avisar que la
+        llamada es automatizada, no menos — revisá que el guion de presentación
+        lo diga.
+      </p>
+    </div>
+
+    <form method="post" action="/voices/clone" enctype="multipart/form-data">
+      <label>Nombre del perfil
+        <input type="text" name="name" required placeholder="Recepción taller">
+      </label>
+
+      <label>Grabación de referencia
+        <span class="hint">— 10 a 30 segundos, sin ruido de fondo, una sola persona</span>
+        <input type="file" name="audio" accept="audio/*" required>
+      </label>
+
+      <label>Transcripción exacta de la grabación
+        <span class="hint">— palabra por palabra; si no coincide, el clon sale peor</span>
+        <textarea name="reference_text" required
+                  placeholder="Escribí acá exactamente lo que se escucha en el audio."></textarea>
+      </label>
+
+      <div class="actions">
+        <button type="submit" class="primary">Clonar voz</button>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin:10px 0 0">
+        El procesamiento puede tardar un par de minutos. No cierres la pestaña.
+      </p>
+    </form>
+  </div>
+
+  <!-- ------------------------------------------------ perfiles -->
+  <div class="card">
+    <h2>Perfiles en Voicebox</h2>
+
+    {% if load_error %}
+      <p style="color:var(--bad)">{{ load_error }}</p>
+    {% elif profiles %}
+      <div class="scroll">
+      <table>
+        <thead><tr><th>Nombre</th><th>ID</th><th>Idioma</th><th>Tipo</th><th></th><th></th></tr></thead>
+        <tbody>
+        {% for p in profiles %}
+          <tr>
+            <td><strong>{{ p.name }}</strong>
+              {% if p.id == active_id %}<span class="tag completed">en uso</span>{% endif %}</td>
+            <td><code>{{ p.id }}</code></td>
+            <td>{{ p.language or "—" }}</td>
+            <td><span class="tag">{{ p.voice_type or "—" }}</span></td>
+            <td><a href="/voices?preview={{ p.id }}">escuchar</a></td>
+            <td>
+              {% if p.id != active_id %}
+                <details>
+                  <summary style="cursor:pointer;color:var(--accent)">usar esta</summary>
+                  <div style="margin-top:8px;font-size:13px;color:var(--muted)">
+                    Pegá en el <code>.env</code> y reiniciá:
+                    <pre style="background:#0000000d;padding:8px;border-radius:6px;margin:6px 0 0;overflow-x:auto"><code>VOICEBOX_PROFILE_ID={{ p.id }}</code></pre>
+                    <code>make warm-tts</code>
+                  </div>
+                </details>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    {% else %}
+      <p class="empty">No hay perfiles todavía. Cloná el primero arriba.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Cómo aplicar un cambio de voz</h2>
+    <p style="color:var(--muted);font-size:14px;margin:0 0 10px">
+      El perfil activo se lee del <code>.env</code> al arrancar el voice-agent, así
+      que cambiarlo requiere reiniciar. El guion completo se pre-sintetiza una
+      sola vez y queda cacheado en disco:
+    </p>
+    <ol style="color:var(--muted);font-size:14px;margin:0;padding-left:20px">
+      <li>Poné el <code>VOICEBOX_PROFILE_ID</code> en el <code>.env</code></li>
+      <li>Corré <code>make warm-tts</code></li>
+      <li>Seguí el precalentado con <code>make logs-agent</code></li>
+    </ol>
+  </div>
+
+{% endif %}
+{% endblock %}

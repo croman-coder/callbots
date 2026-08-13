@@ -6,12 +6,14 @@ ni dependencias por CDN: el servidor puede no tener salida a internet.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -19,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.db import get_db
 from app.deps import require_admin
+from app.services import voicebox
 from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
     Answer,
@@ -478,6 +481,102 @@ def reanalyze(call_id: int) -> RedirectResponse:
 
 
 # ---------------------------------------------------------------------------
+# Voz del bot
+# ---------------------------------------------------------------------------
+@router.get("/voices", response_class=HTMLResponse)
+def voices_page(
+    request: Request,
+    error: str | None = None,
+    ok: str | None = None,
+    preview: str | None = None,
+) -> HTMLResponse:
+    profiles: list[dict] = []
+    load_error: str | None = None
+
+    if voicebox.is_configured():
+        try:
+            profiles = voicebox.list_profiles()
+        except voicebox.VoiceboxError as exc:
+            load_error = str(exc)
+
+    active = next(
+        (p for p in profiles if p.get("id") == settings.voicebox_profile_id), None
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "voices.html",
+        {
+            "configured": voicebox.is_configured(),
+            "profiles": profiles,
+            "active": active,
+            "active_id": settings.voicebox_profile_id,
+            "load_error": load_error,
+            "error": error,
+            "ok": ok,
+            "preview": preview,
+            "settings": settings,
+        },
+    )
+
+
+@router.post("/voices/clone")
+async def clone_voice(
+    name: str = Form(...),
+    reference_text: str = Form(...),
+    audio: UploadFile = File(...),
+) -> RedirectResponse:
+    """Clona una voz desde una grabación subida por el navegador."""
+    content = await audio.read()
+
+    if not content:
+        return _redirect(f"/voices?error={quote_plus('El archivo de audio está vacío')}")
+
+    # 25 MB alcanza de sobra para 30 segundos en cualquier formato razonable;
+    # más que eso es un archivo equivocado.
+    if len(content) > 25 * 1024 * 1024:
+        return _redirect(f"/voices?error={quote_plus('El audio supera los 25 MB')}")
+
+    try:
+        # voicebox usa httpx sincrónico y la clonación tarda minutos: si corriera
+        # en el event loop, la API entera quedaría congelada mientras procesa.
+        profile = await asyncio.to_thread(
+            voicebox.clone_voice,
+            name.strip(),
+            content,
+            audio.filename or "muestra.wav",
+            reference_text.strip(),
+        )
+    except voicebox.VoiceboxError as exc:
+        return _redirect(f"/voices?error={quote_plus(str(exc)[:300])}")
+
+    return _redirect(
+        f"/voices?ok={quote_plus('Voz clonada: ' + profile.get('name', ''))}"
+        f"&preview={profile['id']}"
+    )
+
+
+@router.get("/voices/preview")
+def preview_voice(profile_id: str, text: str | None = None) -> Response:
+    """Genera y devuelve un WAV para escuchar en el navegador."""
+    sample = text or (
+        "Hola, buenos días. Le hablamos del servicio de posventa del taller. "
+        "Estamos haciendo una encuesta muy breve sobre su última visita."
+    )
+
+    try:
+        wav = voicebox.generate(profile_id, sample)
+    except voicebox.VoiceboxError as exc:
+        raise HTTPException(502, str(exc))
+
+    return Response(
+        content=wav,
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Acciones globales
 # ---------------------------------------------------------------------------
 @router.post("/sync-now")
@@ -532,6 +631,47 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
         )
     except Exception as exc:  # noqa: BLE001
         checks.append({"name": "Asterisk (ARI)", "ok": False, "detail": str(exc)[:200]})
+
+    # Voicebox (voz clonada). Si no está configurado no es una falla: el
+    # callbot funciona con Piper, solo que con voz genérica.
+    if not voicebox.is_configured():
+        checks.append(
+            {
+                "name": "Voicebox (voz clonada)",
+                "ok": True,
+                "detail": "no configurado; el bot habla con Piper (voz genérica)",
+            }
+        )
+    else:
+        try:
+            profiles = voicebox.list_profiles()
+            match = next(
+                (p for p in profiles if p.get("id") == settings.voicebox_profile_id),
+                None,
+            )
+            checks.append(
+                {
+                    "name": "Voicebox (voz clonada)",
+                    "ok": match is not None,
+                    "detail": (
+                        f"voz «{match.get('name')}» activa"
+                        if match
+                        else (
+                            f"VOICEBOX_PROFILE_ID={settings.voicebox_profile_id or '(vacío)'} "
+                            "no coincide con ningún perfil. Disponibles: "
+                            + (", ".join(p.get("name", "?") for p in profiles) or "ninguno")
+                        )
+                    ),
+                }
+            )
+        except voicebox.VoiceboxError as exc:
+            checks.append(
+                {
+                    "name": "Voicebox (voz clonada)",
+                    "ok": False,
+                    "detail": f"{str(exc)[:160]} — el bot va a hablar con Piper",
+                }
+            )
 
     # Ollama
     if settings.ollama_enabled:

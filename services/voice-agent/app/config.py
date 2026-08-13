@@ -36,8 +36,25 @@ class Config:
     whisper_language: str = os.getenv("WHISPER_LANGUAGE", "es")
 
     # --- TTS ---
+    # Voicebox (voz clonada). Si VOICEBOX_URL y VOICEBOX_PROFILE_ID están
+    # seteados es el motor principal; Piper queda de respaldo.
+    voicebox_url: str = os.getenv("VOICEBOX_URL", "")
+    voicebox_profile_id: str = os.getenv("VOICEBOX_PROFILE_ID", "")
+    voicebox_engine: str = os.getenv("VOICEBOX_ENGINE", "qwen")
+    voicebox_language: str = os.getenv("VOICEBOX_LANGUAGE", "es")
+    # Precalentado: nadie espera, puede tardar lo que haga falta.
+    voicebox_warmup_timeout: int = int(os.getenv("VOICEBOX_WARMUP_TIMEOUT", "300"))
+    # En llamada: hay un cliente escuchando. Si voicebox no contesta en este
+    # tiempo, habla Piper. Una frase robótica es mejor que medio minuto de silencio.
+    voicebox_call_timeout: int = int(os.getenv("VOICEBOX_CALL_TIMEOUT", "8"))
+
+    # Piper (respaldo, y motor principal si no hay voicebox)
     piper_voice: str = os.getenv("PIPER_VOICE", "es_AR-daniela-high")
     piper_dir: str = os.getenv("PIPER_DIR", "/models/piper")
+
+    # El guion es texto fijo: cada frase se sintetiza una vez en la vida del
+    # sistema y sobrevive a los reinicios.
+    tts_cache_dir: str = os.getenv("TTS_CACHE_DIR", "/models/tts-cache")
 
     # --- Detección de fin de respuesta ---
     vad_aggressiveness: int = int(os.getenv("VAD_AGGRESSIVENESS", "2"))
@@ -57,6 +74,14 @@ class Config:
     @property
     def piper_config_path(self) -> str:
         return f"{self.piper_dir}/{self.piper_voice}.onnx.json"
+
+    @property
+    def voicebox_enabled(self) -> bool:
+        return bool(self.voicebox_url and self.voicebox_profile_id)
+
+    @property
+    def tts_engine(self) -> str:
+        return "voicebox" if self.voicebox_enabled else "piper"
 
 
 config = Config()

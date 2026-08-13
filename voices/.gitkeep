@@ -1,0 +1,8 @@
+# Grabaciones de referencia para clonar la voz del bot.
+#
+# Copiá acá el .wav de la persona cuya voz va a usar el callbot y corré:
+#
+#   make clone-voice AUDIO=voz.wav NAME="Recepción taller" TEXT="transcripción exacta"
+#
+# Los audios NO se versionan (ver .gitignore): son datos biométricos de una
+# persona real. Guardalos donde corresponda, junto con su consentimiento.

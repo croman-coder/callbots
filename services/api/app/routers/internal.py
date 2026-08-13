@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
 from app.deps import require_internal_token
@@ -263,6 +263,38 @@ def session_finished(
 
 
 # ---------------------------------------------------------------------------
+@router.get("/prompts")
+def all_prompts(db: Session = Depends(get_db)) -> dict:
+    """Todo el texto fijo de las campañas activas, para precalentar el TTS.
+
+    El voice-agent lo pide al arrancar y sintetiza todo antes de atender la
+    primera llamada. Con voz clonada cada frase puede tardar decenas de
+    segundos: hacerlo en medio de una llamada dejaría al cliente escuchando
+    silencio.
+    """
+    campaigns = db.scalars(
+        select(Campaign)
+        .options(selectinload(Campaign.questions))
+        .where(Campaign.is_active.is_(True))
+    ).all()
+
+    texts: list[str] = []
+    for campaign in campaigns:
+        texts += [
+            campaign.intro_script,
+            campaign.outro_script,
+            campaign.fallback_script,
+            campaign.optout_script,
+        ]
+        texts += [q.text for q in campaign.questions if q.is_active]
+
+    # dict.fromkeys deduplica preservando el orden: varias campañas suelen
+    # compartir el cierre y el fallback.
+    unique = [t.strip() for t in dict.fromkeys(texts) if t and t.strip()]
+
+    return {"campaigns": len(campaigns), "texts": unique}
+
+
 @router.get("/targets/{session_uuid}/context")
 def get_context(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> dict:
     """Datos del registro de Bitrix, por si el guion los menciona."""

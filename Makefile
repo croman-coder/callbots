@@ -73,6 +73,28 @@ sync: ## Fuerza la sincronización con Bitrix ahora
 	$(COMPOSE) exec worker celery -A app.scheduler.worker.celery_app call callbot.sync_bitrix
 
 # --------------------------------------------------------------- base de datos
+# ---------------------------------------------------------------- voz clonada
+voices: ## Lista los perfiles de voz de Voicebox con sus IDs
+	$(COMPOSE) exec api python scripts/voicebox_voice.py list
+
+clone-voice: ## Clona una voz: poné el .wav en ./voices/ y make clone-voice AUDIO=voz.wav NAME="Recepción" TEXT="lo que dice"
+	@test -n "$(AUDIO)" || (echo 'Falta AUDIO. Uso: make clone-voice AUDIO=voz.wav NAME="..." TEXT="..."'; exit 1)
+	@test -n "$(NAME)"  || (echo 'Falta NAME.'; exit 1)
+	@test -n "$(TEXT)"  || (echo 'Falta TEXT (transcripción exacta del audio).'; exit 1)
+	@test -f "voices/$(AUDIO)" || (echo "No existe ./voices/$(AUDIO) — copiá ahí la grabación."; exit 1)
+	$(COMPOSE) exec api python scripts/voicebox_voice.py clone \
+		--name "$(NAME)" --audio "/voices/$(AUDIO)" --text "$(TEXT)"
+
+test-voice: ## Genera un audio de prueba en ./voices/: make test-voice ID=<profile_id>
+	@test -n "$(ID)" || (echo "Falta ID. Sacalo de: make voices"; exit 1)
+	$(COMPOSE) exec api python scripts/voicebox_voice.py test \
+		--profile-id $(ID) --out /voices/prueba_voz.wav
+	@echo "Escuchá ./voices/prueba_voz.wav"
+
+warm-tts: ## Fuerza el precalentado del TTS (reinicia el voice-agent)
+	$(COMPOSE) restart voice-agent
+	@echo "Precalentando. Seguí el avance con: make logs-agent"
+
 check-scoring: ## Verifica el umbral de satisfacción y las conversiones de escala
 	$(COMPOSE) exec api python -m app.services.scoring
 

@@ -43,6 +43,10 @@ x-api-env: &api-env
   OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
   OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.1:8b}
   OLLAMA_ENABLED: ${OLLAMA_ENABLED:-true}
+  # Solo lo usan los scripts de clonación de voz y el diagnóstico
+  VOICEBOX_URL: ${VOICEBOX_URL:-}
+  VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID:-}
+  VOICEBOX_ENGINE: ${VOICEBOX_ENGINE:-qwen}
 
 x-api-build: &api-build
   build:
@@ -54,7 +58,12 @@ x-api-build: &api-build
     # Los scripts viven en la raíz del repo, fuera del contexto de build de la
     # imagen: sin este montaje `python scripts/...` no los encuentra.
     - ./scripts:/app/scripts:ro
+    # Grabaciones de referencia para clonar la voz, y audios de prueba
+    - ./voices:/voices
     - recordings:/recordings
+  # Para alcanzar Voicebox, que corre en el host con su propio compose
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
   depends_on:
     postgres:
       condition: service_healthy
@@ -152,6 +161,13 @@ services:
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
       WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-es}
       PIPER_VOICE: ${PIPER_VOICE:-es_AR-daniela-high}
+      TTS_CACHE_DIR: /models/tts-cache
+      VOICEBOX_URL: ${VOICEBOX_URL:-}
+      VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID:-}
+      VOICEBOX_ENGINE: ${VOICEBOX_ENGINE:-qwen}
+      VOICEBOX_LANGUAGE: ${VOICEBOX_LANGUAGE:-es}
+      VOICEBOX_WARMUP_TIMEOUT: ${VOICEBOX_WARMUP_TIMEOUT:-300}
+      VOICEBOX_CALL_TIMEOUT: ${VOICEBOX_CALL_TIMEOUT:-8}
       VAD_AGGRESSIVENESS: ${VAD_AGGRESSIVENESS:-2}
       SILENCE_MS_TO_STOP: ${SILENCE_MS_TO_STOP:-1200}
       MAX_ANSWER_SECONDS: ${MAX_ANSWER_SECONDS:-30}
@@ -165,6 +181,10 @@ services:
       - recordings:/recordings
     ports:
       - "${AUDIOSOCKET_PORT:-8090}:8090"
+    # Voicebox corre aparte (su propio compose). Esto permite alcanzarlo en el
+    # host como http://host.docker.internal:17600 también en Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - api
 

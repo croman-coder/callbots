@@ -120,6 +120,16 @@ class ApiClient:
             questions=[Question(**q) for q in data["questions"]],
         )
 
+    async def get_all_prompts(self) -> list[str]:
+        """Texto fijo de todas las campañas activas, para precalentar el TTS."""
+        try:
+            response = await self._client.get("/internal/prompts")
+            response.raise_for_status()
+            return response.json().get("texts", [])
+        except httpx.HTTPError as exc:
+            log.warning("No se pudieron traer los textos a precalentar: %s", exc)
+            return []
+
     async def session_started(self, session_uuid: uuid_mod.UUID) -> None:
         await self._post(f"/internal/sessions/{session_uuid}/started", {})
 

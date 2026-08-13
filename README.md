@@ -37,7 +37,9 @@ el reconocimiento de voz, la síntesis y el análisis corren en tu servidor.
                                 ▼
                     ┌────────────────────────────────────────────┐
                     │  voice-agent                               │
-                    │   Piper TTS ──────► "¿del 0 al 10...?"     │
+                    │   Voicebox ───────► "¿del 0 al 10...?"     │
+                    │    (voz clonada, cacheada a 8 kHz)         │
+                    │    └ Piper de respaldo si no responde      │
                     │   webrtcvad ──────► detecta fin de habla   │
                     │   faster-whisper ─► transcribe (GPU)       │
                     └───────────┬────────────────────────────────┘
@@ -66,7 +68,8 @@ resumir y clasificar — ahí la latencia no molesta a nadie.
 | Telefonía / PBX | [Asterisk](https://www.asterisk.org/) 20 | GPLv2 |
 | Transporte de audio | AudioSocket (módulo de Asterisk) | GPLv2 |
 | Reconocimiento de voz | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2) | MIT |
-| Síntesis de voz | [Piper](https://github.com/rhasspy/piper) | MIT |
+| Síntesis de voz (clonada) | [Voicebox](https://github.com/jamiepine/voicebox) | MIT |
+| Síntesis de voz (respaldo) | [Piper](https://github.com/rhasspy/piper) | MIT |
 | Detección de voz | [webrtcvad](https://github.com/wiseman/py-webrtcvad) | BSD |
 | Análisis post-llamada | [Ollama](https://ollama.com/) + Llama 3.1 8B | MIT / Llama license |
 | API + panel | FastAPI + Jinja2 | MIT / BSD |
@@ -195,6 +198,113 @@ guion en el panel y recién después activala.
 | Llamada cerrada con duración | `telephony.externalcall.finish` | al colgar |
 | Comentario con las respuestas | `crm.timeline.comment.add` | tras el análisis |
 | Puntaje en campo propio | `crm.item.update` | si `BITRIX_FIELD_SCORE_WRITEBACK` está seteado |
+
+---
+
+## Voz clonada (opcional)
+
+Por default el bot habla con **Piper**: rápido y offline, pero suena sintético.
+Con [Voicebox](https://github.com/jamiepine/voicebox) puede llamar con la **voz
+clonada de una persona real** — la recepcionista del taller, por ejemplo.
+
+**Por qué funciona bien acá.** En modo guiado el bot solo pronuncia texto fijo:
+presentación, preguntas, cierre. Siempre el mismo. Cada frase se sintetiza **una
+sola vez en la vida del sistema**, se guarda a 8 kHz en `./models/tts-cache/` y
+se reutiliza para siempre. Que Voicebox tarde 30 segundos por frase deja de
+importar: ese costo se paga una vez, al arrancar el servicio, sin nadie en la
+línea.
+
+### Antes de empezar
+
+Clonar la voz de otra persona **requiere su permiso explícito**. Es su voz, y en
+varias jurisdicciones también un dato biométrico. Además, en muchos lugares hay
+que **avisar al cliente que la llamada es automatizada** — una voz humana
+convincente hace esa obligación más fuerte, no más débil.
+
+Lo mínimo razonable: consentimiento por escrito de la persona, y que el guion de
+presentación diga que es un sistema automático. El
+[RESPONSIBLE_USE.md](https://github.com/jamiepine/voicebox/blob/main/RESPONSIBLE_USE.md)
+de Voicebox prohíbe explícitamente el uso para fraude, suplantación o
+ingeniería social.
+
+Los audios de referencia van en `./voices/`, que **no se versiona**.
+
+### Puesta en marcha
+
+**1. Levantar Voicebox** (aparte, con su propio compose):
+
+```bash
+git clone https://github.com/jamiepine/voicebox.git && cd voicebox && docker compose up -d
+```
+
+Queda escuchando en `127.0.0.1:17600`. En el `.env` del callbot:
+
+```bash
+VOICEBOX_URL=http://host.docker.internal:17600
+```
+
+**2. Grabar la voz de referencia.** 10 a 30 segundos alcanzan: sin ruido de
+fondo, una sola persona, tono conversacional. El clon copia la actitud, no solo
+el timbre — si la grabación suena aburrida, las llamadas van a sonar aburridas.
+
+**3. Clonar.** Hay dos caminos, el mismo resultado:
+
+**Desde el panel** (recomendado) — entrá a la solapa **Voz** en
+`http://localhost:8000/voices`: subís el audio, escribís la transcripción, y
+clonás. Ahí mismo escuchás una muestra de cualquier perfil y ves cuál está en
+uso.
+
+**Desde la terminal** — copiá el audio a `./voices/` y:
+
+```bash
+make clone-voice AUDIO=recepcion.wav NAME="Recepción taller" TEXT="transcripción exacta de lo que se dice en la grabación"
+```
+
+En los dos casos la transcripción tiene que ser **exacta**, palabra por palabra.
+Si no coincide con el audio, el clon sale peor.
+
+**4. Escucharla antes de usarla con clientes.** El panel tiene un reproductor en
+cada perfil. Desde la terminal:
+
+```bash
+make test-voice ID=<profile_id>
+```
+
+Genera `./voices/prueba_voz.wav`. Va a sonar más apagado en la llamada real: el
+callbot remuestrea a 8 kHz, que es lo que da la telefonía.
+
+**5. Activarla y precalentar.** Poné el `VOICEBOX_PROFILE_ID` en el `.env` y:
+
+```bash
+make warm-tts
+```
+
+Seguí el avance con `make logs-agent`. Recién cuando termina, las llamadas usan
+la voz clonada sin latencia.
+
+> El perfil activo se lee del `.env` al arrancar el voice-agent, así que
+> cambiar de voz requiere reiniciar ese servicio. El panel te muestra la línea
+> exacta a pegar en cada perfil.
+
+### Qué pasa si Voicebox se cae
+
+El callbot **sigue llamando con Piper**. Una encuesta con voz genérica sirve;
+medio minuto de silencio en el oído de un cliente, no. El respaldo se dispara
+por `VOICEBOX_CALL_TIMEOUT` (8 s por default) y **no se cachea**: cuando
+Voicebox vuelve, esa frase se genera con la voz clonada como corresponde.
+
+El único texto dinámico es el `{nombre}` del saludo. La primera llamada a un
+"Juan" paga la síntesis; las siguientes salen del caché.
+
+| Dónde | Para qué |
+|---|---|
+| `/voices` (panel) | clonar, escuchar muestras, ver qué voz está en uso |
+| `make voices` | listar perfiles con sus IDs |
+| `make clone-voice` | clonar desde un audio |
+| `make test-voice` | generar audio de prueba |
+| `make warm-tts` | precalentar el caché |
+
+El estado de la voz configurada también se ve en `/health-detail`.
 
 ---
 
@@ -405,7 +515,7 @@ callbots/
 │   │   │   ├── bitrix/           cliente REST y sincronización
 │   │   │   ├── routers/          internal (voice-agent) y admin (panel)
 │   │   │   ├── scheduler/        tareas Celery
-│   │   │   ├── services/         scoring, ARI, análisis, writeback
+│   │   │   ├── services/         scoring, ARI, análisis, writeback, voicebox
 │   │   │   └── templates/        panel
 │   │   └── migrations/           Alembic
 │   └── voice-agent/              AudioSocket + Piper + Whisper
@@ -413,10 +523,12 @@ callbots/
 │           ├── audiosocket.py    protocolo binario de Asterisk
 │           ├── listener.py       VAD, detección de fin de habla
 │           ├── dialog.py         máquina de estados de la encuesta
-│           ├── tts.py            Piper + resampleo a 8 kHz
+│           ├── tts.py            Voicebox + Piper, caché en disco a 8 kHz
 │           └── stt.py            faster-whisper
+├── voices/                       grabaciones de referencia (no se versiona)
 └── scripts/
     ├── bitrix_discover.py        descubre entityTypeId y campos
+    ├── voicebox_voice.py         clona y prueba voces sin interfaz gráfica
     ├── seed_campaign.py          campaña de ejemplo
     └── download_models.sh        voz de Piper
 ```

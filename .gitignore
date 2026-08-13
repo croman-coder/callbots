@@ -12,6 +12,9 @@ venv/
 data/
 models/
 recordings/
+# Grabaciones de referencia de voz: son datos biométricos de una persona real
+voices/*
+!voices/.gitkeep
 *.onnx
 *.onnx.json
 *.wav

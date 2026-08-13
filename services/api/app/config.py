@@ -66,6 +66,12 @@ class Settings(BaseSettings):
     asterisk_callerid: str = "Callbot <1000>"
     asterisk_dial_timeout: int = 45
 
+    # --- Voicebox (solo para el diagnóstico y los scripts de clonación;
+    #     quien sintetiza es el voice-agent) ---
+    voicebox_url: str = ""
+    voicebox_profile_id: str = ""
+    voicebox_engine: str = "qwen"
+
     # --- Ollama ---
     ollama_url: str = "http://ollama:11434"
     ollama_model: str = "llama3.1:8b"

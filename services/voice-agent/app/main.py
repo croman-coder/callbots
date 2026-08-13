@@ -54,9 +54,10 @@ async def handle_connection(
             await socket.hangup()
             return
 
-        # El caché del TTS es global: la primera llamada de cada campaña paga la
-        # síntesis y las siguientes reutilizan.
-        await asyncio.to_thread(tts.warm_up, script.all_prompts)
+        # Red de seguridad: si la campaña se editó después del arranque, acá se
+        # sintetiza lo que falte. Con el precalentado de arranque hecho, esto
+        # normalmente es un no-op y no agrega latencia.
+        await tts.warm_up(script.all_prompts)
 
         if not script.demo:
             try:
@@ -78,10 +79,35 @@ async def handle_connection(
         log.info("Conexión cerrada (%d activas)", _active_calls)
 
 
+async def prewarm_tts() -> None:
+    """Sintetiza el guion de todas las campañas activas antes de atender llamadas.
+
+    Con voz clonada esto puede tardar minutos la primera vez. Corre acá, con el
+    servicio recién levantado y nadie en la línea, y queda cacheado en disco:
+    los reinicios siguientes son instantáneos.
+    """
+    api = ApiClient()
+    try:
+        texts = await api.get_all_prompts()
+        if not texts:
+            log.info("No hay campañas activas: nada que precalentar")
+            return
+
+        log.info("Precalentando TTS: %d frases (motor=%s)...", len(texts), config.tts_engine)
+        generated = await tts.warm_up(texts)
+        log.info("TTS listo: %d frases nuevas, %d ya cacheadas", generated, len(texts) - generated)
+    finally:
+        await api.aclose()
+
+
 async def main() -> None:
     log.info("Cargando modelos...")
     await asyncio.to_thread(tts.load_voice)
     await asyncio.to_thread(stt.load_model)
+
+    # No bloquea el arranque: el servidor acepta llamadas mientras precalienta.
+    # Lo que todavía no esté cacheado cae al respaldo de Piper por timeout.
+    prewarm = asyncio.create_task(prewarm_tts())
 
     server = await asyncio.start_server(
         handle_connection, config.listen_host, config.listen_port
@@ -89,10 +115,14 @@ async def main() -> None:
 
     addresses = ", ".join(str(s.getsockname()) for s in server.sockets)
     log.info("AudioSocket escuchando en %s", addresses)
+    if config.voicebox_enabled:
+        tts_desc = f"voicebox({config.voicebox_engine}, perfil {config.voicebox_profile_id[:8]}…)"
+    else:
+        tts_desc = f"piper({config.piper_voice})"
+
     log.info(
         "STT=%s/%s  TTS=%s  API=%s",
-        config.whisper_model, config.whisper_device,
-        config.piper_voice, config.api_base_url,
+        config.whisper_model, config.whisper_device, tts_desc, config.api_base_url,
     )
 
     stop = asyncio.Event()
@@ -106,6 +136,7 @@ async def main() -> None:
     async with server:
         await stop.wait()
 
+    prewarm.cancel()
     log.info("Apagando (%d llamadas activas)", _active_calls)
 
 
