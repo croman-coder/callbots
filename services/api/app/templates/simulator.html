@@ -21,8 +21,9 @@
     guarda resultados.
   </p>
   <p style="color:var(--muted);margin-bottom:0">
-    Usá auriculares. Sin ellos el micrófono capta al bot por los parlantes y
-    se corta solo a mitad de la pregunta.
+    Mientras el bot habla, el micrófono queda en pausa: evita que se escuche
+    a sí mismo por los parlantes y se conteste solo. Esperá a que termine la
+    pregunta para responder. Con auriculares la conversación es más natural.
   </p>
 </div>
 
@@ -68,6 +69,7 @@
   var ws = null, ctx = null, stream = null, fuente = null, proc = null;
   var enCurso = false;
   var proximaReproduccion = 0;
+  var gateAvisado = false;
 
   function log(msg) {
     var t = new Date().toLocaleTimeString();
@@ -140,6 +142,7 @@
 
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     proximaReproduccion = 0;
+    gateAvisado = false;
 
     var proto = location.protocol === "https:" ? "wss://" : "ws://";
     ws = new WebSocket(proto + location.host + "/simulador/ws?ticket=" +
@@ -174,8 +177,24 @@
     proc.onaudioprocess = function (ev) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       var entrada = ev.inputBuffer.getChannelData(0);
-      nivelMic.style.width = Math.min(100, rms(entrada) * 350) + "%";
-      ws.send(bajarA8k(entrada, ctx.sampleRate).buffer);
+      var muestras = bajarA8k(entrada, ctx.sampleRate);
+
+      // Half-duplex: mientras el bot habla se manda silencio en vez del
+      // micrófono. Sin esto, en parlantes el micrófono capta al bot, el VAD
+      // lo toma como respuesta y el bot se transcribe a sí mismo: avanza de
+      // pregunta y nunca llega a escuchar a la persona. Con auriculares no
+      // pasa, pero no se puede depender de eso.
+      var botHablando = ctx.currentTime < proximaReproduccion - 0.05;
+      if (botHablando) {
+        if (!gateAvisado) { log("(micrófono en pausa mientras habla el bot)"); gateAvisado = true; }
+        muestras.fill(0);
+        nivelMic.style.width = "0";
+      } else {
+        gateAvisado = false;
+        nivelMic.style.width = Math.min(100, rms(entrada) * 350) + "%";
+      }
+
+      ws.send(muestras.buffer);
     };
     fuente.connect(proc);
     // Necesario en Chrome para que el ScriptProcessor corra. Ganancia en cero

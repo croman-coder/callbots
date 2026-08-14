@@ -21,6 +21,7 @@ Bitrix, no marca destinatarios y no guarda resultados.
 from __future__ import annotations
 
 import asyncio
+import array
 import logging
 import secrets
 import struct
@@ -77,15 +78,44 @@ def _frame(tipo: int, payload: bytes = b"") -> bytes:
 
 
 async def _navegador_a_agente(ws: WebSocket, writer: asyncio.StreamWriter) -> None:
-    """PCM del micrófono -> tramas de AudioSocket, de a 320 bytes."""
+    """PCM del micrófono -> tramas de AudioSocket, de a 320 bytes.
+
+    Loguea el nivel cada 5 s: si alguien reporta que el bot no lo escucha, lo
+    primero que hay que saber es si el audio llega y con cuánta señal. Un pico
+    cerca de cero es micrófono mudo o mal capturado; un nivel normal manda la
+    investigación al VAD o al reconocimiento.
+    """
     pendiente = b""
+    ultimo_reporte = time.monotonic()
+    pico = 0
+    bytes_totales = 0
+
     while True:
         data = await ws.receive_bytes()
+        bytes_totales += len(data)
+        if data:
+            # audioop se saca en Python 3.13; el pico de un int16 se calcula
+            # con array, que es stdlib y no se va a ningún lado.
+            muestras = array.array("h")
+            muestras.frombytes(data[: len(data) // 2 * 2])
+            if muestras:
+                pico = max(pico, max(abs(m) for m in muestras))
+
         pendiente += data
         while len(pendiente) >= FRAME_BYTES:
             writer.write(_frame(TYPE_AUDIO, pendiente[:FRAME_BYTES]))
             pendiente = pendiente[FRAME_BYTES:]
         await writer.drain()
+
+        ahora = time.monotonic()
+        if ahora - ultimo_reporte >= 5.0:
+            log.info(
+                "Simulador: micrófono %.1f s de audio, pico %d/32767 (%s)",
+                bytes_totales / 2 / 8000,
+                pico,
+                "sin señal" if pico < 500 else "ok",
+            )
+            ultimo_reporte, pico, bytes_totales = ahora, 0, 0
 
 
 async def _agente_a_navegador(ws: WebSocket, reader: asyncio.StreamReader) -> None:
