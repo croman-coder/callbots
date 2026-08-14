@@ -283,6 +283,8 @@ services:
       RECORDINGS_DIR: /recordings
       AUDIOSOCKET_HOST: 0.0.0.0
       AUDIOSOCKET_PORT: "8090"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
       WHISPER_MODEL: ${WHISPER_MODEL}
       WHISPER_DEVICE: ${WHISPER_DEVICE}
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE}
@@ -307,6 +309,16 @@ services:
       - recordings:/recordings
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # GPU por runtime explícito, NO por `deploy.resources.reservations.devices`.
+    # Esa otra forma (la de docker-compose.gpu.yml) usa el device driver de GPU
+    # de dockerd, que se inicializa al ARRANCAR el daemon: en este server el
+    # toolkit se instaló con `systemctl reload docker` para no bajar los 37
+    # containers que corren ahí, así que `--gpus` falla con
+    #   could not select device driver "" with capabilities: [[gpu]]
+    # El runtime `nvidia` en cambio sí lo toma el reload, y el hook de
+    # nvidia-container-runtime inyecta la GPU igual. Verificado sobre la RTX
+    # 5070: ctranslate2 4.8.1 corre en sm_120 con esta imagen CUDA 12.4.
+    runtime: nvidia
     depends_on:
       api:
         condition: service_started
