@@ -3,6 +3,16 @@
 Runbook del despliegue. Todo lo que sigue está verificado contra el servidor,
 no es una guía teórica.
 
+> **Estado al 2026-08-14.** Los 7 containers arriba y el panel respondiendo en
+> https://callbot.santarosa.lat (401 sin credenciales, 200 con ellas, `/health`
+> en ~90 ms). Verificado además desde adentro: migraciones en `0001 (head)`,
+> ARI contestando (Asterisk 18.10), Ollama del host alcanzable con
+> `granite4.1:8b`, y el voice-agent con Whisper `small/cpu` y la voz
+> `es_AR-daniela-high` cargados, escuchando AudioSocket en 8090.
+>
+> Lo único en rojo es **Bitrix24**: falta cargar `BITRIX_WEBHOOK_URL`. Ver
+> *Pendientes*.
+
 | | |
 |---|---|
 | **Panel** | https://callbot.santarosa.lat (HTTP Basic, usuario `admin`) |
@@ -153,6 +163,20 @@ ssh srpy-servidor 'T=$(cat ~/.coolify-token); curl -s \
   "http://localhost:8090/api/v1/deployments/EL-UUID" \
   | python3 -c "import sys,json;print(json.load(sys.stdin)[\"status\"])"'
 ```
+
+**Si el deploy falla con `Error response from daemon: No such container: <id>`**
+justo cuando los servicios pasan a `Starting`, es una carrera entre el `docker
+compose up` nuevo y los containers que dejó el despliegue anterior: Coolify les
+pone un timestamp en el nombre, así que los viejos no coinciden por nombre y
+compose los va sacando como huérfanos mientras arranca los nuevos. Pasó dos
+veces. Se resuelve limpiando primero:
+
+```bash
+ssh srpy-servidor 'docker ps -aq --filter name=xg5ucgo36sqanypjxpajzyk5 | xargs -r docker rm -f'
+```
+
+y volviendo a desplegar. Es un corte de servicio de un par de minutos, así que
+hacelo solo cuando el deploy ya falló.
 
 **Ver el estado de los containers:**
 
