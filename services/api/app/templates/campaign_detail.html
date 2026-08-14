@@ -101,6 +101,13 @@
 <!-- ------------------------------------------------------ configuración -->
 <div class="card">
   <h2>Configuración</h2>
+  <p class="sub" style="margin:0 0 16px">
+    Más abajo en esta página:
+    <a href="#conversacion">respuestas conversacionales</a> ·
+    <a href="#analisis">instrucciones de análisis</a> ·
+    <a href="#voz">voz del bot</a>
+    <span style="opacity:.7">— la modulación también está en <a href="/voices">Voz</a></span>
+  </p>
   <form method="post" action="/campaigns/{{ campaign.id }}">
     <label>Nombre
       <input type="text" name="name" value="{{ campaign.name }}" required>
@@ -168,7 +175,7 @@
       <textarea name="optout_script" required>{{ campaign.optout_script }}</textarea>
     </label>
 
-    <h2 style="margin-top:26px">Respuestas conversacionales</h2>
+    <h2 id="conversacion" style="margin-top:26px">Respuestas conversacionales</h2>
     <p class="sub" style="margin-bottom:14px">
       Contexto para cuando el cliente <strong>pregunta algo en vez de
       responder</strong>. Solo se usa ahí: si contesta bien, la llamada sigue
@@ -185,7 +192,7 @@
       </span>
     </label>
 
-    <h2 style="margin-top:26px">Instrucciones para el análisis</h2>
+    <h2 id="analisis" style="margin-top:26px">Instrucciones para el análisis</h2>
     <p class="sub" style="margin-bottom:14px">
       Contexto del negocio y criterios para el LLM que resume la llamada
       después de colgar. Se <strong>suman</strong> al prompt base, que fija el
@@ -200,7 +207,7 @@
       </span>
     </label>
 
-    <h2 style="margin-top:26px">Voz del bot</h2>
+    <h2 id="voz" style="margin-top:26px">Voz del bot</h2>
     <p class="sub" style="margin-bottom:14px">
       Cómo suena. Se aplica en la próxima llamada; para escucharlo, entrá al
       <a href="/simulador">simulador</a>.

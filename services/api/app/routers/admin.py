@@ -627,6 +627,7 @@ def voices_page(
     error: str | None = None,
     ok: str | None = None,
     preview: str | None = None,
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
     profiles: list[dict] = []
     load_error: str | None = None
@@ -641,10 +642,13 @@ def voices_page(
         (p for p in profiles if p.get("id") == settings.voicebox_profile_id), None
     )
 
+    campaigns = db.scalars(select(Campaign).order_by(Campaign.name)).all()
+
     return templates.TemplateResponse(
         request,
         "voices.html",
         {
+            "campaigns": campaigns,
             "configured": voicebox.is_configured(),
             "profiles": profiles,
             "active": active,
@@ -656,6 +660,34 @@ def voices_page(
             "settings": settings,
         },
     )
+
+
+@router.post("/voices/campaign/{campaign_id}")
+def update_campaign_voice(
+    campaign_id: int,
+    voice_speed: float = Form(1.0),
+    voice_pitch: float = Form(1.0),
+    voice_expressiveness: float = Form(0.667),
+    voice_volume: float = Form(1.0),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Guarda solo la modulación, desde la página de Voz.
+
+    Los mismos controles están en el detalle de la campaña, pero ahí quedan
+    abajo del guion y nadie los encuentra: el lugar donde uno busca cómo suena
+    el bot es la pestaña que se llama Voz.
+    """
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(404, "Campaña inexistente")
+
+    campaign.voice_speed = min(max(voice_speed, 0.5), 2.0)
+    campaign.voice_pitch = min(max(voice_pitch, 0.7), 1.4)
+    campaign.voice_expressiveness = min(max(voice_expressiveness, 0.0), 1.5)
+    campaign.voice_volume = min(max(voice_volume, 0.2), 1.5)
+    db.commit()
+
+    return _redirect(f"/voices?ok=Voz+actualizada+en+{quote_plus(campaign.name)}")
 
 
 @router.post("/voices/clone")

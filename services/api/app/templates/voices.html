@@ -4,7 +4,7 @@
 
 {% block content %}
 <h1>Voz del bot</h1>
-<p class="sub">Cloná la voz de una persona para que el callbot llame con ella</p>
+<p class="sub">Cómo suena, y con qué voz habla</p>
 
 {% if ok %}
   <div class="card" style="border-left:3px solid var(--ok)">
@@ -17,6 +17,62 @@
     <p style="margin:6px 0 0">{{ error }}</p>
   </div>
 {% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Cómo suena</h2>
+  <p class="sub" style="margin-bottom:16px">
+    Se guarda por campaña y se aplica en la próxima llamada. Para escuchar el
+    resultado, entrá al <a href="/simulador">simulador</a>.
+  </p>
+
+  {% for c in campaigns %}
+  <form method="post" action="/voices/campaign/{{ c.id }}"
+        style="{% if not loop.first %}border-top:1px solid var(--line);padding-top:18px;margin-top:18px{% endif %}">
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
+      <strong>{{ c.name }}</strong>
+      {% if c.is_active %}<span class="hint" style="color:var(--ok)">activa</span>
+      {% else %}<span class="hint">pausada</span>{% endif %}
+    </div>
+
+    <div class="row">
+      <label>Velocidad
+        <input type="range" name="voice_speed" min="0.6" max="1.6" step="0.05"
+               value="{{ c.voice_speed }}"
+               oninput="this.nextElementSibling.textContent = this.value + 'x'">
+        <span class="hint">{{ c.voice_speed }}x</span>
+      </label>
+      <label>Tono
+        <input type="range" name="voice_pitch" min="0.8" max="1.25" step="0.01"
+               value="{{ c.voice_pitch }}"
+               oninput="this.nextElementSibling.textContent = this.value">
+        <span class="hint">{{ c.voice_pitch }}
+          <span style="opacity:.7">— menos es más grave</span></span>
+      </label>
+      <label>Expresividad
+        <input type="range" name="voice_expressiveness" min="0" max="1.2" step="0.02"
+               value="{{ c.voice_expressiveness }}"
+               oninput="this.nextElementSibling.textContent = this.value">
+        <span class="hint">{{ c.voice_expressiveness }}
+          <span style="opacity:.7">— 0 es plano</span></span>
+      </label>
+      <label>Volumen
+        <input type="range" name="voice_volume" min="0.4" max="1.2" step="0.05"
+               value="{{ c.voice_volume }}"
+               oninput="this.nextElementSibling.textContent = this.value + 'x'">
+        <span class="hint">{{ c.voice_volume }}x
+          <span style="opacity:.7">— arriba de 1 satura</span></span>
+      </label>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="primary">Guardar voz</button>
+      <a class="btn" href="/campaigns/{{ c.id }}">Guion y prompts de esta campaña</a>
+    </div>
+  </form>
+  {% else %}
+  <p>No hay campañas todavía. Creá una en <a href="/campaigns">Campañas</a>.</p>
+  {% endfor %}
+</div>
 
 {% if not configured %}
   <div class="card" style="border-left:3px solid var(--warn)">
