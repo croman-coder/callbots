@@ -7,8 +7,9 @@ no es una guía teórica.
 > https://callbot.santarosa.lat (401 sin credenciales, 200 con ellas, `/health`
 > en ~90 ms). Verificado además desde adentro: migraciones en `0001 (head)`,
 > ARI contestando (Asterisk 18.10), Ollama del host alcanzable con
-> `granite4.1:8b`, y el voice-agent con Whisper `small/cpu` y la voz
-> `es_AR-daniela-high` cargados, escuchando AudioSocket en 8090.
+> `granite4.1:8b`, y el voice-agent con Whisper **`medium` en `cuda/float16`**
+> sobre la RTX 5070 y la voz `es_AR-daniela-high` cargados, escuchando
+> AudioSocket en 8090.
 >
 > Lo único en rojo es **Bitrix24**: falta cargar `BITRIX_WEBHOOK_URL`. Ver
 > *Pendientes*.
@@ -53,9 +54,8 @@ tal cual en este servidor**. Cuatro de sus puertos publicados ya están tomados:
   los modelos bajados, y se lo alcanza por `host.docker.internal:11434`. El
   modelo configurado es `granite4.1:8b`, que ya está descargado —
   `llama3.1:8b` no está.
-- **Whisper en CPU** (`small` / `int8`). El host tiene una RTX 5070, pero Docker
-  no tiene el runtime `nvidia` configurado y habilitarlo necesita `sudo`, que el
-  usuario `santarosa` no tiene sin password. Ver *Pendientes*.
+- **Whisper en la GPU** (`medium` / `float16`) sobre la RTX 5070. Ver abajo, que
+  la forma de pedir la GPU en este server no es la obvia.
 
 ---
 
@@ -106,6 +106,50 @@ Celery no hay nada escuchando en 8000 y quedarían *unhealthy* de por vida.
 
 ---
 
+## La GPU va por `runtime: nvidia`, no por `deploy.resources`
+
+`nvidia-container-toolkit` (1.20.0) se instaló el 2026-08-14 y se registró con
+**`systemctl reload docker`**, no con `restart`: en este server corren 37
+containers de otras cosas (supabase, coolify, el túnel, compras, jac) y un
+restart los baja a todos.
+
+El reload alcanza para que Docker tome la tabla de `runtimes` — `docker info` ya
+muestra `nvidia` — pero **no** para el *device driver* de GPU, que dockerd
+inicializa al arrancar. Con reload, `--gpus` y el bloque
+`deploy.resources.reservations.devices` (el que usa `docker-compose.gpu.yml`)
+siguen fallando con:
+
+```
+could not select device driver "" with capabilities: [[gpu]]
+```
+
+Por eso el `voice-agent` pide la GPU con `runtime: nvidia` más
+`NVIDIA_VISIBLE_DEVICES` / `NVIDIA_DRIVER_CAPABILITIES`: ese camino sí lo toma
+el reload, porque el hook de `nvidia-container-runtime` hace la inyección. Si
+algún día se reinicia el daemon por otro motivo, las dos formas van a funcionar,
+pero no hay razón para cambiar esta.
+
+**Blackwell.** La RTX 5070 es `sm_120` y la imagen del voice-agent es CUDA 12.4,
+que en principio no la conoce. Se probó antes de tocar nada, dentro de la imagen
+real: `ctranslate2 4.8.1` carga el modelo en `cuda/float16` y transcribe sin
+problema. No hizo falta subir la base.
+
+**VRAM compartida con Ollama.** La placa tiene 12 GB y Whisper `medium` se queda
+con ~2 GB de forma permanente. El resto lo usa el Ollama del host, que es
+compartido con otros proyectos y carga/descarga modelos solo (`keep_alive` por
+default, 5 min). Un `gemma4:26b` no entra entero ni sin Whisper, así que ya
+spillea a CPU; con Whisper adentro spillea un poco más. Si algún día molesta,
+las salidas son bajar Whisper a `small` o fijarle a Ollama un
+`OLLAMA_MAX_LOADED_MODELS` / `OLLAMA_KEEP_ALIVE` más corto.
+
+Ver quién tiene la VRAM:
+
+```bash
+ssh srpy-servidor 'nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader; curl -s http://localhost:11434/api/ps'
+```
+
+---
+
 ## Variables de entorno
 
 Las 61 variables están cargadas en Coolify (pestaña *Environment Variables*) y
@@ -135,9 +179,18 @@ ssh srpy-servidor 'T=$(cat ~/.coolify-token); curl -s -X PATCH \
   --data-binary @/tmp/envs.json'
 ```
 
-> Ojo: el endpoint `envs/bulk` crea **dos** filas por clave, una con
-> `is_preview: true`. Son inofensivas pero ensucian la UI. Para borrarlas,
-> listá `/envs` y hacé `DELETE` de las que tengan `is_preview`.
+Dos rarezas del API de Coolify 4.3.1 que conviene tener presentes:
+
+- **`envs/bulk` no actualiza lo que ya existe, agrega.** Si la clave ya está,
+  te quedan dos filas con valores distintos. Para cambiar valores el camino que
+  funciona es: `DELETE` de todas las filas, después el `bulk`.
+- **`envs/bulk` crea una copia `is_preview: true` de cada clave.** Es inofensiva
+  para producción pero duplica todo en la UI. Se limpia listando `/envs` y
+  haciendo `DELETE` de las que tengan `is_preview`.
+
+O sea, el ciclo completo para actualizar variables es *borrar todo → bulk →
+borrar las `is_preview`*. Un `PATCH` sobre `/envs` pasando `{key, value}` **no**
+actualiza nada, aunque devuelva 200.
 
 ---
 
@@ -224,20 +277,7 @@ echo var_export(\$a->custom_labels, true);
    `BITRIX_ENTITY_TYPE_ID` y los códigos de campo, que hoy están con los valores
    de ejemplo del `.env.example`.
 
-2. **GPU apagada.** Para pasar Whisper a `cuda` hace falta, con `sudo` en el
-   server:
-
-   ```bash
-   sudo apt install -y nvidia-container-toolkit
-   sudo nvidia-ctk runtime configure --runtime=docker
-   sudo systemctl restart docker
-   ```
-
-   Después, en Coolify: `WHISPER_DEVICE=cuda`, `WHISPER_COMPUTE_TYPE=float16`,
-   `WHISPER_MODEL=medium`, y agregarle al servicio `voice-agent` la reserva de
-   GPU que ya está escrita en `docker-compose.gpu.yml`.
-
-3. **Telefonía sin probar.** El dominio público solo expone el panel HTTP. SIP
+2. **Telefonía sin probar.** El dominio público solo expone el panel HTTP. SIP
    (`5060/udp`) y RTP no pasan por el túnel: un softphone tiene que registrarse
    contra la IP del server por LAN o Tailscale, con el usuario `softphone-1` y
    la `SOFTPHONE_PASSWORD` del `.env`. `ASTERISK_DIAL_TEMPLATE` está en
@@ -246,6 +286,6 @@ echo var_export(\$a->custom_labels, true);
    (`TRUNK_HOST`/`TRUNK_USER`/`TRUNK_PASSWORD`) y cambiar la plantilla a
    `PJSIP/{number}@trunk-proveedor`.
 
-4. **El panel está publicado con HTTP Basic como única defensa.** Alcanza para
+3. **El panel está publicado con HTTP Basic como única defensa.** Alcanza para
    ahora, pero si se expone algo más sensible conviene meterlo detrás de
    Cloudflare Access.

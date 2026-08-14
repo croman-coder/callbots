@@ -17,8 +17,9 @@
 #   4. El voice-agent baja la voz de Piper en su command antes del exec: un
 #      servicio init aparte no sirve porque Coolify le pone
 #      restart: unless-stopped a todo y nunca queda "completed".
-#   5. Whisper en CPU: el host no tiene configurado nvidia-container-toolkit
-#      (hace falta sudo). Con 24 cores el modelo `small` va holgado.
+#   5. Whisper en la GPU del host (RTX 5070) por `runtime: nvidia`, no por el
+#      bloque `deploy.resources` de docker-compose.gpu.yml. Ver el comentario
+#      largo en el servicio voice-agent.
 #
 #   docker compose -f docker-compose.coolify.yml up -d
 # =============================================================================
