@@ -106,9 +106,13 @@ async def reply(
 
     try:
         async with httpx.AsyncClient(timeout=settings.gemini_timeout_seconds) as client:
+            # La key va en cabecera y NO como ?key=: httpx loguea la URL
+            # completa de cada request, así que por query param la credencial
+            # terminaba escrita en texto plano en el log del contenedor, en
+            # cada llamada.
             response = await client.post(
                 url,
-                params={"key": settings.gemini_api_key},
+                headers={"x-goog-api-key": settings.gemini_api_key},
                 json=payload,
             )
             response.raise_for_status()
