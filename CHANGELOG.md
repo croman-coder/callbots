@@ -14,12 +14,16 @@ escala se corre un lugar: lo que sería MAYOR va al slot MENOR.
 Las versiones se crean con la skill `release-tag` (`/release-tag`), que decide
 el número leyendo el diff real en vez de estimarlo.
 
-**Publicar una versión** — al empujar el tag, el workflow
-[`.github/workflows/release.yml`](.github/workflows/release.yml) arma la
-Release en GitHub solo, agrupando los commits por tipo:
+**Publicar una versión** — cerrá con un commit marcador y empujá a `main`. El
+workflow [`.github/workflows/release.yml`](.github/workflows/release.yml) crea
+el tag y publica la Release solo, agrupando los commits por tipo:
 
 ```bash
-git push origin v0.2.0
+git commit --allow-empty -m "tag: v0.2.0" -m "Qué trae esta versión."
+```
+
+```bash
+git push origin main
 ```
 
 Este archivo es el resumen curado, escrito para humanos. La Release de GitHub

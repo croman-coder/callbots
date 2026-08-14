@@ -505,13 +505,31 @@ funcionalidad grande nueva, MENOR para algo que se agrega sin afectar lo que ya
 funcionaba, PARCHE para bugs y correcciones de nomenclatura. El historial curado
 está en [CHANGELOG.md](CHANGELOG.md).
 
-Al empujar un tag, [`.github/workflows/release.yml`](.github/workflows/release.yml)
-publica la Release en GitHub con todos los commits desde la versión anterior,
-agrupados por tipo:
+### Publicar una versión
+
+Cerrá el trabajo con un commit cuyo asunto sea el marcador de versión. Al
+llegar a `main`, [`.github/workflows/release.yml`](.github/workflows/release.yml)
+crea el tag y publica la Release con todos los commits desde la versión
+anterior, agrupados por tipo.
+
+```bash
+git commit --allow-empty -m "tag: v0.2.0" -m "Qué trae esta versión, en dos líneas."
+```
+
+```bash
+git push origin main
+```
+
+El cuerpo de ese commit encabeza las notas de la release. El marcador no
+aparece en el listado de cambios: es administrativo, no un cambio.
+
+También funciona empujando un tag directamente, para versiones creadas a mano:
 
 ```bash
 git push origin v0.2.0
 ```
+
+Ver las versiones existentes:
 
 ```bash
 git tag -n1

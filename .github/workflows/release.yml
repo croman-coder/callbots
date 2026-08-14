@@ -1,16 +1,24 @@
 name: Release
 
-# Se dispara al publicar un tag de versión:
-#     git push origin v0.2.0
+# Dos formas de publicar una versión, un solo camino de salida:
 #
-# Arma las notas leyendo los commits entre el tag anterior y este, agrupados
-# por tipo, y publica la Release en GitHub. El changelog no se escribe a mano.
+#   1. Automática — commit en main cuyo mensaje sea `tag: v0.2.0`.
+#      El workflow crea el tag y publica la release.
+#
+#   2. Manual — empujar un tag directamente:
+#          git push origin v0.2.0
+#
+# Están en el mismo archivo a propósito. Un tag creado por GITHUB_TOKEN NO
+# dispara otros workflows (GitHub lo impide para evitar bucles infinitos), así
+# que si la creación y la publicación vivieran separadas, el camino automático
+# crearía el tag y la release nunca saldría. Acá todo ocurre en una corrida.
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*.*.*"
 
-# Necesario para que `gh release create` pueda escribir en el repositorio.
 permissions:
   contents: write
 
@@ -27,12 +35,96 @@ jobs:
           # el changelog sale vacío. Es la causa número uno de que esto falle.
           fetch-depth: 0
 
-      - name: Armar las notas de la versión
-        id: notas
+      # ---------------------------------------------------------------------
+      - name: Detectar qué versión corresponde
+        id: detectar
         run: |
           set -euo pipefail
 
-          TAG="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            # Camino manual: el tag ya existe, solo hay que publicarlo
+            echo "Tag empujado a mano: ${GITHUB_REF_NAME}"
+            {
+              echo "continuar=true"
+              echo "tag=${GITHUB_REF_NAME}"
+              echo "crear_tag=false"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Camino automático: se mira solo el último commit de main
+          ASUNTO="$(git log -1 --format=%s)"
+          echo "Último commit: ${ASUNTO}"
+
+          # Se normaliza a minúsculas antes de comparar: alguien que escriba
+          # "Tag: v0.2.0" espera que funcione, y si no lo hiciera no vería
+          # ningún error — el push saldría bien y no pasaría nada. Una falla
+          # silenciosa es peor que un tag mal escrito.
+          ASUNTO_NORM="$(echo "$ASUNTO" | tr '[:upper:]' '[:lower:]')"
+
+          if ! echo "$ASUNTO_NORM" | grep -qE '^tag:[[:space:]]*v[0-9]+\.[0-9]+\.[0-9]+([-.][a-z0-9.]+)?$'; then
+            echo "No es un commit de versión. No hay nada que publicar."
+            echo "continuar=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TAG="$(echo "$ASUNTO_NORM" | sed -E 's/^tag:[[:space:]]*//')"
+          echo "Versión solicitada: ${TAG}"
+
+          # Un tag existente no se pisa: ya lo bajó gente y reescribirlo les
+          # rompe la copia. Falla ruidosa antes que estado ambiguo.
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::El tag ${TAG} ya existe. Elegí el siguiente número libre."
+            exit 1
+          fi
+
+          # La versión tiene que avanzar. Un número que retrocede rompe el
+          # orden de `git describe` y confunde a cualquiera que mire el repo.
+          PREV="$(git tag --list 'v*' --sort=-v:refname | head -1 || echo "")"
+          if [ -n "$PREV" ]; then
+            MAYOR="$(printf '%s\n%s\n' "$PREV" "$TAG" | sort -V | tail -1)"
+            if [ "$MAYOR" != "$TAG" ]; then
+              echo "::error::${TAG} es anterior o igual a ${PREV}. ¿Número equivocado?"
+              exit 1
+            fi
+          fi
+
+          {
+            echo "continuar=true"
+            echo "tag=${TAG}"
+            echo "crear_tag=true"
+          } >> "$GITHUB_OUTPUT"
+
+      # ---------------------------------------------------------------------
+      - name: Crear el tag
+        if: steps.detectar.outputs.continuar == 'true' && steps.detectar.outputs.crear_tag == 'true'
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.detectar.outputs.tag }}"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # El cuerpo del commit de versión, si lo tiene, son las notas que
+          # escribió una persona. Vale más que cualquier lista autogenerada.
+          CUERPO="$(git log -1 --format=%b)"
+          if [ -n "$CUERPO" ]; then
+            git tag -a "$TAG" -m "$TAG" -m "$CUERPO"
+          else
+            git tag -a "$TAG" -m "$TAG"
+          fi
+
+          git push origin "$TAG"
+          echo "Tag ${TAG} creado y empujado"
+
+      # ---------------------------------------------------------------------
+      - name: Armar las notas de la versión
+        id: notas
+        if: steps.detectar.outputs.continuar == 'true'
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.detectar.outputs.tag }}"
           PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")"
 
           if [ -n "$PREV" ]; then
@@ -46,23 +138,25 @@ jobs:
           NOTAS="${RUNNER_TEMP}/notas.md"
           : > "$NOTAS"
 
-          # 1) El mensaje del tag anotado va primero: es lo que escribió una
-          #    persona explicando la versión, y vale más que la lista de commits.
           CUERPO_TAG="$(git tag -l --format='%(contents:body)' "$TAG")"
           if [ -n "$CUERPO_TAG" ]; then
             printf '%s\n\n---\n' "$CUERPO_TAG" >> "$NOTAS"
           fi
 
-          # 2) Los commits, agrupados por tipo de Conventional Commit.
+          # El commit `tag: vX.Y.Z` es un marcador administrativo, no un cambio:
+          # listarlo entre las novedades sería ruido.
+          sin_marcador() {
+            grep -vE '^- tag:[[:space:]]*v[0-9]+\.[0-9]+\.[0-9]+' || true
+          }
+
           seccion() {
             titulo="$1"
             patron="$2"
             cuerpo="$(git log --no-merges -E --grep="$patron" \
-                        --format='- %s (`%h`)' "$RANGO" || true)"
+                        --format='- %s (`%h`)' "$RANGO" | sin_marcador)"
             if [ -z "$cuerpo" ]; then
               return 0
             fi
-            # Saca el prefijo (`feat:`, `fix(api):`) que ya está en el título
             cuerpo="$(echo "$cuerpo" | sed -E 's/^- [a-z]+(\([^)]*\))?!?: */- /')"
             printf '\n### %s\n\n%s\n' "$titulo" "$cuerpo" >> "$NOTAS"
           }
@@ -73,16 +167,15 @@ jobs:
           seccion 'Documentación'             '^docs(\(.+\))?!?:'
           seccion 'Tests'                     '^test(\(.+\))?!?:'
 
-          # 3) Los commits que no siguen la convención no se pierden: si se
-          #    descartaran en silencio, el changelog mentiría por omisión.
+          # Los commits fuera de convención no se descartan: un changelog que
+          # omite cambios miente, y nadie audita lo que no ve.
           OTROS="$(git log --no-merges --format='- %s (`%h`)' "$RANGO" \
                    | grep -vE '^- (feat|fix|refactor|perf|chore|style|build|ci|docs|test)(\([^)]*\))?!?:' \
-                   || true)"
+                   | sin_marcador)"
           if [ -n "$OTROS" ]; then
             printf '\n### Otros cambios\n\n%s\n' "$OTROS" >> "$NOTAS"
           fi
 
-          # 4) Pie con el total y el enlace de comparación
           TOTAL="$(git rev-list --count --no-merges "$RANGO")"
           printf '\n---\n\n%s commits en esta versión.\n' "$TOTAL" >> "$NOTAS"
 
@@ -96,22 +189,23 @@ jobs:
           echo "--------- notas generadas ---------"
           cat "$NOTAS"
 
+      # ---------------------------------------------------------------------
       - name: Publicar la release
+        if: steps.detectar.outputs.continuar == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${{ steps.detectar.outputs.tag }}"
           NOTAS="${{ steps.notas.outputs.archivo }}"
 
-          # Las versiones de prueba no deberían aparecer como la release estable
           PRERELEASE=""
           case "$TAG" in
             *-alpha*|*-beta*|*-rc*) PRERELEASE="--prerelease" ;;
           esac
 
-          # Idempotente: si se re-ejecuta el workflow, actualiza en vez de fallar
+          # Idempotente: re-ejecutar el workflow actualiza en vez de fallar
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "La release $TAG ya existe: se actualizan las notas"
             gh release edit "$TAG" --notes-file "$NOTAS" $PRERELEASE
