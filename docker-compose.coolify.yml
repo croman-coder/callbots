@@ -233,16 +233,20 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
-  # Baja la voz de Piper al volumen `models` y termina. El voice-agent espera a
-  # que salga con código 0: sin el .onnx, el TTS falla recién en plena llamada.
-  models-init:
-    image: curlimages/curl:8.11.1
-    user: root
-    volumes:
-      - models:/models
-    environment:
-      PIPER_VOICE: ${PIPER_VOICE}
-    entrypoint: ["/bin/sh", "-c"]
+  # Agente de voz: AudioSocket + Piper (TTS) + faster-whisper (STT)
+  # No publica puertos: solo lo consume `asterisk`, por la red interna.
+  #
+  # El command baja la voz de Piper antes de arrancar. No se usa un servicio
+  # init aparte porque Coolify le impone `restart: unless-stopped` a todos los
+  # servicios del compose, y un contenedor one-shot con esa política reinicia
+  # para siempre en vez de quedar "completed". Hacerlo acá además lo vuelve
+  # idempotente: si el volumen se pierde, la voz se rebaja sola.
+  voice-agent:
+    build:
+      context: ./services/voice-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "-c"]
     command:
       - |
         set -eu
@@ -258,22 +262,13 @@ services:
         mkdir -p "$$DEST"
         for F in "$$VOICE.onnx" "$$VOICE.onnx.json"; do
           if [ -s "$$DEST/$$F" ]; then
-            echo "ya está: $$F"
+            echo "[init] ya está: $$F"
           else
-            echo "bajando $$F ..."
+            echo "[init] bajando $$F ..."
             curl -fSL "$$SRC/$$F" -o "$$DEST/$$F" || { rm -f "$$DEST/$$F"; exit 1; }
           fi
         done
-        ls -lh "$$DEST"
-
-  # ---------------------------------------------------------------------------
-  # Agente de voz: AudioSocket + Piper (TTS) + faster-whisper (STT)
-  # No publica puertos: solo lo consume `asterisk`, por la red interna.
-  voice-agent:
-    build:
-      context: ./services/voice-agent
-      dockerfile: Dockerfile
-    restart: unless-stopped
+        exec python -m app.main
     environment:
       API_BASE_URL: http://api:8000
       INTERNAL_TOKEN: ${INTERNAL_TOKEN}
@@ -305,8 +300,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      models-init:
-        condition: service_completed_successfully
       api:
         condition: service_started
 
