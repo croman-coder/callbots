@@ -7,7 +7,7 @@ CONF_DIR=/etc/asterisk
 # Variables que se sustituyen en las plantillas. Se listan explícitamente para
 # que envsubst no toque las variables propias del dialplan de Asterisk
 # (${SESSION_UUID}, ${EXTEN}, ${CHANNEL}, etc.).
-VARS='${ARI_USER} ${ARI_PASSWORD} ${AUDIOSOCKET_HOST} ${AUDIOSOCKET_PORT} ${RTP_START} ${RTP_END} ${SOFTPHONE_PASSWORD} ${TRUNK_HOST} ${TRUNK_USER} ${TRUNK_PASSWORD} ${SIP_NAT_SETTINGS}'
+VARS='${ARI_USER} ${ARI_PASSWORD} ${AUDIOSOCKET_HOST} ${AUDIOSOCKET_PORT} ${RTP_START} ${RTP_END} ${SOFTPHONE_PASSWORD} ${TRUNK_HOST} ${TRUNK_USER} ${TRUNK_PASSWORD} ${SIP_NAT_SETTINGS} ${TRUNK_SETTINGS}'
 
 : "${AUDIOSOCKET_HOST:=voice-agent}"
 : "${AUDIOSOCKET_PORT:=8090}"
@@ -39,9 +39,54 @@ else
 ; Si el softphone conecta pero no hay audio, es esto."
 fi
 
+# Troncal SIP: solo si hay proveedor cargado. Sin esto Asterisk no tiene
+# salida a la red pública y el bot únicamente puede llamar a los softphones.
+if [ -n "$TRUNK_HOST" ]; then
+    TRUNK_SETTINGS="[trunk-proveedor]
+type = endpoint
+context = callbot-inbound
+disallow = all
+allow = ulaw
+allow = alaw
+outbound_auth = trunk-auth
+aors = trunk-aor
+from_user = ${TRUNK_USER}
+from_domain = ${TRUNK_HOST}
+direct_media = no
+rtp_symmetric = yes
+force_rport = yes
+rewrite_contact = yes
+
+[trunk-auth]
+type = auth
+auth_type = userpass
+username = ${TRUNK_USER}
+password = ${TRUNK_PASSWORD}
+
+[trunk-aor]
+type = aor
+contact = sip:${TRUNK_HOST}
+qualify_frequency = 60
+
+[trunk-registration]
+type = registration
+transport = transport-udp
+outbound_auth = trunk-auth
+server_uri = sip:${TRUNK_HOST}
+client_uri = sip:${TRUNK_USER}@${TRUNK_HOST}
+retry_interval = 60
+
+[trunk-identify]
+type = identify
+endpoint = trunk-proveedor
+match = ${TRUNK_HOST}"
+else
+    TRUNK_SETTINGS="; TRUNK_HOST vacío: sin troncal. El bot solo alcanza los softphones."
+fi
+
 export AUDIOSOCKET_HOST AUDIOSOCKET_PORT RTP_START RTP_END \
        SOFTPHONE_PASSWORD TRUNK_HOST TRUNK_USER TRUNK_PASSWORD \
-       ARI_USER ARI_PASSWORD SIP_NAT_SETTINGS
+       ARI_USER ARI_PASSWORD SIP_NAT_SETTINGS TRUNK_SETTINGS
 
 mkdir -p "$CONF_DIR"
 
