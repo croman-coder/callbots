@@ -111,9 +111,14 @@ services:
     volumes:
       - voices:/voices
       - recordings:/recordings
-    # host.docker.internal alcanza el Ollama del host (systemd, puerto 11434)
+    # Ollama corre en el host (systemd, 11434). Se apunta a la IP de docker0
+    # y NO a `host-gateway`: tras el `systemctl reload docker` con el que se
+    # registró el runtime nvidia, el daemon dejó de resolverlo y los
+    # containers nuevos arrancaban con `invalid IP  host.docker.internal` en
+    # /etc/hosts. docker0 es 10.0.0.1 por el default-address-pools de Coolify
+    # (10.0.0.0/8), no la 172.17.0.1 de un Docker por default.
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.0.0.1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -185,7 +190,7 @@ services:
       - voices:/voices
       - recordings:/recordings
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.0.0.1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -234,7 +239,7 @@ services:
     volumes:
       - recordings:/recordings
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.0.0.1"
     depends_on:
       postgres:
         condition: service_healthy
@@ -309,7 +314,7 @@ services:
       - models:/models
       - recordings:/recordings
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.0.0.1"
     # GPU por runtime explícito, NO por `deploy.resources.reservations.devices`.
     # Esa otra forma (la de docker-compose.gpu.yml) usa el device driver de GPU
     # de dockerd, que se inicializa al ARRANCAR el daemon: en este server el
