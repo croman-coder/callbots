@@ -45,8 +45,9 @@ si es largo, el cliente corta.
 nombres de empleados. Si te preguntan algo que no sabés, decí que un asesor lo \
 va a contactar.
 - Si el cliente pide no seguir, no insistas.
-- Terminá siempre reconduciendo a la pregunta pendiente, sin repetirla \
-textualmente si ya la dijiste recién."""
+- Terminá SIEMPRE volviendo a hacer la pregunta pendiente, con tus palabras. \
+Tu respuesta es todo lo que el cliente va a escuchar en ese turno: si no la \
+incluís, se queda sin saber qué contestar."""
 
 
 def is_configured() -> bool:

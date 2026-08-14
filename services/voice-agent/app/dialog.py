@@ -156,13 +156,16 @@ class SurveyDialog:
                 prompt = question.text
             elif respuesta_libre:
                 # El cliente preguntó algo o se fue por las ramas: se le
-                # contesta y recién ahí se repite la pregunta.
+                # contesta. El LLM ya termina reconduciendo a la pregunta, así
+                # que volver a leerla suena a que el bot se trabó. Si por lo
+                # que sea no la incluyó, se la repite.
                 await _say(self.socket, respuesta_libre, self._voz)
-                prompt = question.text
+                prompt = None if "?" in respuesta_libre else question.text
             else:
                 prompt = self.script.fallback_script
 
-            await _say(self.socket, prompt, self._voz)
+            if prompt:
+                await _say(self.socket, prompt, self._voz)
             await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
 
             if retries_used == 0:
