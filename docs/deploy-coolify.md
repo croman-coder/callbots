@@ -11,8 +11,9 @@ no es una guía teórica.
 > sobre la RTX 5070 y la voz `es_AR-daniela-high` cargados, escuchando
 > AudioSocket en 8090.
 >
-> Lo único en rojo es **Bitrix24**: falta cargar `BITRIX_WEBHOOK_URL`. Ver
-> *Pendientes*.
+> Bitrix24 también da **ok**: el webhook está cargado y autentica contra
+> `santarosapy.bitrix24.es`. Lo que falta no es config del despliegue sino un
+> dato que en ese portal no existe todavía — ver *Pendientes*.
 
 | | |
 |---|---|
@@ -51,9 +52,9 @@ tal cual en este servidor**. Cuatro de sus puertos publicados ya están tomados:
   sale por Traefik; ARI (`8088`) y AudioSocket (`8090`) quedan en la red interna
   del stack, que es de donde los usan la API y Asterisk.
 - **Sin servicio `ollama`.** El host ya corre Ollama como servicio de systemd con
-  los modelos bajados, y se lo alcanza por `host.docker.internal:11434`. El
-  modelo configurado es `granite4.1:8b`, que ya está descargado —
-  `llama3.1:8b` no está.
+  los modelos bajados. Se lo alcanza por `host.docker.internal:11434`, que el
+  compose fija a la IP de docker0 (ver abajo). El modelo configurado es
+  `granite4.1:8b`, que ya está descargado — `llama3.1:8b` no está.
 - **Whisper en la GPU** (`medium` / `float16`) sobre la RTX 5070. Ver abajo, que
   la forma de pedir la GPU en este server no es la obvia.
 
@@ -92,7 +93,7 @@ Por eso ahora:
 
 Si algún día agregás un servicio, no le pongas bind mounts relativos.
 
-## Otras dos que muerden
+## Otras tres que muerden
 
 **Coolify le impone `restart: unless-stopped` a todos los servicios.** Un
 contenedor one-shot con esa política reinicia para siempre en vez de quedar
@@ -103,6 +104,14 @@ del `voice-agent` y no en un servicio init aparte.
 **`worker` y `beat` llevan `healthcheck: disable: true`.** Comparten la imagen
 de la API, que trae un `HEALTHCHECK` con `curl` a `/health`; en un proceso de
 Celery no hay nada escuchando en 8000 y quedarían *unhealthy* de por vida.
+
+**`host-gateway` dejó de resolver después del reload del daemon.** El
+`systemctl reload docker` con el que se registró el runtime nvidia dejó a Docker
+sin poder resolver `host-gateway`, que se calcula al arrancar. Los containers
+creados después traían `invalid IP  host.docker.internal` en `/etc/hosts` y el
+Ollama del host pasaba a inalcanzable. El compose apunta ahora a la IP de
+docker0 directamente — que acá es **10.0.0.1**, no la 172.17.0.1 de un Docker
+por default, porque Coolify pone `default-address-pools` en `10.0.0.0/8`.
 
 ---
 
@@ -269,15 +278,38 @@ echo var_export(\$a->custom_labels, true);
 
 ## Pendientes
 
-1. **`BITRIX_WEBHOOK_URL` está vacío.** Sin eso la sincronización con Bitrix24 no
-   corre: la API arranca igual pero loguea
-   `BITRIX_WEBHOOK_URL no configurado: la sincronización va a fallar`. Sacá el
-   webhook entrante de Bitrix24 → Aplicaciones → Webhooks y cargalo en Coolify.
-   Después conviene correr `scripts/bitrix_discover.py` para confirmar
-   `BITRIX_ENTITY_TYPE_ID` y los códigos de campo, que hoy están con los valores
-   de ejemplo del `.env.example`.
+1. **En Bitrix24 no existe el dato que dispara la encuesta.** El webhook ya está
+   cargado y autentica bien (portal `santarosapy.bitrix24.es`, usuario Pablo
+   Villalba), pero al inventariar el portal no aparece ninguna
+   *fecha de ingreso al taller*, que es el T0 del que cuelga todo el flujo:
 
-2. **Telefonía sin probar.** El dominio público solo expone el panel HTTP. SIP
+   - Las 5 SPAs del portal son `1042` Análisis de Créditos, `1046` Acuerdos
+     Comerciales Renault, `1050` Solicitud de tasaciones, `1056` Facturación de
+     Vehículos y `1060` Solicitudes de Test Drives. Ninguna tiene campos de
+     fecha de taller; de hecho sólo Test Drives tiene campos de fecha propios.
+   - En Negocios el único campo de fecha personalizado es
+     `ufCrm_1780413971500` ("Fecha de entrega").
+   - Hay un embudo **Posventa** (`categoryId=5`), pero con 13 negocios y las
+     etapas por default de Bitrix sin renombrar — no parece un proceso de
+     taller en uso.
+
+   O sea que el `1036` / `ufCrm5FechaIngresoTaller` del `.env.example` eran
+   valores de ejemplo, no la config de este portal. Hay que decidir de dónde
+   sale el T0 y, si no existe, crearlo en Bitrix.
+
+   No es urgente para el despliegue: `bitrix_entity_type_id` y `trigger_field`
+   son columnas **de cada campaña**, no globales, y todavía no hay campañas
+   creadas. Las variables de entorno sólo prellenan el formulario del panel.
+
+2. **El webhook no tiene permiso de telefonía.** Los scopes concedidos son
+   `crm`, `call` y `user_basic`; `telephony.externalcall.register` responde
+   `insufficient_scope`. Por eso `BITRIX_REGISTER_CALL` quedó en `false`: la
+   encuesta funciona igual, sólo que la llamada no queda registrada en el
+   módulo de telefonía de Bitrix. Para activarlo hay que editar el webhook en
+   Bitrix y agregarle el permiso **Telefonía**, y recién ahí poner la variable
+   en `true`.
+
+3. **Telefonía sin probar.** El dominio público solo expone el panel HTTP. SIP
    (`5060/udp`) y RTP no pasan por el túnel: un softphone tiene que registrarse
    contra la IP del server por LAN o Tailscale, con el usuario `softphone-1` y
    la `SOFTPHONE_PASSWORD` del `.env`. `ASTERISK_DIAL_TEMPLATE` está en
@@ -286,6 +318,6 @@ echo var_export(\$a->custom_labels, true);
    (`TRUNK_HOST`/`TRUNK_USER`/`TRUNK_PASSWORD`) y cambiar la plantilla a
    `PJSIP/{number}@trunk-proveedor`.
 
-3. **El panel está publicado con HTTP Basic como única defensa.** Alcanza para
+4. **El panel está publicado con HTTP Basic como única defensa.** Alcanza para
    ahora, pero si se expone algo más sensible conviene meterlo detrás de
    Cloudflare Access.
