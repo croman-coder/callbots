@@ -46,6 +46,14 @@ class SurveyScript(BaseModel):
     questions: list[QuestionOut]
 
 
+class ReplyRequest(BaseModel):
+    """Lo que necesita el LLM para contestar algo que no era una respuesta."""
+
+    question_text: str
+    transcript: str = ""
+    retries_used: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Reportes del voice-agent hacia la API
 # ---------------------------------------------------------------------------

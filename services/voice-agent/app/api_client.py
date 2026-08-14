@@ -128,6 +128,34 @@ class ApiClient:
             questions=[Question(**q) for q in data["questions"]],
         )
 
+    async def conversational_reply(
+        self,
+        session_uuid: uuid_mod.UUID,
+        question_text: str,
+        transcript: str,
+        retries_used: int,
+    ) -> str | None:
+        """Qué decirle al cliente cuando no contestó la pregunta.
+
+        Devuelve None si no hay LLM configurado o si falla: el que llama usa
+        la frase fija. Nunca se propaga el error, porque del otro lado hay
+        alguien esperando en silencio.
+        """
+        try:
+            response = await self._client.post(
+                f"/internal/sessions/{session_uuid}/reply",
+                json={
+                    "question_text": question_text,
+                    "transcript": transcript,
+                    "retries_used": retries_used,
+                },
+            )
+            response.raise_for_status()
+            return response.json().get("reply") or None
+        except httpx.HTTPError as exc:
+            log.warning("No se pudo pedir la respuesta conversacional: %s", exc)
+            return None
+
     async def get_all_prompts(self) -> list[dict]:
         """Texto fijo de las campañas activas, agrupado con su modulación de voz."""
         try:

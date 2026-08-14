@@ -37,10 +37,12 @@ from app.schemas import (
     AnswerIn,
     AnswerResult,
     QuestionOut,
+    ReplyRequest,
     SessionFinished,
     SessionStarted,
     SurveyScript,
 )
+from app.services import conversation
 from app.services.scoring import interpret
 
 log = logging.getLogger(__name__)
@@ -271,6 +273,40 @@ def session_finished(
 
 
 # ---------------------------------------------------------------------------
+@router.post("/sessions/{session_uuid}/reply")
+async def conversational_reply(
+    session_uuid: uuid_mod.UUID,
+    body: ReplyRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Qué contestarle al cliente cuando dijo algo que no es una respuesta.
+
+    Solo se llama en la rama de excepción: si el cliente contestó bien, el
+    voice-agent sigue de largo sin pasar por acá y sin pagar la latencia.
+
+    Devuelve `{"reply": null}` cuando Gemini no está configurado, tarda de más
+    o falla. El voice-agent usa entonces la frase fija de la campaña.
+    """
+    if session_uuid == DEMO_UUID:
+        campaign = db.scalar(
+            select(Campaign).where(Campaign.is_active.is_(True)).order_by(Campaign.id)
+        )
+    else:
+        call = _load_call(db, session_uuid)
+        campaign = call.target.campaign if call.target else None
+
+    texto = await conversation.reply(
+        pregunta=body.question_text,
+        dijo=body.transcript,
+        intento=body.retries_used,
+        extra_prompt=getattr(campaign, "conversation_prompt", None),
+    )
+    if texto:
+        log.info("[%s] Respuesta conversacional: %r", session_uuid, texto[:80])
+
+    return {"reply": texto}
+
+
 @router.get("/prompts")
 def all_prompts(db: Session = Depends(get_db)) -> dict:
     """Todo el texto fijo de las campañas activas, para precalentar el TTS.

@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     voicebox_profile_id: str = ""
     voicebox_engine: str = "qwen"
 
+    # --- Gemini (respuestas conversacionales) ---
+    # Vacío = el bot usa la frase fija cuando no entiende, como siempre.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    # Corto a propósito: del otro lado hay alguien esperando en silencio.
+    gemini_timeout_seconds: float = 4.0
+
     # --- Ollama ---
     ollama_url: str = "http://ollama:11434"
     ollama_model: str = "llama3.1:8b"

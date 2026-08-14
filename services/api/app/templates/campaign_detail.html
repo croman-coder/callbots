@@ -168,6 +168,23 @@
       <textarea name="optout_script" required>{{ campaign.optout_script }}</textarea>
     </label>
 
+    <h2 style="margin-top:26px">Respuestas conversacionales</h2>
+    <p class="sub" style="margin-bottom:14px">
+      Contexto para cuando el cliente <strong>pregunta algo en vez de
+      responder</strong>. Solo se usa ahí: si contesta bien, la llamada sigue
+      sin pasar por el LLM y sin latencia extra. Requiere
+      <code>GEMINI_API_KEY</code>; sin eso se dice la frase fija de abajo.
+    </p>
+    <label>Contexto del taller
+      <textarea name="conversation_prompt" rows="6"
+                placeholder="Ej.: El taller queda en Av. Eusebio Ayala 1234, atiende de 7 a 17. Trabajamos Renault, Mitsubishi y GWM. Si preguntan por el estado de un vehículo o por precios, decí que un asesor lo va a contactar: no tenés esos datos.">{{ campaign.conversation_prompt or '' }}</textarea>
+      <span class="hint">
+        El bot no puede inventar precios, plazos ni estados de vehículos —
+        está instruido para derivar a un asesor. Lo que pongas acá es lo único
+        que va a dar por cierto.
+      </span>
+    </label>
+
     <h2 style="margin-top:26px">Instrucciones para el análisis</h2>
     <p class="sub" style="margin-bottom:14px">
       Contexto del negocio y criterios para el LLM que resume la llamada

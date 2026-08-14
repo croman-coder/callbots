@@ -147,9 +147,21 @@ class SurveyDialog:
     async def _ask(self, question: Question) -> bool:
         """Hace una pregunta. Devuelve False si hay que terminar la llamada."""
         retries_used = 0
+        # Lo que el LLM contestó al intento anterior. Se dice antes de volver
+        # a preguntar, en lugar de la frase fija.
+        respuesta_libre: str | None = None
 
         while True:
-            prompt = question.text if retries_used == 0 else self.script.fallback_script
+            if retries_used == 0:
+                prompt = question.text
+            elif respuesta_libre:
+                # El cliente preguntó algo o se fue por las ramas: se le
+                # contesta y recién ahí se repite la pregunta.
+                await _say(self.socket, respuesta_libre, self._voz)
+                prompt = question.text
+            else:
+                prompt = self.script.fallback_script
+
             await _say(self.socket, prompt, self._voz)
             await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
 
@@ -204,6 +216,19 @@ class SurveyDialog:
                 return False
 
             if verdict.should_retry:
+                # Solo acá se llama al LLM: si la respuesta se entendió, la
+                # llamada sigue sin pagar un segundo de latencia extra.
+                respuesta_libre = await self.api.conversational_reply(
+                    session_uuid=self.session_uuid,
+                    question_text=question.text,
+                    transcript=transcript,
+                    retries_used=retries_used,
+                )
+                if respuesta_libre:
+                    log.info(
+                        "[%s] P%d respuesta libre: %r",
+                        self.session_uuid, question.position, respuesta_libre[:70],
+                    )
                 retries_used += 1
                 continue
 

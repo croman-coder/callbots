@@ -249,6 +249,7 @@ def update_campaign(
     outro_script: str = Form(...),
     fallback_script: str = Form(...),
     optout_script: str = Form(...),
+    conversation_prompt: str = Form(""),
     analysis_prompt: str = Form(""),
     voice_speed: float = Form(1.0),
     voice_pitch: float = Form(1.0),
@@ -281,6 +282,7 @@ def update_campaign(
     campaign.optout_script = optout_script
     # Se acotan acá y no solo en el HTML: el form se puede saltear, y un
     # length_scale absurdo deja la voz irreconocible o tarda una eternidad.
+    campaign.conversation_prompt = conversation_prompt.strip() or None
     campaign.analysis_prompt = analysis_prompt.strip() or None
     campaign.voice_speed = min(max(voice_speed, 0.5), 2.0)
     campaign.voice_pitch = min(max(voice_pitch, 0.7), 1.4)

@@ -96,6 +96,9 @@ class Campaign(Base):
     max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     retry_interval_minutes: Mapped[int] = mapped_column(Integer, default=180)
 
+    # Contexto para las respuestas conversacionales durante la llamada.
+    conversation_prompt: Mapped[str | None] = mapped_column(Text)
+
     # Instrucciones extra para el LLM que analiza la llamada. Se suman al
     # prompt base, que ya fija el contrato JSON que la aplicación parsea.
     analysis_prompt: Mapped[str | None] = mapped_column(Text)
