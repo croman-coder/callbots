@@ -462,10 +462,12 @@ def add_targets(
     trigger_at = ahora
     base = ahora if cuando == "ahora" else ahora + timedelta(hours=campaign.delay_hours)
 
+    # parse_hhmm pide un fallback: si la campaña tiene el horario mal escrito,
+    # se usa el del entorno en vez de reventar.
     scheduled_at = next_call_slot(
         base,
-        parse_hhmm(campaign.call_window_start),
-        parse_hhmm(campaign.call_window_end),
+        parse_hhmm(campaign.call_window_start, settings.call_window_start),
+        parse_hhmm(campaign.call_window_end, settings.call_window_end),
         parse_days(campaign.call_window_days),
         tz,
     )
