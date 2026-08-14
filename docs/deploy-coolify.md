@@ -159,6 +159,39 @@ ssh srpy-servidor 'nvidia-smi --query-compute-apps=pid,process_name,used_memory 
 
 ---
 
+## Probar la encuesta completa sin teléfono
+
+`scripts/simular_llamada.py` hace de canal de Asterisk: abre el AudioSocket del
+voice-agent, manda el UUID de demo y conversa con el bot en tramas de 20 ms.
+Prueba presentación, las seis preguntas, el reconocimiento y el cierre sin
+troncal, sin softphone y sin que nadie atienda.
+
+```bash
+ssh srpy-servidor 'docker exec -w /app $(docker ps \
+  --filter name=voice-agent-xg5ucgo36sqanypjxpajzyk5 --format "{{.Names}}" | head -1) \
+  python scripts/simular_llamada.py --guardar /tmp/llamada.wav'
+```
+
+Corre contra la campaña **activa** en modo demo (el mismo camino que la
+extensión 9000): no toca Bitrix, no marca destinatarios y no guarda resultados.
+Lo que entendió sale en los logs:
+
+```bash
+ssh srpy-servidor 'docker logs $(docker ps \
+  --filter name=voice-agent-xg5ucgo36sqanypjxpajzyk5 --format "{{.Names}}" | head -1) \
+  2>&1 | grep app.dialog'
+```
+
+Corrida del 2026-08-14: 6/6 preguntas transcritas exactas, 56 s de llamada,
+37 s de voz del bot, ~0,5 s de reconocimiento por respuesta. Promedio 9,20/10.
+
+**Ojo con qué prueba y qué no.** Las respuestas del cliente las sintetiza el
+mismo Piper que usa el bot, así que valida el circuito y la lógica, no la
+precisión del reconocimiento con voz humana. Y no pasa por SIP ni RTP: eso se
+prueba con un softphone real.
+
+---
+
 ## Variables de entorno
 
 Las 62 variables están cargadas en Coolify (pestaña *Environment Variables*) y
