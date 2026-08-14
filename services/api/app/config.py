@@ -27,6 +27,11 @@ class Settings(BaseSettings):
 
     recordings_dir: str = "/recordings"
 
+    # AudioSocket del voice-agent. Lo usa el simulador del panel para hacer de
+    # puente con el micrófono del navegador.
+    audiosocket_host: str = "voice-agent"
+    audiosocket_port: int = 8090
+
     # --- Bitrix24 ---
     bitrix_webhook_url: str = ""
     bitrix_entity_type_id: int = 2

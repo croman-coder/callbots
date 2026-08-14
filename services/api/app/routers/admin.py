@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.config import settings
 from app.db import get_db
 from app.deps import require_admin
+from app.routers.simulator import emitir_ticket
 from app.services import voicebox
 from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
@@ -483,6 +484,29 @@ def reanalyze(call_id: int) -> RedirectResponse:
 # ---------------------------------------------------------------------------
 # Voz del bot
 # ---------------------------------------------------------------------------
+@router.get("/simulador", response_class=HTMLResponse)
+def simulador_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    """Página para hablar con el bot desde el navegador.
+
+    Emite un ticket de un solo uso porque el navegador no manda las
+    credenciales de HTTP Basic al abrir un WebSocket.
+    """
+    campaign = db.scalar(
+        select(Campaign).where(Campaign.is_active.is_(True)).order_by(Campaign.id)
+    )
+    preguntas = len([q for q in campaign.questions if q.is_active]) if campaign else 0
+
+    return templates.TemplateResponse(
+        request,
+        "simulator.html",
+        {
+            "campaign": campaign,
+            "preguntas": preguntas,
+            "ticket": emitir_ticket(),
+        },
+    )
+
+
 @router.get("/voices", response_class=HTMLResponse)
 def voices_page(
     request: Request,

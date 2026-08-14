@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import admin, internal
+from app.routers import admin, internal, simulator
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -29,6 +29,7 @@ app = FastAPI(
 
 app.include_router(internal.router)
 app.include_router(admin.router)
+app.include_router(simulator.router)
 
 
 @app.get("/health", include_in_schema=False)

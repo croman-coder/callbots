@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+{% set nav = "simulador" %}
+{% block title %}Simulador · Callbot{% endblock %}
+
+{% block content %}
+<h1>Simulador de llamada</h1>
+<p class="sub">Hablá con el bot desde el navegador, sin teléfono</p>
+
+{% if not campaign %}
+<div class="card">
+  <strong>No hay ninguna campaña activa.</strong>
+  <p>El simulador corre la campaña activa, igual que la extensión 9000.
+     Activá una en <a href="/campaigns">Campañas</a> y volvé.</p>
+</div>
+{% else %}
+
+<div class="card">
+  <p style="margin-top:0">
+    Corre <strong>{{ campaign.name }}</strong> ({{ preguntas }} preguntas) en
+    <strong>modo demo</strong>: no toca Bitrix, no marca destinatarios y no
+    guarda resultados.
+  </p>
+  <p style="color:var(--muted);margin-bottom:0">
+    Usá auriculares. Sin ellos el micrófono capta al bot por los parlantes y
+    se corta solo a mitad de la pregunta.
+  </p>
+</div>
+
+<div class="card">
+  <button id="btn" class="btn">Llamar</button>
+  <span id="estado" style="margin-left:14px;color:var(--muted)">Listo para llamar</span>
+
+  <div id="medidor" style="margin-top:18px;display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <span style="width:70px;color:var(--muted);font-size:13px">Tu voz</span>
+      <div style="flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div id="nivel-mic" style="height:100%;width:0;background:var(--accent);transition:width .06s"></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="width:70px;color:var(--muted);font-size:13px">El bot</span>
+      <div style="flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden">
+        <div id="nivel-bot" style="height:100%;width:0;background:var(--ok);transition:width .06s"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Registro</h2>
+  <pre id="log" style="margin:0;max-height:260px;overflow:auto;font-size:13px;white-space:pre-wrap"></pre>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var TASA = 8000;            // el AudioSocket habla slin 8 kHz
+  var TICKET = {{ ticket | tojson }};
+
+  var btn = document.getElementById("btn");
+  var estado = document.getElementById("estado");
+  var logEl = document.getElementById("log");
+  var medidor = document.getElementById("medidor");
+  var nivelMic = document.getElementById("nivel-mic");
+  var nivelBot = document.getElementById("nivel-bot");
+
+  var ws = null, ctx = null, stream = null, fuente = null, proc = null;
+  var enCurso = false;
+  var proximaReproduccion = 0;
+
+  function log(msg) {
+    var t = new Date().toLocaleTimeString();
+    logEl.textContent += "[" + t + "] " + msg + "\n";
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function rms(muestras) {
+    var suma = 0;
+    for (var i = 0; i < muestras.length; i++) suma += muestras[i] * muestras[i];
+    return Math.sqrt(suma / muestras.length);
+  }
+
+  // Del sample rate del navegador (48 kHz casi siempre) a 8 kHz.
+  // Se promedian los sobrantes en vez de tirarlos: la decimación pelada
+  // mete aliasing y a Whisper le cuesta bastante más.
+  function bajarA8k(entrada, tasaOrigen) {
+    var razon = tasaOrigen / TASA;
+    var largo = Math.floor(entrada.length / razon);
+    var salida = new Int16Array(largo);
+    for (var i = 0; i < largo; i++) {
+      var desde = Math.floor(i * razon);
+      var hasta = Math.min(Math.floor((i + 1) * razon), entrada.length);
+      var suma = 0, n = 0;
+      for (var j = desde; j < hasta; j++) { suma += entrada[j]; n++; }
+      var v = n ? suma / n : 0;
+      v = Math.max(-1, Math.min(1, v));
+      salida[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+    return salida;
+  }
+
+  function reproducir(int16) {
+    if (!ctx) return;
+    var buf = ctx.createBuffer(1, int16.length, TASA);
+    var canal = buf.getChannelData(0);
+    for (var i = 0; i < int16.length; i++) canal[i] = int16[i] / 0x8000;
+
+    var fuenteAudio = ctx.createBufferSource();
+    fuenteAudio.buffer = buf;
+    fuenteAudio.connect(ctx.destination);
+
+    // Se encadenan los trozos en la línea de tiempo del AudioContext. Si nos
+    // atrasamos, se reengancha al presente para no acumular retardo.
+    var ahora = ctx.currentTime;
+    if (proximaReproduccion < ahora + 0.05) proximaReproduccion = ahora + 0.05;
+    fuenteAudio.start(proximaReproduccion);
+    proximaReproduccion += buf.duration;
+
+    nivelBot.style.width = Math.min(100, rms(canal) * 350) + "%";
+  }
+
+  async function llamar() {
+    try {
+      estado.textContent = "Pidiendo el micrófono...";
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        }
+      });
+    } catch (e) {
+      estado.textContent = "Sin micrófono";
+      log("No se pudo abrir el micrófono: " + e.message);
+      log("Si el navegador no preguntó nada, revisá que la página sea https.");
+      return;
+    }
+
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    proximaReproduccion = 0;
+
+    var proto = location.protocol === "https:" ? "wss://" : "ws://";
+    ws = new WebSocket(proto + location.host + "/simulador/ws?ticket=" +
+                       encodeURIComponent(TICKET));
+    ws.binaryType = "arraybuffer";
+
+    ws.onopen = function () { log("Conectado. Esperando al bot..."); };
+
+    ws.onmessage = function (ev) {
+      if (typeof ev.data === "string") {
+        var m = JSON.parse(ev.data);
+        if (m.evento === "listo") {
+          estado.textContent = "En llamada";
+          log("Llamada establecida. El bot va a hablar primero.");
+        } else if (m.evento === "colgo") {
+          log("El bot colgó: la encuesta terminó.");
+          cortar();
+        } else if (m.evento === "error") {
+          log("Error del servidor: " + m.detalle);
+          cortar();
+        }
+        return;
+      }
+      reproducir(new Int16Array(ev.data));
+    };
+
+    ws.onerror = function () { log("Error de WebSocket."); };
+    ws.onclose = function () { if (enCurso) { log("Conexión cerrada."); cortar(); } };
+
+    fuente = ctx.createMediaStreamSource(stream);
+    proc = ctx.createScriptProcessor(2048, 1, 1);
+    proc.onaudioprocess = function (ev) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      var entrada = ev.inputBuffer.getChannelData(0);
+      nivelMic.style.width = Math.min(100, rms(entrada) * 350) + "%";
+      ws.send(bajarA8k(entrada, ctx.sampleRate).buffer);
+    };
+    fuente.connect(proc);
+    // Necesario en Chrome para que el ScriptProcessor corra. Ganancia en cero
+    // para no devolverte tu propia voz por los parlantes.
+    var mudo = ctx.createGain();
+    mudo.gain.value = 0;
+    proc.connect(mudo);
+    mudo.connect(ctx.destination);
+
+    enCurso = true;
+    btn.textContent = "Cortar";
+    medidor.style.display = "block";
+  }
+
+  function cortar() {
+    enCurso = false;
+    btn.textContent = "Llamar";
+    estado.textContent = "Llamada terminada";
+    medidor.style.display = "none";
+    nivelMic.style.width = "0";
+    nivelBot.style.width = "0";
+
+    if (proc) { proc.disconnect(); proc.onaudioprocess = null; proc = null; }
+    if (fuente) { fuente.disconnect(); fuente = null; }
+    if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
+    if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+    ws = null;
+    if (ctx) { ctx.close(); ctx = null; }
+
+    // El ticket es de un solo uso: para volver a llamar hay que recargar.
+    btn.disabled = true;
+    btn.textContent = "Recargá para llamar de nuevo";
+  }
+
+  btn.addEventListener("click", function () {
+    if (enCurso) { log("Cortaste vos."); cortar(); }
+    else llamar();
+  });
+
+  if (!navigator.mediaDevices || !window.WebSocket) {
+    btn.disabled = true;
+    estado.textContent = "Este navegador no sirve para el simulador";
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}
