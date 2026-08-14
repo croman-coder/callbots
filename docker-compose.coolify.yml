@@ -133,6 +133,10 @@ services:
       dockerfile: services/api/Dockerfile
     restart: unless-stopped
     command: celery -A app.scheduler.worker.celery_app worker --loglevel=info --concurrency=4
+    # La imagen trae el healthcheck de la API (curl a /health). Acá no hay
+    # nada escuchando en 8000, así que quedaría "unhealthy" de por vida.
+    healthcheck:
+      disable: true
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
@@ -197,6 +201,8 @@ services:
       dockerfile: services/api/Dockerfile
     restart: unless-stopped
     command: celery -A app.scheduler.worker.celery_app beat --loglevel=info
+    healthcheck:
+      disable: true
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
