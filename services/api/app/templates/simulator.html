@@ -77,6 +77,7 @@
   // AudioBufferSourceNode por trama, que a 50 por segundo metía clics.
   var cola = [], colaPos = 0, colaLargo = 0, arrancoPlayback = false;
   var restoBot = 0;                // fase del interpolador 8k -> nativo
+  var ultimaMuestraBot = 0;        // valor sostenido entre muestras
   var ultimaVozBot = -1e9;         // ctx.currentTime de la última sílaba
 
   function log(msg) {
@@ -119,16 +120,18 @@
 
     for (var i = 0; i < salida.length; i++) {
       restoBot += paso;
-      var v = 0;
       while (restoBot >= 1) {
         var m = siguienteMuestraBot();
         if (m === null) { restoBot = 0; break; }
-        v = m;
+        // Se guarda aparte y no con `v || anterior`: una muestra legítima en
+        // cero es falsy, y reemplazarla por la anterior distorsiona cada
+        // cruce por cero, que en voz son muchísimos.
+        ultimaMuestraBot = m;
         restoBot -= 1;
       }
-      // Mantener la última muestra entre saltos es una interpolación de orden
-      // cero: alcanza para voz telefónica y no cuesta nada.
-      salida[i] = v || (i ? salida[i - 1] : 0);
+      // Sostener la última muestra entre saltos es interpolación de orden
+      // cero: alcanza de sobra para voz telefónica y no cuesta nada.
+      salida[i] = ultimaMuestraBot;
       var a = Math.abs(salida[i]);
       if (a > pico) pico = a;
     }
@@ -169,7 +172,7 @@
 
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     cola = []; colaPos = 0; colaLargo = 0; arrancoPlayback = false;
-    restoBot = 0; ultimaVozBot = -1e9;
+    restoBot = 0; ultimaMuestraBot = 0; ultimaVozBot = -1e9;
 
     var proto = location.protocol === "https:" ? "wss://" : "ws://";
     ws = new WebSocket(proto + location.host + "/simulador/ws?ticket=" +
