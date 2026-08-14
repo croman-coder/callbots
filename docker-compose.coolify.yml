@@ -1,0 +1,348 @@
+# =============================================================================
+# Callbot — compose para Coolify (servidor SRPY186)
+#
+# Diferencias con docker-compose.yml (el de desarrollo local):
+#
+#   1. Sin puertos publicados salvo SIP/RTP. En el server ya están tomados
+#      5432 (supabase-pooler), 8000 (supabase-kong), 8090 (coolify) y
+#      11434 (ollama del host). El panel sale por Traefik, no por un puerto.
+#   2. Sin `ollama` propio: se usa el que ya corre en el host como servicio de
+#      systemd, con los modelos ya descargados.
+#   3. Sin bind-mount del código: la imagen ya lo trae. Solo se montan scripts
+#      y voces, que viven fuera del contexto de build.
+#   4. `models-init` baja la voz de Piper antes de que arranque el voice-agent.
+#      Sin ese archivo el TTS tira FileNotFoundError en la primera llamada.
+#   5. Whisper en CPU: el host no tiene configurado nvidia-container-toolkit
+#      (hace falta sudo). Con 24 cores el modelo `small` va holgado.
+#
+#   docker compose -f docker-compose.coolify.yml up -d
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # API REST + panel de administración. Es el único servicio con dominio.
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      RECORDINGS_DIR: /recordings
+      LOG_LEVEL: ${LOG_LEVEL}
+      TZ: ${TZ}
+      BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL}
+      BITRIX_ENTITY_TYPE_ID: ${BITRIX_ENTITY_TYPE_ID}
+      BITRIX_FIELD_WORKSHOP_ENTRY: ${BITRIX_FIELD_WORKSHOP_ENTRY}
+      BITRIX_FIELD_INVOICE_DATE: ${BITRIX_FIELD_INVOICE_DATE}
+      BITRIX_FIELD_DELIVERY_DATE: ${BITRIX_FIELD_DELIVERY_DATE}
+      BITRIX_FIELD_CONTACT_ID: ${BITRIX_FIELD_CONTACT_ID}
+      BITRIX_FIELD_SCORE_WRITEBACK: ${BITRIX_FIELD_SCORE_WRITEBACK}
+      BITRIX_TIMELINE_COMMENT: ${BITRIX_TIMELINE_COMMENT}
+      BITRIX_REGISTER_CALL: ${BITRIX_REGISTER_CALL}
+      BITRIX_TELEPHONY_USER_ID: ${BITRIX_TELEPHONY_USER_ID}
+      SURVEY_DELAY_HOURS: ${SURVEY_DELAY_HOURS}
+      CALL_WINDOW_START: ${CALL_WINDOW_START}
+      CALL_WINDOW_END: ${CALL_WINDOW_END}
+      CALL_WINDOW_DAYS: ${CALL_WINDOW_DAYS}
+      MAX_CALL_ATTEMPTS: ${MAX_CALL_ATTEMPTS}
+      RETRY_INTERVAL_MINUTES: ${RETRY_INTERVAL_MINUTES}
+      BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES}
+      MAX_CONCURRENT_CALLS: ${MAX_CONCURRENT_CALLS}
+      CALL_ANSWER_TIMEOUT_SECONDS: ${CALL_ANSWER_TIMEOUT_SECONDS}
+      ARI_URL: http://asterisk:8088
+      ARI_USER: ${ARI_USER}
+      ARI_PASSWORD: ${ARI_PASSWORD}
+      ARI_APP: ${ARI_APP}
+      ASTERISK_DIAL_TEMPLATE: ${ASTERISK_DIAL_TEMPLATE}
+      ASTERISK_CONTEXT: ${ASTERISK_CONTEXT}
+      ASTERISK_EXTENSION: ${ASTERISK_EXTENSION}
+      ASTERISK_CALLERID: ${ASTERISK_CALLERID}
+      ASTERISK_DIAL_TIMEOUT: ${ASTERISK_DIAL_TIMEOUT}
+      OLLAMA_URL: ${OLLAMA_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED}
+      VOICEBOX_URL: ${VOICEBOX_URL}
+      VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID}
+      VOICEBOX_ENGINE: ${VOICEBOX_ENGINE}
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./voices:/voices
+      - recordings:/recordings
+    # host.docker.internal alcanza el Ollama del host (systemd, puerto 11434)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Worker: origina llamadas, analiza resultados, escribe en Bitrix
+  worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A app.scheduler.worker.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      RECORDINGS_DIR: /recordings
+      LOG_LEVEL: ${LOG_LEVEL}
+      TZ: ${TZ}
+      BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL}
+      BITRIX_ENTITY_TYPE_ID: ${BITRIX_ENTITY_TYPE_ID}
+      BITRIX_FIELD_WORKSHOP_ENTRY: ${BITRIX_FIELD_WORKSHOP_ENTRY}
+      BITRIX_FIELD_INVOICE_DATE: ${BITRIX_FIELD_INVOICE_DATE}
+      BITRIX_FIELD_DELIVERY_DATE: ${BITRIX_FIELD_DELIVERY_DATE}
+      BITRIX_FIELD_CONTACT_ID: ${BITRIX_FIELD_CONTACT_ID}
+      BITRIX_FIELD_SCORE_WRITEBACK: ${BITRIX_FIELD_SCORE_WRITEBACK}
+      BITRIX_TIMELINE_COMMENT: ${BITRIX_TIMELINE_COMMENT}
+      BITRIX_REGISTER_CALL: ${BITRIX_REGISTER_CALL}
+      BITRIX_TELEPHONY_USER_ID: ${BITRIX_TELEPHONY_USER_ID}
+      SURVEY_DELAY_HOURS: ${SURVEY_DELAY_HOURS}
+      CALL_WINDOW_START: ${CALL_WINDOW_START}
+      CALL_WINDOW_END: ${CALL_WINDOW_END}
+      CALL_WINDOW_DAYS: ${CALL_WINDOW_DAYS}
+      MAX_CALL_ATTEMPTS: ${MAX_CALL_ATTEMPTS}
+      RETRY_INTERVAL_MINUTES: ${RETRY_INTERVAL_MINUTES}
+      BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES}
+      MAX_CONCURRENT_CALLS: ${MAX_CONCURRENT_CALLS}
+      CALL_ANSWER_TIMEOUT_SECONDS: ${CALL_ANSWER_TIMEOUT_SECONDS}
+      ARI_URL: http://asterisk:8088
+      ARI_USER: ${ARI_USER}
+      ARI_PASSWORD: ${ARI_PASSWORD}
+      ARI_APP: ${ARI_APP}
+      ASTERISK_DIAL_TEMPLATE: ${ASTERISK_DIAL_TEMPLATE}
+      ASTERISK_CONTEXT: ${ASTERISK_CONTEXT}
+      ASTERISK_EXTENSION: ${ASTERISK_EXTENSION}
+      ASTERISK_CALLERID: ${ASTERISK_CALLERID}
+      ASTERISK_DIAL_TIMEOUT: ${ASTERISK_DIAL_TIMEOUT}
+      OLLAMA_URL: ${OLLAMA_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED}
+      VOICEBOX_URL: ${VOICEBOX_URL}
+      VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID}
+      VOICEBOX_ENGINE: ${VOICEBOX_ENGINE}
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./voices:/voices
+      - recordings:/recordings
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  # ---------------------------------------------------------------------------
+  # Beat: sincroniza Bitrix cada N minutos y dispara las llamadas vencidas
+  beat:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: celery -A app.scheduler.worker.celery_app beat --loglevel=info
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      RECORDINGS_DIR: /recordings
+      LOG_LEVEL: ${LOG_LEVEL}
+      TZ: ${TZ}
+      BITRIX_WEBHOOK_URL: ${BITRIX_WEBHOOK_URL}
+      BITRIX_ENTITY_TYPE_ID: ${BITRIX_ENTITY_TYPE_ID}
+      BITRIX_FIELD_WORKSHOP_ENTRY: ${BITRIX_FIELD_WORKSHOP_ENTRY}
+      BITRIX_FIELD_CONTACT_ID: ${BITRIX_FIELD_CONTACT_ID}
+      SURVEY_DELAY_HOURS: ${SURVEY_DELAY_HOURS}
+      CALL_WINDOW_START: ${CALL_WINDOW_START}
+      CALL_WINDOW_END: ${CALL_WINDOW_END}
+      CALL_WINDOW_DAYS: ${CALL_WINDOW_DAYS}
+      MAX_CALL_ATTEMPTS: ${MAX_CALL_ATTEMPTS}
+      RETRY_INTERVAL_MINUTES: ${RETRY_INTERVAL_MINUTES}
+      BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES}
+      MAX_CONCURRENT_CALLS: ${MAX_CONCURRENT_CALLS}
+      CALL_ANSWER_TIMEOUT_SECONDS: ${CALL_ANSWER_TIMEOUT_SECONDS}
+      ARI_URL: http://asterisk:8088
+      ARI_USER: ${ARI_USER}
+      ARI_PASSWORD: ${ARI_PASSWORD}
+      ARI_APP: ${ARI_APP}
+      OLLAMA_URL: ${OLLAMA_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OLLAMA_ENABLED: ${OLLAMA_ENABLED}
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - recordings:/recordings
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------------------
+  # Baja la voz de Piper al volumen `models` y termina. El voice-agent espera a
+  # que salga con código 0: sin el .onnx, el TTS falla recién en plena llamada.
+  models-init:
+    image: curlimages/curl:8.11.1
+    user: root
+    volumes:
+      - models:/models
+    environment:
+      PIPER_VOICE: ${PIPER_VOICE}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        VOICE="$${PIPER_VOICE:-es_AR-daniela-high}"
+        DEST=/models/piper
+        LANG_REGION="$${VOICE%%-*}"
+        LANG_CODE="$${LANG_REGION%%_*}"
+        REST="$${VOICE#*-}"
+        SPEAKER="$${REST%%-*}"
+        QUALITY="$${REST##*-}"
+        BASE=https://huggingface.co/rhasspy/piper-voices/resolve/main
+        SRC="$$BASE/$$LANG_CODE/$$LANG_REGION/$$SPEAKER/$$QUALITY"
+        mkdir -p "$$DEST"
+        for F in "$$VOICE.onnx" "$$VOICE.onnx.json"; do
+          if [ -s "$$DEST/$$F" ]; then
+            echo "ya está: $$F"
+          else
+            echo "bajando $$F ..."
+            curl -fSL "$$SRC/$$F" -o "$$DEST/$$F" || { rm -f "$$DEST/$$F"; exit 1; }
+          fi
+        done
+        ls -lh "$$DEST"
+
+  # ---------------------------------------------------------------------------
+  # Agente de voz: AudioSocket + Piper (TTS) + faster-whisper (STT)
+  # No publica puertos: solo lo consume `asterisk`, por la red interna.
+  voice-agent:
+    build:
+      context: ./services/voice-agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://api:8000
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      RECORDINGS_DIR: /recordings
+      AUDIOSOCKET_HOST: 0.0.0.0
+      AUDIOSOCKET_PORT: "8090"
+      WHISPER_MODEL: ${WHISPER_MODEL}
+      WHISPER_DEVICE: ${WHISPER_DEVICE}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE}
+      PIPER_VOICE: ${PIPER_VOICE}
+      TTS_CACHE_DIR: /models/tts-cache
+      VOICEBOX_URL: ${VOICEBOX_URL}
+      VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID}
+      VOICEBOX_ENGINE: ${VOICEBOX_ENGINE}
+      VOICEBOX_LANGUAGE: ${VOICEBOX_LANGUAGE}
+      VOICEBOX_WARMUP_TIMEOUT: ${VOICEBOX_WARMUP_TIMEOUT}
+      VOICEBOX_CALL_TIMEOUT: ${VOICEBOX_CALL_TIMEOUT}
+      VAD_AGGRESSIVENESS: ${VAD_AGGRESSIVENESS}
+      SILENCE_MS_TO_STOP: ${SILENCE_MS_TO_STOP}
+      MAX_ANSWER_SECONDS: ${MAX_ANSWER_SECONDS}
+      NO_SPEECH_TIMEOUT_SECONDS: ${NO_SPEECH_TIMEOUT_SECONDS}
+      SAVE_AUDIO: ${SAVE_AUDIO}
+      LOG_LEVEL: ${LOG_LEVEL}
+      TZ: ${TZ}
+    volumes:
+      - models:/models
+      - recordings:/recordings
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      models-init:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+
+  # ---------------------------------------------------------------------------
+  # Único servicio con puertos en el host: SIP y RTP no pasan por Traefik.
+  # 8088 (ARI) queda solo en la red interna, que es donde lo usa la API.
+  asterisk:
+    build:
+      context: ./docker/asterisk
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ARI_USER: ${ARI_USER}
+      ARI_PASSWORD: ${ARI_PASSWORD}
+      AUDIOSOCKET_HOST: voice-agent
+      AUDIOSOCKET_PORT: "8090"
+      RTP_START: ${RTP_START}
+      RTP_END: ${RTP_END}
+      SOFTPHONE_PASSWORD: ${SOFTPHONE_PASSWORD}
+      TRUNK_HOST: ${TRUNK_HOST}
+      TRUNK_USER: ${TRUNK_USER}
+      TRUNK_PASSWORD: ${TRUNK_PASSWORD}
+      TZ: ${TZ}
+    ports:
+      - "${SIP_PORT}:5060/udp"
+      - "${SIP_PORT}:5060/tcp"
+      - "${RTP_START}-${RTP_END}:${RTP_START}-${RTP_END}/udp"
+    volumes:
+      - ./docker/asterisk/etc:/etc/asterisk-tpl:ro
+      - asterisk-spool:/var/spool/asterisk
+    depends_on:
+      - voice-agent
+
+volumes:
+  pgdata:
+  redisdata:
+  models:
+  recordings:
+  asterisk-spool:
