@@ -200,7 +200,8 @@
         <input type="range" name="voice_pitch" min="0.8" max="1.25" step="0.01"
                value="{{ campaign.voice_pitch }}"
                oninput="this.nextElementSibling.textContent = this.value">
-        <span class="hint">{{ campaign.voice_pitch }} <span style="opacity:.7">— menos es más grave</span></span>
+        <span class="hint">{{ campaign.voice_pitch }}
+          <span style="opacity:.7">— menos es más grave; también acorta un poco la frase</span></span>
       </label>
       <label>Expresividad
         <input type="range" name="voice_expressiveness" min="0" max="1.2" step="0.02"
@@ -209,10 +210,11 @@
         <span class="hint">{{ campaign.voice_expressiveness }} <span style="opacity:.7">— 0 es plano y monótono</span></span>
       </label>
       <label>Volumen
-        <input type="range" name="voice_volume" min="0.3" max="2" step="0.05"
+        <input type="range" name="voice_volume" min="0.4" max="1.2" step="0.05"
                value="{{ campaign.voice_volume }}"
                oninput="this.nextElementSibling.textContent = this.value + 'x'">
-        <span class="hint">{{ campaign.voice_volume }}x</span>
+        <span class="hint">{{ campaign.voice_volume }}x
+          <span style="opacity:.7">— Piper ya sale casi al máximo: arriba de 1 satura</span></span>
       </label>
     </div>
 

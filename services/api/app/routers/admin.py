@@ -282,7 +282,7 @@ def update_campaign(
     campaign.voice_speed = min(max(voice_speed, 0.5), 2.0)
     campaign.voice_pitch = min(max(voice_pitch, 0.7), 1.4)
     campaign.voice_expressiveness = min(max(voice_expressiveness, 0.0), 1.5)
-    campaign.voice_volume = min(max(voice_volume, 0.1), 3.0)
+    campaign.voice_volume = min(max(voice_volume, 0.2), 1.5)
     campaign.is_active = is_active
 
     db.commit()
