@@ -498,11 +498,31 @@ tuyas:
 Los datos de clientes (nombre, teléfono, audio, transcripciones) quedan en tu
 servidor. Nada sale hacia servicios de terceros: por eso el stack es local.
 
+## Versiones
+
+Versionado semántico `vMAYOR.MENOR.PARCHE`: MAYOR para una herramienta o
+funcionalidad grande nueva, MENOR para algo que se agrega sin afectar lo que ya
+funcionaba, PARCHE para bugs y correcciones de nomenclatura. El historial curado
+está en [CHANGELOG.md](CHANGELOG.md).
+
+Al empujar un tag, [`.github/workflows/release.yml`](.github/workflows/release.yml)
+publica la Release en GitHub con todos los commits desde la versión anterior,
+agrupados por tipo:
+
+```bash
+git push origin v0.2.0
+```
+
+```bash
+git tag -n1
+```
+
 ## Estructura
 
 ```
 callbots/
 ├── docker-compose.yml            servicios
+├── .github/workflows/release.yml publica la release al empujar un tag
 ├── docker-compose.gpu.yml        overlay para GPU NVIDIA
 ├── docker/asterisk/              imagen y configuración del PBX
 │   ├── entrypoint.sh             renderiza los .conf con envsubst

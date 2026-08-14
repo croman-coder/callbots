@@ -1,0 +1,125 @@
+name: Release
+
+# Se dispara al publicar un tag de versión:
+#     git push origin v0.2.0
+#
+# Arma las notas leyendo los commits entre el tag anterior y este, agrupados
+# por tipo, y publica la Release en GitHub. El changelog no se escribe a mano.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+# Necesario para que `gh release create` pueda escribir en el repositorio.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publicar release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Traer el repositorio
+        uses: actions/checkout@v4
+        with:
+          # Sin el historial completo no hay tag anterior con qué comparar y
+          # el changelog sale vacío. Es la causa número uno de que esto falle.
+          fetch-depth: 0
+
+      - name: Armar las notas de la versión
+        id: notas
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          PREV="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")"
+
+          if [ -n "$PREV" ]; then
+            RANGO="${PREV}..${TAG}"
+            echo "Comparando ${PREV} → ${TAG}"
+          else
+            RANGO="${TAG}"
+            echo "Primer release: se incluyen todos los commits del proyecto"
+          fi
+
+          NOTAS="${RUNNER_TEMP}/notas.md"
+          : > "$NOTAS"
+
+          # 1) El mensaje del tag anotado va primero: es lo que escribió una
+          #    persona explicando la versión, y vale más que la lista de commits.
+          CUERPO_TAG="$(git tag -l --format='%(contents:body)' "$TAG")"
+          if [ -n "$CUERPO_TAG" ]; then
+            printf '%s\n\n---\n' "$CUERPO_TAG" >> "$NOTAS"
+          fi
+
+          # 2) Los commits, agrupados por tipo de Conventional Commit.
+          seccion() {
+            titulo="$1"
+            patron="$2"
+            cuerpo="$(git log --no-merges -E --grep="$patron" \
+                        --format='- %s (`%h`)' "$RANGO" || true)"
+            if [ -z "$cuerpo" ]; then
+              return 0
+            fi
+            # Saca el prefijo (`feat:`, `fix(api):`) que ya está en el título
+            cuerpo="$(echo "$cuerpo" | sed -E 's/^- [a-z]+(\([^)]*\))?!?: */- /')"
+            printf '\n### %s\n\n%s\n' "$titulo" "$cuerpo" >> "$NOTAS"
+          }
+
+          seccion 'Funcionalidad nueva'       '^feat(\(.+\))?!?:'
+          seccion 'Correcciones'              '^fix(\(.+\))?!?:'
+          seccion 'Refactor y mantenimiento'  '^(refactor|perf|chore|style|build|ci)(\(.+\))?!?:'
+          seccion 'Documentación'             '^docs(\(.+\))?!?:'
+          seccion 'Tests'                     '^test(\(.+\))?!?:'
+
+          # 3) Los commits que no siguen la convención no se pierden: si se
+          #    descartaran en silencio, el changelog mentiría por omisión.
+          OTROS="$(git log --no-merges --format='- %s (`%h`)' "$RANGO" \
+                   | grep -vE '^- (feat|fix|refactor|perf|chore|style|build|ci|docs|test)(\([^)]*\))?!?:' \
+                   || true)"
+          if [ -n "$OTROS" ]; then
+            printf '\n### Otros cambios\n\n%s\n' "$OTROS" >> "$NOTAS"
+          fi
+
+          # 4) Pie con el total y el enlace de comparación
+          TOTAL="$(git rev-list --count --no-merges "$RANGO")"
+          printf '\n---\n\n%s commits en esta versión.\n' "$TOTAL" >> "$NOTAS"
+
+          if [ -n "$PREV" ]; then
+            printf '\n**Comparar con la versión anterior:** %s/%s/compare/%s...%s\n' \
+              "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$PREV" "$TAG" >> "$NOTAS"
+          fi
+
+          echo "archivo=$NOTAS" >> "$GITHUB_OUTPUT"
+
+          echo "--------- notas generadas ---------"
+          cat "$NOTAS"
+
+      - name: Publicar la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+          NOTAS="${{ steps.notas.outputs.archivo }}"
+
+          # Las versiones de prueba no deberían aparecer como la release estable
+          PRERELEASE=""
+          case "$TAG" in
+            *-alpha*|*-beta*|*-rc*) PRERELEASE="--prerelease" ;;
+          esac
+
+          # Idempotente: si se re-ejecuta el workflow, actualiza en vez de fallar
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "La release $TAG ya existe: se actualizan las notas"
+            gh release edit "$TAG" --notes-file "$NOTAS" $PRERELEASE
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file "$NOTAS" \
+              $PRERELEASE
+          fi
+
+          echo "Publicada: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
