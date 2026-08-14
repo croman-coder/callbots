@@ -176,6 +176,8 @@ async def simulador_ws(websocket: WebSocket, ticket: str | None = None) -> None:
         writer.close()
         try:
             await websocket.close()
-        except RuntimeError:
+        except (RuntimeError, WebSocketDisconnect):
+            # El navegador ya se fue: cerrar de nuevo tira WebSocketDisconnect
+            # y ensucia el log con un traceback que no significa nada.
             pass
         log.info("Simulador: sesión terminada")

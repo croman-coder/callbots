@@ -56,8 +56,11 @@
 (function () {
   "use strict";
 
-  var TASA = 8000;            // el AudioSocket habla slin 8 kHz
+  var TASA = 8000;                 // el AudioSocket habla slin 8 kHz
   var TICKET = {{ ticket | tojson }};
+  var UMBRAL_BOT = 0.02;           // energía a partir de la cual el bot "habla"
+  var COLA_MS = 0.12;              // colchón antes de empezar a reproducir
+  var HANGOVER_S = 0.35;           // el micrófono espera esto tras la última sílaba
 
   var btn = document.getElementById("btn");
   var estado = document.getElementById("estado");
@@ -68,24 +71,72 @@
 
   var ws = null, ctx = null, stream = null, fuente = null, proc = null;
   var enCurso = false;
-  var proximaReproduccion = 0;
-  var gateAvisado = false;
+
+  // Cola de audio del bot, en muestras de 8 kHz. Se consume desde el mismo
+  // callback que captura el micrófono: un solo nodo continuo en vez de un
+  // AudioBufferSourceNode por trama, que a 50 por segundo metía clics.
+  var cola = [], colaPos = 0, colaLargo = 0, arrancoPlayback = false;
+  var restoBot = 0;                // fase del interpolador 8k -> nativo
+  var ultimaVozBot = -1e9;         // ctx.currentTime de la última sílaba
 
   function log(msg) {
-    var t = new Date().toLocaleTimeString();
-    logEl.textContent += "[" + t + "] " + msg + "\n";
+    logEl.textContent += "[" + new Date().toLocaleTimeString() + "] " + msg + "\n";
     logEl.scrollTop = logEl.scrollHeight;
   }
 
-  function rms(muestras) {
-    var suma = 0;
-    for (var i = 0; i < muestras.length; i++) suma += muestras[i] * muestras[i];
-    return Math.sqrt(suma / muestras.length);
+  function rms(x) {
+    var s = 0;
+    for (var i = 0; i < x.length; i++) s += x[i] * x[i];
+    return Math.sqrt(s / (x.length || 1));
   }
 
-  // Del sample rate del navegador (48 kHz casi siempre) a 8 kHz.
-  // Se promedian los sobrantes en vez de tirarlos: la decimación pelada
-  // mete aliasing y a Whisper le cuesta bastante más.
+  function encolar(int16) {
+    var f = new Float32Array(int16.length);
+    for (var i = 0; i < int16.length; i++) f[i] = int16[i] / 32768;
+    cola.push(f);
+    colaLargo += f.length;
+  }
+
+  function siguienteMuestraBot() {
+    while (cola.length && colaPos >= cola[0].length) {
+      colaLargo -= cola[0].length;
+      cola.shift();
+      colaPos = 0;
+    }
+    if (!cola.length) return null;
+    return cola[0][colaPos++];
+  }
+
+  function llenarSalida(salida, tasaCtx) {
+    // Arranca recién con un colchón, si no el primer segundo sale entrecortado
+    if (!arrancoPlayback) {
+      if (colaLargo < TASA * COLA_MS) { salida.fill(0); return 0; }
+      arrancoPlayback = true;
+    }
+
+    var paso = TASA / tasaCtx;     // 8000/48000 = 1/6
+    var pico = 0;
+
+    for (var i = 0; i < salida.length; i++) {
+      restoBot += paso;
+      var v = 0;
+      while (restoBot >= 1) {
+        var m = siguienteMuestraBot();
+        if (m === null) { restoBot = 0; break; }
+        v = m;
+        restoBot -= 1;
+      }
+      // Mantener la última muestra entre saltos es una interpolación de orden
+      // cero: alcanza para voz telefónica y no cuesta nada.
+      salida[i] = v || (i ? salida[i - 1] : 0);
+      var a = Math.abs(salida[i]);
+      if (a > pico) pico = a;
+    }
+
+    if (!cola.length) arrancoPlayback = false;   // se vació: volver a esperar
+    return pico;
+  }
+
   function bajarA8k(entrada, tasaOrigen) {
     var razon = tasaOrigen / TASA;
     var largo = Math.floor(entrada.length / razon);
@@ -102,36 +153,12 @@
     return salida;
   }
 
-  function reproducir(int16) {
-    if (!ctx) return;
-    var buf = ctx.createBuffer(1, int16.length, TASA);
-    var canal = buf.getChannelData(0);
-    for (var i = 0; i < int16.length; i++) canal[i] = int16[i] / 0x8000;
-
-    var fuenteAudio = ctx.createBufferSource();
-    fuenteAudio.buffer = buf;
-    fuenteAudio.connect(ctx.destination);
-
-    // Se encadenan los trozos en la línea de tiempo del AudioContext. Si nos
-    // atrasamos, se reengancha al presente para no acumular retardo.
-    var ahora = ctx.currentTime;
-    if (proximaReproduccion < ahora + 0.05) proximaReproduccion = ahora + 0.05;
-    fuenteAudio.start(proximaReproduccion);
-    proximaReproduccion += buf.duration;
-
-    nivelBot.style.width = Math.min(100, rms(canal) * 350) + "%";
-  }
-
   async function llamar() {
     try {
       estado.textContent = "Pidiendo el micrófono...";
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1
-        }
+        audio: { echoCancellation: true, noiseSuppression: true,
+                 autoGainControl: true, channelCount: 1 }
       });
     } catch (e) {
       estado.textContent = "Sin micrófono";
@@ -141,8 +168,8 @@
     }
 
     ctx = new (window.AudioContext || window.webkitAudioContext)();
-    proximaReproduccion = 0;
-    gateAvisado = false;
+    cola = []; colaPos = 0; colaLargo = 0; arrancoPlayback = false;
+    restoBot = 0; ultimaVozBot = -1e9;
 
     var proto = location.protocol === "https:" ? "wss://" : "ws://";
     ws = new WebSocket(proto + location.host + "/simulador/ws?ticket=" +
@@ -156,53 +183,56 @@
         var m = JSON.parse(ev.data);
         if (m.evento === "listo") {
           estado.textContent = "En llamada";
-          log("Llamada establecida. El bot va a hablar primero.");
+          log("Llamada establecida. El bot habla primero.");
         } else if (m.evento === "colgo") {
-          log("El bot colgó: la encuesta terminó.");
-          cortar();
+          log("El bot colgó: la encuesta terminó."); cortar();
         } else if (m.evento === "error") {
-          log("Error del servidor: " + m.detalle);
-          cortar();
+          log("Error del servidor: " + m.detalle); cortar();
         }
         return;
       }
-      reproducir(new Int16Array(ev.data));
+      encolar(new Int16Array(ev.data));
     };
 
     ws.onerror = function () { log("Error de WebSocket."); };
     ws.onclose = function () { if (enCurso) { log("Conexión cerrada."); cortar(); } };
 
     fuente = ctx.createMediaStreamSource(stream);
-    proc = ctx.createScriptProcessor(2048, 1, 1);
-    proc.onaudioprocess = function (ev) {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      var entrada = ev.inputBuffer.getChannelData(0);
-      var muestras = bajarA8k(entrada, ctx.sampleRate);
+    proc = ctx.createScriptProcessor(4096, 1, 1);
 
-      // Half-duplex: mientras el bot habla se manda silencio en vez del
-      // micrófono. Sin esto, en parlantes el micrófono capta al bot, el VAD
-      // lo toma como respuesta y el bot se transcribe a sí mismo: avanza de
-      // pregunta y nunca llega a escuchar a la persona. Con auriculares no
-      // pasa, pero no se puede depender de eso.
-      var botHablando = ctx.currentTime < proximaReproduccion - 0.05;
+    proc.onaudioprocess = function (ev) {
+      var entrada = ev.inputBuffer.getChannelData(0);
+      var salida = ev.outputBuffer.getChannelData(0);
+
+      var picoBot = llenarSalida(salida, ctx.sampleRate);
+      nivelBot.style.width = Math.min(100, picoBot * 250) + "%";
+
+      // El bot está hablando si lo que acabamos de reproducir tiene energía.
+      // NO se puede usar "hay audio en la cola": el voice-agent escribe una
+      // trama de salida por cada trama de entrada, así que manda silencio
+      // continuo entre preguntas y la cola no se vacía nunca.
+      if (picoBot > UMBRAL_BOT) ultimaVozBot = ctx.currentTime;
+      var botHablando = (ctx.currentTime - ultimaVozBot) < HANGOVER_S;
+
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+      var muestras = bajarA8k(entrada, ctx.sampleRate);
       if (botHablando) {
-        if (!gateAvisado) { log("(micrófono en pausa mientras habla el bot)"); gateAvisado = true; }
+        // Half-duplex: mientras habla el bot mandamos silencio, si no el
+        // micrófono lo capta por los parlantes, el VAD lo toma por respuesta
+        // y el bot se contesta solo.
         muestras.fill(0);
         nivelMic.style.width = "0";
+        estado.textContent = "El bot está hablando...";
       } else {
-        gateAvisado = false;
-        nivelMic.style.width = Math.min(100, rms(entrada) * 350) + "%";
+        nivelMic.style.width = Math.min(100, rms(entrada) * 300) + "%";
+        estado.textContent = "Te escucho";
       }
-
       ws.send(muestras.buffer);
     };
+
     fuente.connect(proc);
-    // Necesario en Chrome para que el ScriptProcessor corra. Ganancia en cero
-    // para no devolverte tu propia voz por los parlantes.
-    var mudo = ctx.createGain();
-    mudo.gain.value = 0;
-    proc.connect(mudo);
-    mudo.connect(ctx.destination);
+    proc.connect(ctx.destination);
 
     enCurso = true;
     btn.textContent = "Cortar";
@@ -211,7 +241,6 @@
 
   function cortar() {
     enCurso = false;
-    btn.textContent = "Llamar";
     estado.textContent = "Llamada terminada";
     medidor.style.display = "none";
     nivelMic.style.width = "0";
@@ -223,15 +252,14 @@
     if (ws && ws.readyState === WebSocket.OPEN) ws.close();
     ws = null;
     if (ctx) { ctx.close(); ctx = null; }
+    cola = [];
 
-    // El ticket es de un solo uso: para volver a llamar hay que recargar.
     btn.disabled = true;
     btn.textContent = "Recargá para llamar de nuevo";
   }
 
   btn.addEventListener("click", function () {
-    if (enCurso) { log("Cortaste vos."); cortar(); }
-    else llamar();
+    if (enCurso) { log("Cortaste vos."); cortar(); } else llamar();
   });
 
   if (!navigator.mediaDevices || !window.WebSocket) {
