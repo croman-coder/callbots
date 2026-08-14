@@ -11,9 +11,11 @@ no es una guía teórica.
 > sobre la RTX 5070 y la voz `es_AR-daniela-high` cargados, escuchando
 > AudioSocket en 8090.
 >
-> Bitrix24 también da **ok**: el webhook está cargado y autentica contra
-> `santarosapy.bitrix24.es`. Lo que falta no es config del despliegue sino un
-> dato que en ese portal no existe todavía — ver *Pendientes*.
+> **Corre sin Bitrix.** El token del webhook quedó revocado al editarle los
+> permisos, y los datos del taller tampoco están en ese portal, así que el
+> callbot funciona solo: los destinatarios se cargan a mano desde el panel y
+> el resultado queda ahí. Las cinco dependencias dan ok — Bitrix figura como
+> *no configurado*, que es distinto de roto.
 
 | | |
 |---|---|
@@ -156,6 +158,37 @@ Ver quién tiene la VRAM:
 ```bash
 ssh srpy-servidor 'nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader; curl -s http://localhost:11434/api/ps'
 ```
+
+---
+
+## Sin Bitrix: cómo se cargan los destinatarios
+
+Con `BITRIX_WEBHOOK_URL` vacío el callbot no sincroniza ni escribe nada en el
+CRM, y el resultado de cada encuesta queda en su propio panel. La
+sincronización no corre (en vez de fallar cada 15 minutos) y el diagnóstico
+muestra Bitrix como *no configurado*, en verde.
+
+Los destinatarios se cargan en **Destinatarios → Cargar destinatarios**, una
+línea por persona:
+
+```
+0981123456, Juan Perez
++595 971 234 567, Maria Gomez
+0976953263
+```
+
+El nombre es opcional. Los teléfonos se normalizan con la misma función que usa
+el sync, así que `0981 123 456` y `+595981123456` son el mismo número y el
+chequeo de duplicados los agarra — tanto contra los que ya están como contra el
+propio lote.
+
+Se elige entre llamar **en el próximo horario permitido** o **respetando la
+demora de la campaña** (48 h por default, contadas desde la carga).
+
+Para volver a Bitrix cuando haya webhook nuevo: cargar `BITRIX_WEBHOOK_URL`,
+poner `BITRIX_TIMELINE_COMMENT=true` y redesplegar. Los destinatarios cargados
+a mano siguen funcionando; simplemente no tienen registro donde comentar, y el
+writeback los saltea sin marcarlos como fallidos.
 
 ---
 
@@ -315,9 +348,8 @@ echo var_export(\$a->custom_labels, true);
 
 ## Pendientes
 
-1. **En Bitrix24 no existe el dato que dispara la encuesta.** El webhook ya está
-   cargado y autentica bien (portal `santarosapy.bitrix24.es`, usuario Pablo
-   Villalba), pero al inventariar el portal no aparece ninguna
+1. **En Bitrix24 no existe el dato que dispara la encuesta.** Al inventariar el
+   portal `santarosapy.bitrix24.es` no aparece ninguna
    *fecha de ingreso al taller*, que es el T0 del que cuelga todo el flujo:
 
    - Las 5 SPAs del portal son `1042` Análisis de Créditos, `1046` Acuerdos
@@ -334,33 +366,26 @@ echo var_export(\$a->custom_labels, true);
    valores de ejemplo, no la config de este portal.
 
    **Confirmado con Carlos el 2026-08-14: los datos del taller no están en
-   Bitrix, viven en otro sistema.** Eso saca el problema del terreno de la
-   configuración y lo mete en el del código, porque hoy el proyecto asume
-   Bitrix como única fuente y como único destino:
+   Bitrix, viven en otro sistema.** Por eso el callbot pasó a correr sin
+   Bitrix (ver arriba): los dos huecos que impedían eso —no había por dónde
+   entrar ni por dónde salir— se cerraron con el alta manual y la migración
+   0003, que hace opcional el vínculo al registro.
 
-   - **No hay por dónde entrar.** `SurveyTarget` se crea sólo en
-     `app/bitrix/sync.py`. El panel no tiene alta manual (`routers/admin.py`
-     expone `call-now` y `reschedule`, pero ningún `POST /targets`) y `/internal`
-     es sólo para el voice-agent. Hace falta una vía de ingesta: un conector al
-     sistema del taller, un endpoint, o una importación por archivo.
-   - **No hay por dónde salir.** `SurveyTarget.bitrix_entity_type_id` y
-     `bitrix_entity_id` son `NOT NULL` (`models.py:188`), porque el resultado se
-     escribe como comentario en el timeline de ese registro. Si el destinatario
-     no existe en Bitrix hay dos caminos: espejar los registros del taller en
-     Bitrix, o hacer opcional el writeback (cambio de esquema + migración).
+   Queda pendiente la decisión de fondo: de dónde salen los destinatarios de
+   forma automática. Las opciones siguen siendo un conector al sistema del
+   taller, espejar esos registros en Bitrix, o seguir cargando a mano.
 
-   Mientras tanto el despliegue no se ve afectado: `bitrix_entity_type_id` y
-   `trigger_field` son columnas **de cada campaña**, no globales, y todavía no
-   hay campañas creadas. Las variables de entorno sólo prellenan el formulario
-   del panel.
+2. **El webhook quedó revocado.** Al editarle los permisos para agregarle
+   telefonía, Bitrix regeneró el token: el que estaba cargado empezó a
+   responder `INVALID_CREDENTIALS`. Si algún día se vuelve a conectar Bitrix,
+   hay que sacar la URL nueva del webhook entrante y cargarla.
 
-2. **El webhook no tiene permiso de telefonía.** Los scopes concedidos son
-   `crm`, `call` y `user_basic`; `telephony.externalcall.register` responde
-   `insufficient_scope`. Por eso `BITRIX_REGISTER_CALL` quedó en `false`: la
-   encuesta funciona igual, sólo que la llamada no queda registrada en el
-   módulo de telefonía de Bitrix. Para activarlo hay que editar el webhook en
-   Bitrix y agregarle el permiso **Telefonía**, y recién ahí poner la variable
-   en `true`.
+   Ojo también con los permisos: los scopes que tenía eran `crm`, `call` y
+   `user_basic`, sin `telephony`, así que `telephony.externalcall.register`
+   respondía `insufficient_scope`. Por eso `BITRIX_REGISTER_CALL` está en
+   `false`. Ese permiso sólo sirve para que la llamada quede registrada en el
+   historial del cliente: **no habilita marcar**, que es la confusión que hay
+   que evitar. Ver el punto siguiente.
 
 3. **Falta la troncal SIP: el bot no tiene salida a la red pública.** Hoy
    `ASTERISK_DIAL_TEMPLATE=PJSIP/softphone-1`, o sea que cualquier llamada
