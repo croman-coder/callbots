@@ -81,8 +81,11 @@ class Settings(BaseSettings):
     # Vacío = el bot usa la frase fija cuando no entiende, como siempre.
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
-    # Corto a propósito: del otro lado hay alguien esperando en silencio.
-    gemini_timeout_seconds: float = 4.0
+    # Medido contra la API desde este servidor: mediana 1,6 s con picos de
+    # 3,5 s. Con 4 s la llamada real se pasaba de largo y caía a la frase
+    # fija. La espera no se siente porque el bot dice una muletilla mientras
+    # tanto (ver dialog.py).
+    gemini_timeout_seconds: float = 8.0
 
     # --- Ollama ---
     ollama_url: str = "http://ollama:11434"

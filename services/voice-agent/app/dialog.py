@@ -11,6 +11,7 @@ en un solo lado.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import uuid as uuid_mod
@@ -76,6 +77,11 @@ def voz_de(script: Script) -> tts.VoiceParams:
         expressiveness=script.voice_expressiveness,
         volume=script.voice_volume,
     )
+
+
+# Se dice mientras se espera al LLM. Corta y neutra: se sintetiza una sola vez
+# y queda cacheada, así que no agrega latencia propia.
+MULETILLA = "Déjeme ver."
 
 
 async def _say(
@@ -221,12 +227,21 @@ class SurveyDialog:
             if verdict.should_retry:
                 # Solo acá se llama al LLM: si la respuesta se entendió, la
                 # llamada sigue sin pagar un segundo de latencia extra.
-                respuesta_libre = await self.api.conversational_reply(
-                    session_uuid=self.session_uuid,
-                    question_text=question.text,
-                    transcript=transcript,
-                    retries_used=retries_used,
+                #
+                # La consulta arranca ANTES de la muletilla y se espera
+                # después: el "déjeme ver" tapa la latencia en vez de sumarse
+                # a ella. Sin esto son hasta 3,5 segundos de silencio con
+                # alguien del otro lado preguntándose si se cortó.
+                pedido = asyncio.create_task(
+                    self.api.conversational_reply(
+                        session_uuid=self.session_uuid,
+                        question_text=question.text,
+                        transcript=transcript,
+                        retries_used=retries_used,
+                    )
                 )
+                await _say(self.socket, MULETILLA, self._voz)
+                respuesta_libre = await pedido
                 if respuesta_libre:
                     log.info(
                         "[%s] P%d respuesta libre: %r",
