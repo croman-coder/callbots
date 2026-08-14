@@ -161,11 +161,15 @@ ssh srpy-servidor 'nvidia-smi --query-compute-apps=pid,process_name,used_memory 
 
 ## Variables de entorno
 
-Las 61 variables están cargadas en Coolify (pestaña *Environment Variables*) y
+Las 62 variables están cargadas en Coolify (pestaña *Environment Variables*) y
 la copia local está en el `.env` de la raíz del repo, que **no se commitea**.
 
 Las que se generaron al desplegar (`openssl rand`): `POSTGRES_PASSWORD`,
 `ADMIN_PASSWORD`, `INTERNAL_TOKEN`, `ARI_PASSWORD`, `SOFTPHONE_PASSWORD`.
+
+`SIP_EXTERNAL_ADDRESS=192.168.221.87` es la IP del host que Asterisk anuncia en
+el SDP. Sin ella la llamada conecta y no se escucha nada: se anuncia la IP del
+contenedor, que ningún softphone de la red alcanza.
 
 Cargar o actualizar todas de una:
 
@@ -325,15 +329,47 @@ echo var_export(\$a->custom_labels, true);
    Bitrix y agregarle el permiso **Telefonía**, y recién ahí poner la variable
    en `true`.
 
-3. **Telefonía sin probar.** El dominio público solo expone el panel HTTP. SIP
+3. **Falta la troncal SIP: el bot no tiene salida a la red pública.** Hoy
+   `ASTERISK_DIAL_TEMPLATE=PJSIP/softphone-1`, o sea que cualquier llamada
+   suena en el softphone e ignora el número. `pjsip show registrations`
+   devuelve `No objects found`.
+
+   Santa Rosa tiene un **conector SIP con un proveedor** configurado en
+   Bitrix24, así que no hace falta contratar nada nuevo: alcanza con pedirle a
+   ese mismo proveedor una **segunda cuenta SIP**. Importante no reutilizar la
+   que ya usa Bitrix — casi todos los proveedores permiten un solo registro
+   por cuenta, y si Asterisk se registra con las mismas credenciales puede
+   tirar abajo la telefonía de Bitrix.
+
+   Lo que hay que pedirle al proveedor:
+
+   - host o dominio SIP y puerto
+   - usuario y contraseña de la cuenta nueva
+   - el número saliente (DID) que va a mostrar el identificador de llamadas
+   - en qué formato espera el destino: E.164 sin `+` (`595976953263`) o
+     nacional (`0976953263`)
+
+   Con eso, en Coolify: `TRUNK_HOST`, `TRUNK_USER`, `TRUNK_PASSWORD`,
+   `ASTERISK_DIAL_TEMPLATE=PJSIP/{number}@trunk-proveedor` y
+   `ASTERISK_CALLERID` con el número del taller — hoy dice `Callbot <1000>`,
+   que a un cliente le aparece como número desconocido. El bloque de
+   configuración de la troncal se arma solo: el entrypoint lo renderiza en
+   cuanto `TRUNK_HOST` tiene valor.
+
+   **Ojo con `MAX_CONCURRENT_CALLS`**, hoy en `1`. Al pasar a producción hay
+   que subirlo hasta la cantidad de canales simultáneos que dé la troncal, no
+   más.
+
+4. **Telefonía sin probar.** El dominio público solo expone el panel HTTP. SIP
    (`5060/udp`) y RTP no pasan por el túnel: un softphone tiene que registrarse
    contra la IP del server por LAN o Tailscale, con el usuario `softphone-1` y
-   la `SOFTPHONE_PASSWORD` del `.env`. `ASTERISK_DIAL_TEMPLATE` está en
-   `PJSIP/softphone-1`, o sea modo desarrollo: ignora el número y siempre suena
-   el softphone. Para llamar de verdad hay que cargar la troncal
-   (`TRUNK_HOST`/`TRUNK_USER`/`TRUNK_PASSWORD`) y cambiar la plantilla a
-   `PJSIP/{number}@trunk-proveedor`.
+   la `SOFTPHONE_PASSWORD` del `.env`. Marcá `9001` (eco) antes que `9000`
+   (encuesta en modo demo): si el eco no anda, el problema es de red o audio y
+   no tiene sentido seguir.
 
-4. **El panel está publicado con HTTP Basic como única defensa.** Alcanza para
+   Para que el audio funcione hace falta `SIP_EXTERNAL_ADDRESS` — ver más
+   arriba. Sin eso la llamada conecta y no se escucha nada.
+
+5. **El panel está publicado con HTTP Basic como única defensa.** Alcanza para
    ahora, pero si se expone algo más sensible conviene meterlo detrás de
    Cloudflare Access.
