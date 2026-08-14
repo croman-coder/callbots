@@ -168,6 +168,54 @@
       <textarea name="optout_script" required>{{ campaign.optout_script }}</textarea>
     </label>
 
+    <h2 style="margin-top:26px">Instrucciones para el análisis</h2>
+    <p class="sub" style="margin-bottom:14px">
+      Contexto del negocio y criterios para el LLM que resume la llamada
+      después de colgar. Se <strong>suman</strong> al prompt base, que fija el
+      formato de la respuesta. Dejalo vacío para usar solo el base.
+    </p>
+    <label>Prompt de la campaña
+      <textarea name="analysis_prompt" rows="8"
+                placeholder="Ej.: El taller atiende Renault, Mitsubishi y GWM. Tratá como grave cualquier mención a que el vehículo volvió por la misma falla. Si el cliente nombra a un asesor, incluilo en los topics.">{{ campaign.analysis_prompt or '' }}</textarea>
+      <span class="hint">
+        No cambia cómo habla el bot durante la llamada: el guion es
+        determinista y el LLM interviene recién al final.
+      </span>
+    </label>
+
+    <h2 style="margin-top:26px">Voz del bot</h2>
+    <p class="sub" style="margin-bottom:14px">
+      Cómo suena. Se aplica en la próxima llamada; para escucharlo, entrá al
+      <a href="/simulador">simulador</a>.
+    </p>
+
+    <div class="row">
+      <label>Velocidad
+        <input type="range" name="voice_speed" min="0.6" max="1.6" step="0.05"
+               value="{{ campaign.voice_speed }}"
+               oninput="this.nextElementSibling.textContent = this.value + 'x'">
+        <span class="hint">{{ campaign.voice_speed }}x</span>
+      </label>
+      <label>Tono
+        <input type="range" name="voice_pitch" min="0.8" max="1.25" step="0.01"
+               value="{{ campaign.voice_pitch }}"
+               oninput="this.nextElementSibling.textContent = this.value">
+        <span class="hint">{{ campaign.voice_pitch }} <span style="opacity:.7">— menos es más grave</span></span>
+      </label>
+      <label>Expresividad
+        <input type="range" name="voice_expressiveness" min="0" max="1.2" step="0.02"
+               value="{{ campaign.voice_expressiveness }}"
+               oninput="this.nextElementSibling.textContent = this.value">
+        <span class="hint">{{ campaign.voice_expressiveness }} <span style="opacity:.7">— 0 es plano y monótono</span></span>
+      </label>
+      <label>Volumen
+        <input type="range" name="voice_volume" min="0.3" max="2" step="0.05"
+               value="{{ campaign.voice_volume }}"
+               oninput="this.nextElementSibling.textContent = this.value + 'x'">
+        <span class="hint">{{ campaign.voice_volume }}x</span>
+      </label>
+    </div>
+
     <label class="check">
       <input type="checkbox" name="is_active" value="true" {% if campaign.is_active %}checked{% endif %}>
       Campaña activa <span class="hint">— con esto se empieza a llamar</span>

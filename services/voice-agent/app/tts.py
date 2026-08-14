@@ -21,6 +21,7 @@ import io
 import logging
 import os
 import wave
+from dataclasses import dataclass
 
 import httpx
 import numpy as np
@@ -36,22 +37,54 @@ _piper_rate = 22050
 # ponytail: caché en memoria sin tope. El guion son ~10 frases fijas, pero cada
 # {nombre} distinto suma una entrada (~80 KB). Con miles de nombres únicos entre
 # reinicios conviene un LRU; hasta entonces, un dict es lo correcto.
-_memory_cache: dict[str, bytes] = {}
+# La clave lleva el texto y la modulación: la misma frase con otra voz
+# es otro audio.
+_memory_cache: dict[tuple[str, str], bytes] = {}
 
 
 # ---------------------------------------------------------------------------
-# Conversión a formato de telefonía
+# Modulación de la voz
 # ---------------------------------------------------------------------------
-def _to_telephony(samples: np.ndarray, source_rate: int) -> bytes:
-    """int16 a cualquier frecuencia -> PCM 8 kHz mono int16 (lo que pide Asterisk)."""
+@dataclass(frozen=True)
+class VoiceParams:
+    """Cómo suena el bot. Vienen de la campaña, en el guion de cada llamada.
+
+    Los defaults son los de Piper: una campaña sin tocar suena igual que
+    antes de que esto existiera.
+    """
+
+    speed: float = 1.0            # 1 = normal, >1 más rápido
+    pitch: float = 1.0            # 1 = normal, >1 más agudo
+    expressiveness: float = 0.667  # noise_scale de Piper
+    volume: float = 1.0
+
+    def clave(self) -> str:
+        return f"{self.speed:.3f}/{self.pitch:.3f}/{self.expressiveness:.3f}/{self.volume:.3f}"
+
+
+DEFAULT_PARAMS = VoiceParams()
+
+
+def _to_telephony(
+    samples: np.ndarray, source_rate: int, pitch: float = 1.0
+) -> bytes:
+    """int16 a cualquier frecuencia -> PCM 8 kHz mono int16 (lo que pide Asterisk).
+
+    `pitch` desplaza el tono resampleando: si en vez de a 8000 Hz se resamplea
+    a 8000/pitch y después se reproduce a 8000, la voz sale `pitch` veces más
+    aguda y más corta. La duración la devuelve el sintetizador, que genera el
+    audio proporcionalmente más largo (ver _piper_synthesize).
+    """
     if samples.size == 0:
         return b""
 
-    if source_rate == SAMPLE_RATE:
+    destino = SAMPLE_RATE / max(pitch, 0.01)
+
+    if source_rate == destino:
         return samples.astype(np.int16).tobytes()
 
     resampled = soxr.resample(
-        samples.astype(np.float32) / 32768.0, source_rate, SAMPLE_RATE
+        samples.astype(np.float32) / 32768.0, source_rate, destino
     )
     return (np.clip(resampled, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
 
@@ -78,18 +111,25 @@ def _wav_to_telephony(wav_bytes: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 # Caché en disco
 # ---------------------------------------------------------------------------
-def _cache_key(text: str) -> str:
-    """La clave incluye motor y perfil: cambiar de voz invalida el caché solo."""
-    seed = f"{config.tts_engine}|{config.voicebox_profile_id}|{config.piper_voice}|{text}"
+def _cache_key(text: str, params: VoiceParams) -> str:
+    """Incluye motor, perfil y modulación: cambiar cualquiera invalida el caché.
+
+    Sin los parámetros acá, subir la velocidad en el panel seguiría
+    reproduciendo el audio viejo hasta que alguien borre el caché a mano.
+    """
+    seed = (
+        f"{config.tts_engine}|{config.voicebox_profile_id}|{config.piper_voice}"
+        f"|{params.clave()}|{text}"
+    )
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
 
 
-def _cache_path(text: str) -> str:
-    return os.path.join(config.tts_cache_dir, f"{_cache_key(text)}.pcm")
+def _cache_path(text: str, params: VoiceParams) -> str:
+    return os.path.join(config.tts_cache_dir, f"{_cache_key(text, params)}.pcm")
 
 
-def _read_cache(text: str) -> bytes | None:
-    path = _cache_path(text)
+def _read_cache(text: str, params: VoiceParams) -> bytes | None:
+    path = _cache_path(text, params)
     try:
         with open(path, "rb") as handle:
             return handle.read()
@@ -97,10 +137,10 @@ def _read_cache(text: str) -> bytes | None:
         return None
 
 
-def _write_cache(text: str, pcm: bytes) -> None:
+def _write_cache(text: str, pcm: bytes, params: VoiceParams) -> None:
     if not pcm:
         return
-    path = _cache_path(text)
+    path = _cache_path(text, params)
     try:
         os.makedirs(config.tts_cache_dir, exist_ok=True)
         # Escritura atómica: un contenedor que muere a mitad no deja un .pcm
@@ -158,38 +198,80 @@ def load_voice() -> None:
     log.info("Piper listo: %s (%d Hz)", config.piper_voice, _piper_rate)
 
 
-def _piper_synthesize(text: str) -> bytes:
+def _synthesis_config(params: VoiceParams):
+    """SynthesisConfig de Piper, o None si la versión instalada no lo tiene."""
+    try:
+        from piper import SynthesisConfig
+    except ImportError:
+        return None
+
+    # length_scale es lo inverso de la velocidad. Se multiplica por el tono
+    # porque el desplazamiento de tono acorta el audio en la misma
+    # proporción: generándolo más largo, la duración final queda igual.
+    length_scale = (1.0 / max(params.speed, 0.1)) * max(params.pitch, 0.1)
+
+    return SynthesisConfig(
+        length_scale=length_scale,
+        noise_scale=params.expressiveness,
+        # La variación de duración de los fonemas acompaña a la
+        # expresividad, si no la voz suena expresiva pero métricamente rígida.
+        noise_w_scale=params.expressiveness * 1.2,
+        volume=1.0,  # el volumen se aplica abajo, así vale en las dos APIs
+    )
+
+
+def _piper_synthesize(text: str, params: VoiceParams = DEFAULT_PARAMS) -> bytes:
     """piper-tts cambió de API entre versiones; se soportan las dos formas."""
     if _voice is None:
         return b""
 
     if hasattr(_voice, "synthesize_stream_raw"):
+        # API vieja: no acepta configuración, solo se puede modular el tono y
+        # el volumen, que se aplican sobre la onda ya generada.
         raw = b"".join(_voice.synthesize_stream_raw(text))
     else:
+        syn = _synthesis_config(params)
         chunks = [
             getattr(chunk, "audio_int16_bytes", None) or bytes(chunk)
-            for chunk in _voice.synthesize(text)
+            for chunk in (
+                _voice.synthesize(text, syn_config=syn)
+                if syn is not None
+                else _voice.synthesize(text)
+            )
         ]
         raw = b"".join(chunks)
 
-    return _to_telephony(np.frombuffer(raw, dtype=np.int16), _piper_rate)
+    samples = np.frombuffer(raw, dtype=np.int16)
+
+    if params.volume != 1.0 and samples.size:
+        # En float para no envolver el int16 al saturar: un clip suena feo
+        # pero un wrap suena a explosión.
+        escalado = samples.astype(np.float32) * params.volume
+        samples = np.clip(escalado, -32768, 32767).astype(np.int16)
+
+    return _to_telephony(samples, _piper_rate, params.pitch)
 
 
 # ---------------------------------------------------------------------------
 # Interfaz pública
 # ---------------------------------------------------------------------------
-async def synthesize(text: str, timeout: float | None = None) -> bytes:
+async def synthesize(
+    text: str,
+    timeout: float | None = None,
+    params: VoiceParams = DEFAULT_PARAMS,
+) -> bytes:
     """PCM 8 kHz listo para AudioSocket. Nunca levanta excepción: peor caso, b''."""
     text = (text or "").strip()
     if not text:
         return b""
 
-    if text in _memory_cache:
-        return _memory_cache[text]
+    clave_memoria = (text, params.clave())
+    if clave_memoria in _memory_cache:
+        return _memory_cache[clave_memoria]
 
-    cached = _read_cache(text)
+    cached = _read_cache(text, params)
     if cached is not None:
-        _memory_cache[text] = cached
+        _memory_cache[clave_memoria] = cached
         return cached
 
     pcm = b""
@@ -203,23 +285,23 @@ async def synthesize(text: str, timeout: float | None = None) -> bytes:
 
     if not pcm:
         # Piper es sincrónico: a un thread, que el event loop atiende otras llamadas
-        pcm = await asyncio.to_thread(_piper_synthesize, text)
+        pcm = await asyncio.to_thread(_piper_synthesize, text, params)
         if pcm and config.voicebox_enabled:
             # Respaldo: no se cachea. Si se guardara, la primera vez que voicebox
             # esté caído esa frase quedaría con voz de Piper para siempre.
-            _memory_cache[text] = pcm
+            _memory_cache[clave_memoria] = pcm
             return pcm
 
     if not pcm:
         log.error("Ningún motor pudo sintetizar %r", text[:50])
         return b""
 
-    _memory_cache[text] = pcm
-    _write_cache(text, pcm)
+    _memory_cache[clave_memoria] = pcm
+    _write_cache(text, pcm, params)
     return pcm
 
 
-async def warm_up(texts: list[str]) -> int:
+async def warm_up(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> int:
     """Pre-sintetiza frases fijas. Devuelve cuántas se generaron nuevas.
 
     Se corre al arrancar el servicio, no durante una llamada: con voicebox cada
@@ -228,21 +310,21 @@ async def warm_up(texts: list[str]) -> int:
     """
     pending = [
         t.strip() for t in dict.fromkeys(texts)
-        if t and t.strip() and t.strip() not in _memory_cache
+        if t and t.strip() and (t.strip(), params.clave()) not in _memory_cache
     ]
     if not pending:
         return 0
 
     generated = 0
     for text in pending:
-        if _read_cache(text) is not None:
+        if _read_cache(text, params) is not None:
             continue
 
-        await synthesize(text, timeout=config.voicebox_warmup_timeout)
+        await synthesize(text, timeout=config.voicebox_warmup_timeout, params=params)
 
         # Solo cuenta si quedó en disco. Si respondió Piper de respaldo no se
         # cachea a propósito, y decir "precalentado" ahí sería mentirle al log.
-        if _read_cache(text) is not None:
+        if _read_cache(text, params) is not None:
             generated += 1
             log.info("Precalentado (%d/%d): %r", generated, len(pending), text[:60])
         else:

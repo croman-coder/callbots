@@ -96,6 +96,20 @@ class Campaign(Base):
     max_attempts: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
     retry_interval_minutes: Mapped[int] = mapped_column(Integer, default=180)
 
+    # Instrucciones extra para el LLM que analiza la llamada. Se suman al
+    # prompt base, que ya fija el contrato JSON que la aplicación parsea.
+    analysis_prompt: Mapped[str | None] = mapped_column(Text)
+
+    # --- Voz del bot ---
+    # Se mandan al voice-agent en el guion de cada llamada, así se ajustan
+    # desde el panel sin redesplegar nada.
+    voice_speed: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    voice_pitch: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    voice_expressiveness: Mapped[float] = mapped_column(
+        Float, default=0.667, nullable=False
+    )
+    voice_volume: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+
     # --- Guion ---
     intro_script: Mapped[str] = mapped_column(
         Text,

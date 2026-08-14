@@ -46,6 +46,10 @@ class Script:
     outro_script: str
     fallback_script: str
     optout_script: str
+    voice_speed: float
+    voice_pitch: float
+    voice_expressiveness: float
+    voice_volume: float
     questions: list[Question]
 
     @property
@@ -110,6 +114,10 @@ class ApiClient:
             session_uuid=data["session_uuid"],
             call_id=data.get("call_id"),
             demo=data.get("demo", False),
+            voice_speed=float(data.get("voice_speed", 1.0)),
+            voice_pitch=float(data.get("voice_pitch", 1.0)),
+            voice_expressiveness=float(data.get("voice_expressiveness", 0.667)),
+            voice_volume=float(data.get("voice_volume", 1.0)),
             campaign_id=data["campaign_id"],
             campaign_name=data["campaign_name"],
             contact_name=data.get("contact_name"),
@@ -120,12 +128,16 @@ class ApiClient:
             questions=[Question(**q) for q in data["questions"]],
         )
 
-    async def get_all_prompts(self) -> list[str]:
-        """Texto fijo de todas las campañas activas, para precalentar el TTS."""
+    async def get_all_prompts(self) -> list[dict]:
+        """Texto fijo de las campañas activas, agrupado con su modulación de voz."""
         try:
             response = await self._client.get("/internal/prompts")
             response.raise_for_status()
-            return response.json().get("texts", [])
+            data = response.json()
+            if data.get("grupos"):
+                return data["grupos"]
+            # API vieja: un solo grupo con la modulación por default
+            return [{"voice": {}, "texts": data.get("texts", [])}]
         except httpx.HTTPError as exc:
             log.warning("No se pudieron traer los textos a precalentar: %s", exc)
             return []

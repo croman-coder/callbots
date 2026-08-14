@@ -14,7 +14,7 @@ from app import stt, tts
 from app.api_client import ApiClient, ApiError
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import config
-from app.dialog import SurveyDialog
+from app.dialog import SurveyDialog, voz_de
 
 logging.basicConfig(
     level=getattr(logging, config.log_level.upper(), logging.INFO),
@@ -57,7 +57,7 @@ async def handle_connection(
         # Red de seguridad: si la campaña se editó después del arranque, acá se
         # sintetiza lo que falte. Con el precalentado de arranque hecho, esto
         # normalmente es un no-op y no agrega latencia.
-        await tts.warm_up(script.all_prompts)
+        await tts.warm_up(script.all_prompts, voz_de(script))
 
         if not script.demo:
             try:
@@ -88,14 +88,24 @@ async def prewarm_tts() -> None:
     """
     api = ApiClient()
     try:
-        texts = await api.get_all_prompts()
-        if not texts:
+        grupos = await api.get_all_prompts()
+        total = sum(len(g.get("texts", [])) for g in grupos)
+        if not total:
             log.info("No hay campañas activas: nada que precalentar")
             return
 
-        log.info("Precalentando TTS: %d frases (motor=%s)...", len(texts), config.tts_engine)
-        generated = await tts.warm_up(texts)
-        log.info("TTS listo: %d frases nuevas, %d ya cacheadas", generated, len(texts) - generated)
+        log.info("Precalentando TTS: %d frases (motor=%s)...", total, config.tts_engine)
+        generated = 0
+        for grupo in grupos:
+            v = grupo.get("voice") or {}
+            params = tts.VoiceParams(
+                speed=float(v.get("speed", 1.0)),
+                pitch=float(v.get("pitch", 1.0)),
+                expressiveness=float(v.get("expressiveness", 0.667)),
+                volume=float(v.get("volume", 1.0)),
+            )
+            generated += await tts.warm_up(grupo.get("texts", []), params)
+        log.info("TTS listo: %d frases nuevas, %d ya cacheadas", generated, total - generated)
     finally:
         await api.aclose()
 

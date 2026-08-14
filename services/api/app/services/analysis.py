@@ -104,7 +104,29 @@ def _fallback_sentiment(score: float | None) -> str:
     return "negativo"
 
 
-def query_ollama(transcript: str, timeout: float = 120.0) -> dict[str, Any] | None:
+def build_system_prompt(extra: str | None) -> str:
+    """Prompt base + lo que haya cargado la campaña.
+
+    Las instrucciones de la campaña se agregan DESPUÉS del prompt base y no lo
+    reemplazan: el formato JSON de la respuesta es un contrato con el código
+    que la parsea, y dejar que se pise convierte cualquier prompt mal escrito
+    en un análisis perdido en silencio.
+    """
+    extra = (extra or "").strip()
+    if not extra:
+        return SYSTEM_PROMPT
+
+    return (
+        f"{SYSTEM_PROMPT}\n\n"
+        "Contexto e instrucciones adicionales de esta campaña "
+        "(respetá igual el formato JSON de arriba):\n"
+        f"{extra}"
+    )
+
+
+def query_ollama(
+    transcript: str, timeout: float = 120.0, extra_prompt: str | None = None
+) -> dict[str, Any] | None:
     """Consulta el LLM local. Devuelve None si no está disponible."""
     if not settings.ollama_enabled:
         return None
@@ -115,7 +137,7 @@ def query_ollama(transcript: str, timeout: float = 120.0) -> dict[str, Any] | No
         "stream": False,
         "options": {"temperature": 0.1, "num_predict": 400},
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": build_system_prompt(extra_prompt)},
             {"role": "user", "content": f"Transcripción de la encuesta:\n\n{transcript}"},
         ],
     }
@@ -158,7 +180,12 @@ def analyze_call(db: Session, call: CallAttempt) -> CallAnalysis:
     score = compute_satisfaction(call.answers)
     transcript = build_transcript(call)
 
-    llm_result = query_ollama(transcript) if transcript.strip() else None
+    campaign = call.target.campaign if call.target else None
+    llm_result = (
+        query_ollama(transcript, extra_prompt=getattr(campaign, "analysis_prompt", None))
+        if transcript.strip()
+        else None
+    )
 
     analysis = call.analysis or CallAnalysis(call_id=call.id)
     analysis.satisfaction_score = score

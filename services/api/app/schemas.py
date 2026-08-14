@@ -38,6 +38,11 @@ class SurveyScript(BaseModel):
     outro_script: str
     fallback_script: str
     optout_script: str
+    # Modulación de la voz. El voice-agent los pasa tal cual a Piper.
+    voice_speed: float = 1.0
+    voice_pitch: float = 1.0
+    voice_expressiveness: float = 0.667
+    voice_volume: float = 1.0
     questions: list[QuestionOut]
 
 

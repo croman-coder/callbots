@@ -246,6 +246,11 @@ def update_campaign(
     outro_script: str = Form(...),
     fallback_script: str = Form(...),
     optout_script: str = Form(...),
+    analysis_prompt: str = Form(""),
+    voice_speed: float = Form(1.0),
+    voice_pitch: float = Form(1.0),
+    voice_expressiveness: float = Form(0.667),
+    voice_volume: float = Form(1.0),
     is_active: bool = Form(False),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
@@ -271,6 +276,13 @@ def update_campaign(
     campaign.outro_script = outro_script
     campaign.fallback_script = fallback_script
     campaign.optout_script = optout_script
+    # Se acotan acá y no solo en el HTML: el form se puede saltear, y un
+    # length_scale absurdo deja la voz irreconocible o tarda una eternidad.
+    campaign.analysis_prompt = analysis_prompt.strip() or None
+    campaign.voice_speed = min(max(voice_speed, 0.5), 2.0)
+    campaign.voice_pitch = min(max(voice_pitch, 0.7), 1.4)
+    campaign.voice_expressiveness = min(max(voice_expressiveness, 0.0), 1.5)
+    campaign.voice_volume = min(max(voice_volume, 0.1), 3.0)
     campaign.is_active = is_active
 
     db.commit()

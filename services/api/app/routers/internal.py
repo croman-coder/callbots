@@ -95,6 +95,10 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             outro_script=campaign.outro_script,
             fallback_script=campaign.fallback_script,
             optout_script=campaign.optout_script,
+            voice_speed=campaign.voice_speed,
+            voice_pitch=campaign.voice_pitch,
+            voice_expressiveness=campaign.voice_expressiveness,
+            voice_volume=campaign.voice_volume,
             questions=[QuestionOut.model_validate(q) for q in _active_questions(campaign)],
         )
 
@@ -121,6 +125,10 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
         outro_script=campaign.outro_script,
         fallback_script=campaign.fallback_script,
         optout_script=campaign.optout_script,
+        voice_speed=campaign.voice_speed,
+        voice_pitch=campaign.voice_pitch,
+        voice_expressiveness=campaign.voice_expressiveness,
+        voice_volume=campaign.voice_volume,
         questions=[QuestionOut.model_validate(q) for q in questions],
     )
 
@@ -278,21 +286,39 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
         .where(Campaign.is_active.is_(True))
     ).all()
 
-    texts: list[str] = []
+    # Se agrupa por campaña porque cada una tiene su propia modulación de voz:
+    # la misma frase con otra velocidad o tono es otro audio, y cachearla con
+    # los parámetros equivocados haría que el precalentado no sirva de nada.
+    grupos = []
+    todos: list[str] = []
+
     for campaign in campaigns:
-        texts += [
+        textos = [
             campaign.intro_script,
             campaign.outro_script,
             campaign.fallback_script,
             campaign.optout_script,
         ]
-        texts += [q.text for q in campaign.questions if q.is_active]
+        textos += [q.text for q in campaign.questions if q.is_active]
+        limpios = [t.strip() for t in dict.fromkeys(textos) if t and t.strip()]
+        todos += limpios
 
-    # dict.fromkeys deduplica preservando el orden: varias campañas suelen
-    # compartir el cierre y el fallback.
-    unique = [t.strip() for t in dict.fromkeys(texts) if t and t.strip()]
+        grupos.append(
+            {
+                "voice": {
+                    "speed": campaign.voice_speed,
+                    "pitch": campaign.voice_pitch,
+                    "expressiveness": campaign.voice_expressiveness,
+                    "volume": campaign.voice_volume,
+                },
+                "texts": limpios,
+            }
+        )
 
-    return {"campaigns": len(campaigns), "texts": unique}
+    # `texts` se mantiene por compatibilidad con agentes viejos.
+    unique = [t for t in dict.fromkeys(todos)]
+
+    return {"campaigns": len(campaigns), "texts": unique, "grupos": grupos}
 
 
 @router.get("/targets/{session_uuid}/context")

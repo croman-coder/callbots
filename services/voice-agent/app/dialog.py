@@ -68,8 +68,20 @@ def _save_wav(pcm: bytes, session_uuid: uuid_mod.UUID, position: int) -> str | N
         return None
 
 
-async def _say(socket: AudioSocket, text: str) -> None:
-    pcm = await tts.synthesize(text)
+def voz_de(script: Script) -> tts.VoiceParams:
+    """Modulación de la voz que pidió la campaña."""
+    return tts.VoiceParams(
+        speed=script.voice_speed,
+        pitch=script.voice_pitch,
+        expressiveness=script.voice_expressiveness,
+        volume=script.voice_volume,
+    )
+
+
+async def _say(
+    socket: AudioSocket, text: str, params: tts.VoiceParams = tts.DEFAULT_PARAMS
+) -> None:
+    pcm = await tts.synthesize(text, params=params)
     if pcm:
         await socket.play(pcm)
 
@@ -84,6 +96,7 @@ class SurveyDialog:
         self.api = api
         self.script = script
         self.session_uuid = socket.session_uuid
+        self._voz = voz_de(script)
         self.questions_asked = 0
         self.questions_answered = 0
         self.outcome = Outcome.PARTIAL
@@ -109,7 +122,7 @@ class SurveyDialog:
             else:
                 # Recorrió todas las preguntas sin cortes
                 self.outcome = Outcome.COMPLETED
-                await _say(self.socket, self.script.outro_script)
+                await _say(self.socket, self.script.outro_script, self._voz)
 
         except AudioSocketClosed as exc:
             self.hangup_cause = str(exc)
@@ -120,7 +133,7 @@ class SurveyDialog:
     # ------------------------------------------------------------------
     async def _greet(self) -> None:
         intro = _personalize(self.script.intro_script, self.script.contact_name)
-        await _say(self.socket, intro)
+        await _say(self.socket, intro, self._voz)
 
         # Damos lugar a un "sí, dígame" antes de arrancar con la primera pregunta.
         # No se transcribe: solo se espera a que termine de hablar.
@@ -137,7 +150,7 @@ class SurveyDialog:
 
         while True:
             prompt = question.text if retries_used == 0 else self.script.fallback_script
-            await _say(self.socket, prompt)
+            await _say(self.socket, prompt, self._voz)
             await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
 
             if retries_used == 0:
@@ -186,7 +199,7 @@ class SurveyDialog:
 
             if verdict.is_optout:
                 log.info("[%s] El cliente pidió no continuar", self.session_uuid)
-                await _say(self.socket, self.script.optout_script)
+                await _say(self.socket, self.script.optout_script, self._voz)
                 self.outcome = Outcome.PARTIAL
                 return False
 
