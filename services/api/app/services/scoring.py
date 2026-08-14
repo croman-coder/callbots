@@ -80,14 +80,59 @@ def strip_accents(text: str) -> str:
 
 
 def normalize(text: str | None) -> str:
+    """Minúsculas, sin acentos y sin puntuación pegada a las palabras.
+
+    La puntuación se reemplaza por espacio en vez de recortarse solo en los
+    extremos. Whisper devuelve "Ocho, muy bueno" y con el recorte anterior el
+    primer token quedaba "ocho," — que no matchea NUMBER_WORDS. El número se
+    perdía y la nota salía del fallback por adjetivos: "cero, muy malo"
+    terminaba puntuando 2 en vez de 0.
+    """
     if not text:
         return ""
-    return re.sub(r"\s+", " ", strip_accents(text.lower())).strip(" .,;:!¡¿?")
+    limpio = re.sub(r"[.,;:!¡¿?()\"']", " ", strip_accents(text.lower()))
+    return re.sub(r"\s+", " ", limpio).strip()
+
+
+# Se normalizan una vez con la misma función: si no, cualquier entrada con
+# puntuación (".", "...", "…amara.org") dejaría de coincidir.
+_NOISE_NORMALIZED = {normalize(t) for t in NOISE_TRANSCRIPTS}
 
 
 def looks_like_silence(transcript: str | None) -> bool:
     """Whisper alucina frases fijas cuando le das silencio o ruido."""
-    return normalize(transcript) in NOISE_TRANSCRIPTS
+    return normalize(transcript) in _NOISE_NORMALIZED
+
+
+# Con cuántos números distintos ya damos por hecho que Whisper devolvió la
+# enumeración del prompt y no una respuesta. Nadie contesta una encuesta
+# diciendo cuatro números diferentes; dos sí ("entre siete y ocho").
+_ECHO_MIN_DISTINCT_NUMBERS = 4
+
+
+def looks_like_prompt_echo(transcript: str | None) -> bool:
+    """Detecta que Whisper devolvió el initial_prompt en vez de la respuesta.
+
+    Cuando el audio es corto o dudoso, Whisper a veces transcribe la lista de
+    números que le pasamos como sesgo ("cero, uno, dos, ... diez") en lugar de
+    lo que dijo el cliente. Sin este filtro, _extract_number se queda con el
+    PRIMER número del rango — o sea `cero` — y la encuesta registra la peor
+    nota posible, que además dispara la advertencia de seguimiento en Bitrix.
+    Visto en el barrido de reconocimiento del 2026-08-14.
+    """
+    text = normalize(transcript)
+    if not text:
+        return False
+
+    encontrados = {
+        NUMBER_WORDS[token] for token in text.split() if token in NUMBER_WORDS
+    }
+    encontrados |= {
+        int(m.group(1))
+        for m in re.finditer(r"\b(\d{1,2})\b", text)
+        if int(m.group(1)) <= 10
+    }
+    return len(encontrados) >= _ECHO_MIN_DISTINCT_NUMBERS
 
 
 def detect_optout(transcript: str | None) -> bool:
@@ -147,6 +192,11 @@ def interpret(transcript: str | None, qtype: QuestionType) -> Interpretation:
     text = normalize(transcript)
     if not text:
         return Interpretation(understood=False, is_silence=True)
+
+    # No es silencio, pero tampoco una respuesta: mejor repreguntar que anotar
+    # un cero que nadie dijo.
+    if looks_like_prompt_echo(text):
+        return Interpretation(understood=False)
 
     if detect_optout(text):
         return Interpretation(understood=True, is_optout=True)
@@ -260,5 +310,29 @@ if __name__ == "__main__":
 
     assert interpret("no me llamen mas", QuestionType.SCALE_1_10).is_optout
     assert not interpret("", QuestionType.SCALE_1_10).understood
+
+    # Whisper puntúa las respuestas: "Ocho, muy bueno" tiene que dar 8, no
+    # caer al fallback por adjetivos. Antes el token quedaba "ocho," y el
+    # número se perdía; "cero, muy malo" registraba 2 en vez de 0.
+    assert interpret("Ocho, muy bueno", QuestionType.SCALE_1_10).value == 8
+    assert interpret("Cero, muy malo", QuestionType.SCALE_1_10).value == 0
+    assert interpret("Diez, excelente", QuestionType.SCALE_1_10).value == 10
+    assert interpret("Nueve, todo bien.", QuestionType.SCALE_1_10).value == 9
+    assert interpret("¿Siete?", QuestionType.SCALE_1_10).value == 7
+
+    # Las frases de ruido siguen detectándose después de normalizar
+    assert looks_like_silence("...")
+    assert looks_like_silence("Subtítulos realizados por la comunidad de Amara.org")
+    assert not looks_like_silence("ocho")
+
+    # Eco del initial_prompt: Whisper devuelve la lista de números en vez de
+    # la respuesta. Sin filtro, _extract_number se queda con el primero (cero)
+    # y la encuesta anota la peor nota posible.
+    eco = "Cero, uno, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez."
+    assert looks_like_prompt_echo(eco)
+    assert not interpret(eco, QuestionType.SCALE_1_10).understood
+    # Pero una respuesta con dos números sigue siendo una respuesta
+    assert not looks_like_prompt_echo("entre siete y ocho")
+    assert interpret("entre siete y ocho", QuestionType.SCALE_1_10).value == 7
 
     print("scoring: OK")
