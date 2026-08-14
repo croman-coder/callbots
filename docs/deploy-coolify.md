@@ -294,12 +294,28 @@ echo var_export(\$a->custom_labels, true);
      taller en uso.
 
    O sea que el `1036` / `ufCrm5FechaIngresoTaller` del `.env.example` eran
-   valores de ejemplo, no la config de este portal. Hay que decidir de dónde
-   sale el T0 y, si no existe, crearlo en Bitrix.
+   valores de ejemplo, no la config de este portal.
 
-   No es urgente para el despliegue: `bitrix_entity_type_id` y `trigger_field`
-   son columnas **de cada campaña**, no globales, y todavía no hay campañas
-   creadas. Las variables de entorno sólo prellenan el formulario del panel.
+   **Confirmado con Carlos el 2026-08-14: los datos del taller no están en
+   Bitrix, viven en otro sistema.** Eso saca el problema del terreno de la
+   configuración y lo mete en el del código, porque hoy el proyecto asume
+   Bitrix como única fuente y como único destino:
+
+   - **No hay por dónde entrar.** `SurveyTarget` se crea sólo en
+     `app/bitrix/sync.py`. El panel no tiene alta manual (`routers/admin.py`
+     expone `call-now` y `reschedule`, pero ningún `POST /targets`) y `/internal`
+     es sólo para el voice-agent. Hace falta una vía de ingesta: un conector al
+     sistema del taller, un endpoint, o una importación por archivo.
+   - **No hay por dónde salir.** `SurveyTarget.bitrix_entity_type_id` y
+     `bitrix_entity_id` son `NOT NULL` (`models.py:188`), porque el resultado se
+     escribe como comentario en el timeline de ese registro. Si el destinatario
+     no existe en Bitrix hay dos caminos: espejar los registros del taller en
+     Bitrix, o hacer opcional el writeback (cambio de esquema + migración).
+
+   Mientras tanto el despliegue no se ve afectado: `bitrix_entity_type_id` y
+   `trigger_field` son columnas **de cada campaña**, no globales, y todavía no
+   hay campañas creadas. Las variables de entorno sólo prellenan el formulario
+   del panel.
 
 2. **El webhook no tiene permiso de telefonía.** Los scopes concedidos son
    `crm`, `call` y `user_basic`; `telephony.externalcall.register` responde
