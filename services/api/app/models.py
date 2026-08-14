@@ -199,8 +199,11 @@ class SurveyTarget(Base):
     )
 
     # --- Origen en Bitrix ---
-    bitrix_entity_type_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    bitrix_entity_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # Opcionales: un destinatario puede venir de una carga manual o de otro
+    # sistema. Sin registro asociado no hay writeback, y el resultado queda
+    # solo en el panel.
+    bitrix_entity_type_id: Mapped[int | None] = mapped_column(Integer)
+    bitrix_entity_id: Mapped[int | None] = mapped_column(Integer, index=True)
     bitrix_contact_id: Mapped[int | None] = mapped_column(Integer)
     bitrix_title: Mapped[str | None] = mapped_column(String(255))
 

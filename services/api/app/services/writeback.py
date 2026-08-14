@@ -112,6 +112,19 @@ def push_result_to_bitrix(db: Session, call: CallAttempt) -> bool:
         log.error("La llamada %s no tiene destinatario asociado", call.id)
         return False
 
+    if not settings.bitrix_webhook_url.startswith("http"):
+        log.info("Sin Bitrix configurado: el resultado queda solo en el panel")
+        return True
+
+    if target.bitrix_entity_id is None:
+        # Carga manual o de otro sistema: no hay registro donde comentar. No es
+        # un error, así que no se marca la llamada como fallida.
+        log.info(
+            "Destinatario %s sin registro de Bitrix: no hay dónde escribir",
+            target.id,
+        )
+        return True
+
     ok = True
     error_parts: list[str] = []
 

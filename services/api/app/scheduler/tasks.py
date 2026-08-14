@@ -44,6 +44,12 @@ ENTITY_TYPE_NAMES = {1: "LEAD", 2: "DEAL", 3: "CONTACT", 4: "COMPANY"}
 # ---------------------------------------------------------------------------
 @shared_task(name="callbot.sync_bitrix")
 def sync_bitrix() -> list[dict]:
+    if not settings.bitrix_webhook_url.startswith("http"):
+        # Sin webhook la sincronización no puede hacer nada, y correrla igual
+        # llena el log de errores cada 15 minutos por algo que ya sabemos.
+        log.debug("Sin BITRIX_WEBHOOK_URL: se saltea la sincronización")
+        return []
+
     with session_scope() as db:
         reports = sync_all_campaigns(db)
         return [r.as_dict() for r in reports]

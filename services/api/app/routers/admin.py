@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -22,6 +23,8 @@ from app.config import settings
 from app.db import get_db
 from app.deps import require_admin
 from app.routers.simulator import emitir_ticket
+from app.bitrix.client import normalize_phone_py
+from app.scheduling import next_call_slot, parse_days, parse_hhmm
 from app.services import voicebox
 from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
@@ -435,6 +438,96 @@ def list_targets(
     )
 
 
+@router.post("/targets")
+def add_targets(
+    campaign_id: int = Form(...),
+    lote: str = Form(...),
+    cuando: str = Form("ahora"),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Carga destinatarios a mano, sin pasar por Bitrix.
+
+    Una línea por persona: `teléfono, nombre`. El nombre es opcional.
+    Los teléfonos se normalizan a E.164 paraguayo, igual que los que vienen
+    del sync, así que `0981 123 456` y `+595981123456` son el mismo número.
+    """
+    campaign = db.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(404, "Campaña inexistente")
+
+    tz = ZoneInfo(settings.tz)
+    ahora = datetime.now(timezone.utc)
+    # "ahora" agenda en el próximo hueco llamable; "espera" respeta la demora
+    # de la campaña, como si el ingreso al taller fuera este momento.
+    trigger_at = ahora
+    base = ahora if cuando == "ahora" else ahora + timedelta(hours=campaign.delay_hours)
+
+    scheduled_at = next_call_slot(
+        base,
+        parse_hhmm(campaign.call_window_start),
+        parse_hhmm(campaign.call_window_end),
+        parse_days(campaign.call_window_days),
+        tz,
+    )
+
+    creados = duplicados = invalidos = 0
+
+    for linea in lote.splitlines():
+        linea = linea.strip()
+        if not linea:
+            continue
+
+        partes = [p.strip() for p in linea.replace(";", ",").split(",")]
+        telefono = normalize_phone_py(partes[0])
+        nombre = partes[1] if len(partes) > 1 and partes[1] else None
+
+        if not telefono:
+            invalidos += 1
+            continue
+
+        ya_esta = db.scalar(
+            select(SurveyTarget).where(
+                SurveyTarget.campaign_id == campaign_id,
+                SurveyTarget.phone == telefono,
+                SurveyTarget.status.in_(
+                    [
+                        TargetStatus.PENDING,
+                        TargetStatus.SCHEDULED,
+                        TargetStatus.QUEUED,
+                        TargetStatus.CALLING,
+                    ]
+                ),
+            )
+        )
+        if ya_esta:
+            duplicados += 1
+            continue
+
+        db.add(
+            SurveyTarget(
+                campaign_id=campaign_id,
+                bitrix_entity_type_id=None,
+                bitrix_entity_id=None,
+                contact_name=nombre,
+                phone=telefono,
+                trigger_at=trigger_at,
+                scheduled_at=scheduled_at,
+                status=TargetStatus.SCHEDULED,
+            )
+        )
+        creados += 1
+
+    db.commit()
+    log.info(
+        "Alta manual en campaña %s: %d creados, %d duplicados, %d inválidos",
+        campaign_id, creados, duplicados, invalidos,
+    )
+    return _redirect(
+        f"/targets?campaign_id={campaign_id}&ok={creados}"
+        f"&dup={duplicados}&mal={invalidos}"
+    )
+
+
 @router.post("/targets/{target_id}/call-now")
 def trigger_call(target_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
     target = db.get(SurveyTarget, target_id)
@@ -637,20 +730,34 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
         checks.append({"name": "Postgres", "ok": False, "detail": str(exc)[:200]})
 
     # Bitrix
-    try:
-        from app.bitrix.client import BitrixClient
-
-        with BitrixClient() as client:
-            profile = client.call("profile")
+    if not settings.bitrix_webhook_url.startswith("http"):
+        # Desactivado a propósito, no roto: el callbot funciona igual y los
+        # resultados quedan en el panel. Marcarlo en rojo entrena a ignorar
+        # el diagnóstico.
         checks.append(
             {
                 "name": "Bitrix24",
                 "ok": True,
-                "detail": f"portal de {profile.get('NAME', '?')} {profile.get('LAST_NAME', '')}".strip(),
+                "detail": (
+                    "no configurado; los destinatarios se cargan a mano y el "
+                    "resultado queda solo en el panel"
+                ),
             }
         )
-    except Exception as exc:  # noqa: BLE001
-        checks.append({"name": "Bitrix24", "ok": False, "detail": str(exc)[:200]})
+    else:
+        try:
+            from app.bitrix.client import BitrixClient
+
+            with BitrixClient() as client:
+                profile = client.call("profile")
+            nombre = f"{profile.get('NAME', '?')} {profile.get('LAST_NAME', '')}".strip()
+            checks.append(
+                {"name": "Bitrix24", "ok": True, "detail": f"portal de {nombre}"}
+            )
+        except Exception as exc:  # noqa: BLE001
+            checks.append(
+                {"name": "Bitrix24", "ok": False, "detail": str(exc)[:200]}
+            )
 
     # Asterisk
     try:

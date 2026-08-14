@@ -7,6 +7,48 @@
 <p class="sub">{{ total }} registros · página {{ page }} de {{ pages }}</p>
 
 <div class="card">
+  <h2 style="margin-top:0">Cargar destinatarios</h2>
+  <p class="sub" style="margin-bottom:14px">
+    Una línea por persona: <code>teléfono, nombre</code>. El nombre es
+    opcional. Los teléfonos se normalizan igual que los que vienen de Bitrix,
+    así que <code>0981 123 456</code> y <code>+595981123456</code> son el mismo.
+  </p>
+
+  {% if request.query_params.get('ok') is not none %}
+  <p style="color:var(--ok)">
+    {{ request.query_params.get('ok') }} cargados ·
+    {{ request.query_params.get('dup') }} ya estaban ·
+    {{ request.query_params.get('mal') }} sin teléfono válido
+  </p>
+  {% endif %}
+
+  <form method="post" action="/targets">
+    <div class="row">
+      <label>Campaña
+        <select name="campaign_id" required>
+          {% for c in campaigns %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Cuándo llamar
+        <select name="cuando">
+          <option value="ahora">En el próximo horario permitido</option>
+          <option value="espera">Respetando la demora de la campaña</option>
+        </select>
+      </label>
+    </div>
+    <label>Lista
+      <textarea name="lote" rows="6" required
+                placeholder="0981123456, Juan Perez&#10;+595971234567, Maria Gomez&#10;0976953263"></textarea>
+    </label>
+    <div class="actions">
+      <button type="submit" class="primary">Cargar</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
   <form method="get" action="/targets">
     <div class="row">
       <div>
