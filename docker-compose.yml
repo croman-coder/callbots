@@ -50,13 +50,14 @@ x-api-env: &api-env
 
 x-api-build: &api-build
   build:
-    context: ./services/api
-    dockerfile: Dockerfile
+    # El contexto es la raíz del repo: la imagen necesita services/api y
+    # también scripts/, que vive afuera.
+    context: .
+    dockerfile: services/api/Dockerfile
   restart: unless-stopped
   volumes:
     - ./services/api:/app
-    # Los scripts viven en la raíz del repo, fuera del contexto de build de la
-    # imagen: sin este montaje `python scripts/...` no los encuentra.
+    # Sobre la copia que ya trae la imagen, para editarlos sin rebuildear
     - ./scripts:/app/scripts:ro
     # Grabaciones de referencia para clonar la voz, y audios de prueba
     - ./voices:/voices

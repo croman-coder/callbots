@@ -8,10 +8,15 @@
 #      11434 (ollama del host). El panel sale por Traefik, no por un puerto.
 #   2. Sin `ollama` propio: se usa el que ya corre en el host como servicio de
 #      systemd, con los modelos ya descargados.
-#   3. Sin bind-mount del código: la imagen ya lo trae. Solo se montan scripts
-#      y voces, que viven fuera del contexto de build.
-#   4. `models-init` baja la voz de Piper antes de que arranque el voice-agent.
-#      Sin ese archivo el TTS tira FileNotFoundError en la primera llamada.
+#   3. NINGÚN bind mount relativo. Coolify clona el repo dentro de un
+#      contenedor helper que solo tiene montado /var/run/docker.sock: el
+#      daemon del host no ve /artifacts/<uuid>, así que un `./loquesea` se
+#      monta como directorio vacío. Asterisk arrancaba sin plantillas y moría
+#      con "'modules.conf' invalid or missing". Todo lo que antes se montaba
+#      va horneado en las imágenes; lo que necesita persistir, en volúmenes.
+#   4. El voice-agent baja la voz de Piper en su command antes del exec: un
+#      servicio init aparte no sirve porque Coolify le pone
+#      restart: unless-stopped a todo y nunca queda "completed".
 #   5. Whisper en CPU: el host no tiene configurado nvidia-container-toolkit
 #      (hace falta sudo). Con 24 cores el modelo `small` va holgado.
 #
@@ -53,8 +58,8 @@ services:
   # API REST + panel de administración. Es el único servicio con dominio.
   api:
     build:
-      context: ./services/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/api/Dockerfile
     restart: unless-stopped
     command: >
       sh -c "alembic upgrade head &&
@@ -103,8 +108,7 @@ services:
       VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID}
       VOICEBOX_ENGINE: ${VOICEBOX_ENGINE}
     volumes:
-      - ./scripts:/app/scripts:ro
-      - ./voices:/voices
+      - voices:/voices
       - recordings:/recordings
     # host.docker.internal alcanza el Ollama del host (systemd, puerto 11434)
     extra_hosts:
@@ -125,8 +129,8 @@ services:
   # Worker: origina llamadas, analiza resultados, escribe en Bitrix
   worker:
     build:
-      context: ./services/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/api/Dockerfile
     restart: unless-stopped
     command: celery -A app.scheduler.worker.celery_app worker --loglevel=info --concurrency=4
     environment:
@@ -173,8 +177,7 @@ services:
       VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID}
       VOICEBOX_ENGINE: ${VOICEBOX_ENGINE}
     volumes:
-      - ./scripts:/app/scripts:ro
-      - ./voices:/voices
+      - voices:/voices
       - recordings:/recordings
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -190,8 +193,8 @@ services:
   # Beat: sincroniza Bitrix cada N minutos y dispara las llamadas vencidas
   beat:
     build:
-      context: ./services/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/api/Dockerfile
     restart: unless-stopped
     command: celery -A app.scheduler.worker.celery_app beat --loglevel=info
     environment:
@@ -222,7 +225,6 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL}
       OLLAMA_ENABLED: ${OLLAMA_ENABLED}
     volumes:
-      - ./scripts:/app/scripts:ro
       - recordings:/recordings
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -328,7 +330,6 @@ services:
       - "${SIP_PORT}:5060/tcp"
       - "${RTP_START}-${RTP_END}:${RTP_START}-${RTP_END}/udp"
     volumes:
-      - ./docker/asterisk/etc:/etc/asterisk-tpl:ro
       - asterisk-spool:/var/spool/asterisk
     depends_on:
       - voice-agent
@@ -337,5 +338,6 @@ volumes:
   pgdata:
   redisdata:
   models:
+  voices:
   recordings:
   asterisk-spool:

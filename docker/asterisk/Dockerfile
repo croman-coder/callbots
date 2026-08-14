@@ -23,8 +23,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# Las plantillas se montan acá; el entrypoint las renderiza a /etc/asterisk
-VOLUME ["/etc/asterisk-tpl"]
+# Las plantillas van dentro de la imagen: el entrypoint las renderiza con
+# envsubst a /etc/asterisk al arrancar. En desarrollo el compose monta
+# ./docker/asterisk/etc encima y pisa estas, para editarlas sin rebuildear.
+COPY etc/ /etc/asterisk-tpl/
 
 EXPOSE 5060/udp 5060/tcp 8088/tcp
 

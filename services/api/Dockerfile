@@ -10,10 +10,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+# El contexto de build es la RAÍZ del repo, no services/api: los scripts de
+# operación (bitrix_discover, seed_campaign, voicebox_voice) viven afuera y
+# tienen que entrar en la imagen. Montarlos con un bind no sirve en Coolify,
+# que clona el repo dentro de un contenedor helper: el daemon del host no ve
+# esa ruta y monta un directorio vacío.
+COPY services/api/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY services/api/ .
+COPY scripts/ ./scripts/
 
 RUN mkdir -p /recordings
 

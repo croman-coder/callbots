@@ -1,0 +1,25 @@
+# El contexto de build de la imagen de la API es la raíz del repo (necesita
+# services/api + scripts). Todo lo demás sobra y solo hace lento el build.
+.git
+.github
+.venv
+venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Datos y modelos: pesan y no van en ninguna imagen
+models/
+recordings/
+data/
+voices/*
+!voices/.gitkeep
+*.onnx
+*.onnx.json
+*.wav
+*.gsm
+
+# Secretos
+.env
