@@ -473,6 +473,9 @@ def add_targets(
     )
 
     creados = duplicados = invalidos = 0
+    # Los del propio lote todavía no están en la base cuando se consulta, así
+    # que un teléfono repetido dentro del mismo pegado se colaba entero.
+    en_este_lote: set[str] = set()
 
     for linea in lote.splitlines():
         linea = linea.strip()
@@ -501,9 +504,11 @@ def add_targets(
                 ),
             )
         )
-        if ya_esta:
+        if ya_esta or telefono in en_este_lote:
             duplicados += 1
             continue
+
+        en_este_lote.add(telefono)
 
         db.add(
             SurveyTarget(
