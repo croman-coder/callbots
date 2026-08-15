@@ -33,7 +33,8 @@ if [ -n "$SIP_EXTERNAL_ADDRESS" ]; then
     SIP_NAT_SETTINGS="external_media_address = ${SIP_EXTERNAL_ADDRESS}
 external_signaling_address = ${SIP_EXTERNAL_ADDRESS}
 local_net = 10.0.0.0/8
-local_net = 172.16.0.0/12"
+local_net = 172.16.0.0/12
+local_net = 192.168.0.0/16"
 else
     SIP_NAT_SETTINGS="; SIP_EXTERNAL_ADDRESS vacío: sin reescritura de NAT.
 ; Si el softphone conecta pero no hay audio, es esto."
