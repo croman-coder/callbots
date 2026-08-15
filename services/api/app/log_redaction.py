@@ -80,14 +80,20 @@ class RedactarSecretos(logging.Filter):
         return True
 
 
-def instalar() -> None:
-    """Cuelga el filtro del logger raíz y de los handlers que ya existan.
+def instalar(logger: logging.Logger | None = None) -> None:
+    """Cuelga el filtro de un logger y de sus handlers. Por defecto, el raíz.
 
-    Va en los dos lados: el logger raíz cubre lo que se propaga hacia arriba, y
-    los handlers cubren a los loggers que tienen `propagate = False`.
+    Va en los dos lados: el logger cubre lo que se propaga hacia arriba, y los
+    handlers cubren a los que tienen `propagate = False`.
+
+    Es idempotente: Celery reconfigura el logging al arrancar el worker, así que
+    esto se llama más de una vez y no debe apilar filtros repetidos.
     """
-    filtro = RedactarSecretos()
-    raiz = logging.getLogger()
-    raiz.addFilter(filtro)
-    for handler in raiz.handlers:
-        handler.addFilter(filtro)
+    destino = logger or logging.getLogger()
+
+    if not any(isinstance(f, RedactarSecretos) for f in destino.filters):
+        destino.addFilter(RedactarSecretos())
+
+    for handler in destino.handlers:
+        if not any(isinstance(f, RedactarSecretos) for f in handler.filters):
+            handler.addFilter(RedactarSecretos())

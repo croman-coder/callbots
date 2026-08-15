@@ -10,6 +10,7 @@ import logging
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import after_setup_logger, after_setup_task_logger
 
 from app import log_redaction
 from app.config import settings
@@ -19,6 +20,16 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
 )
 log_redaction.instalar()
+
+
+# Celery se apodera del logger raíz cuando arranca el worker y reemplaza sus
+# handlers: el filtro puesto al importar este módulo se pierde justo antes de
+# que empiecen a salir logs. Estas señales corren después de esa toma, que es
+# el único momento en que el filtro queda pegado de verdad.
+@after_setup_logger.connect
+@after_setup_task_logger.connect
+def _reinstalar_redaccion(logger=None, **_kwargs) -> None:  # noqa: ANN001
+    log_redaction.instalar(logger)
 
 celery_app = Celery(
     "callbot",
