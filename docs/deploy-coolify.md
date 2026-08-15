@@ -11,11 +11,13 @@ no es una guía teórica.
 > sobre la RTX 5070 y la voz `es_AR-daniela-high` cargados, escuchando
 > AudioSocket en 8090.
 >
-> **Corre sin Bitrix.** El token del webhook quedó revocado al editarle los
-> permisos, y los datos del taller tampoco están en ese portal, así que el
-> callbot funciona solo: los destinatarios se cargan a mano desde el panel y
-> el resultado queda ahí. Las cinco dependencias dan ok — Bitrix figura como
-> *no configurado*, que es distinto de roto.
+> **Bitrix reconectado el 2026-08-15.** El webhook entrante #53 (usuario 19)
+> se recargó con su token regenerado, que ahora sí incluye el scope
+> `telephony`: `BITRIX_REGISTER_CALL=true` y `BITRIX_TELEPHONY_USER_ID=19`.
+> El panel muestra Bitrix **ok — portal de CARLOS ROMAN**. Ojo: la conexión
+> sirve para registrar llamadas en el historial y consultar el CRM; los
+> **destinatarios siguen cargándose a mano**, porque los datos del taller no
+> viven en este portal (ver Pendientes).
 
 | | |
 |---|---|
@@ -375,15 +377,16 @@ echo var_export(\$a->custom_labels, true);
    forma automática. Las opciones siguen siendo un conector al sistema del
    taller, espejar esos registros en Bitrix, o seguir cargando a mano.
 
-2. **El webhook quedó revocado.** Al editarle los permisos para agregarle
-   telefonía, Bitrix regeneró el token: el que estaba cargado empezó a
-   responder `INVALID_CREDENTIALS`. Si algún día se vuelve a conectar Bitrix,
-   hay que sacar la URL nueva del webhook entrante y cargarla.
+2. ~~**El webhook quedó revocado.**~~ **Resuelto el 2026-08-15.** Se sacó la
+   URL nueva del webhook entrante #53 desde el portal (Recursos para
+   desarrolladores → Integraciones → Editar) y se cargó en Coolify con el
+   ciclo *borrar → bulk → limpiar previews*. El scope `telephony` ya venía
+   incluido en la edición que regeneró el token, así que también quedaron
+   `BITRIX_REGISTER_CALL=true` y `BITRIX_TELEPHONY_USER_ID=19`. Verificado:
+   `profile.json` responde, `scope.json` lista `telephony`, y
+   `telephony.externalcall.searchcrmentities` encuentra contactos reales.
 
-   Ojo también con los permisos: los scopes que tenía eran `crm`, `call` y
-   `user_basic`, sin `telephony`, así que `telephony.externalcall.register`
-   respondía `insufficient_scope`. Por eso `BITRIX_REGISTER_CALL` está en
-   `false`. Ese permiso sólo sirve para que la llamada quede registrada en el
+   Ese permiso sólo sirve para que la llamada quede registrada en el
    historial del cliente: **no habilita marcar**, que es la confusión que hay
    que evitar. Ver el punto siguiente.
 
@@ -398,6 +401,15 @@ echo var_export(\$a->custom_labels, true);
    que ya usa Bitrix — casi todos los proveedores permiten un solo registro
    por cuenta, y si Asterisk se registra con las mismas credenciales puede
    tirar abajo la telefonía de Bitrix.
+
+   **El proveedor está identificado (2026-08-15).** La conexión SIP de
+   Bitrix (`sipsantarosa`, Telefonía → Configurar) apunta a
+   `181.94.210.104`, que resuelve a `host-104.181-94-210.personal.net.py`:
+   es **Personal Paraguay (Núcleo S.A.)**, usuario `400022`. El pedido de la
+   segunda cuenta va a Personal. Nota técnica: usar el canal de Bitrix para
+   el bot no es una alternativa — la API de telefonía de Bitrix registra
+   llamadas o hace infocalls de texto leído, pero nunca entrega el stream de
+   audio, y sin audio no hay encuesta interactiva.
 
    Lo que hay que pedirle al proveedor:
 
