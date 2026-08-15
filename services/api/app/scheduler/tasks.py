@@ -61,8 +61,10 @@ def sync_bitrix() -> list[dict]:
 @shared_task(name="callbot.dispatch_due_calls")
 def dispatch_due_calls() -> dict:
     now = datetime.now(timezone.utc)
-    dispatched = 0
     skipped_window = 0
+    truncated = False
+    # Los ids se encolan recién después de cerrar la transacción: ver abajo.
+    a_encolar: list[int] = []
 
     with session_scope() as db:
         in_flight = db.scalar(
@@ -76,6 +78,11 @@ def dispatch_due_calls() -> dict:
             log.debug("Sin cupo: %d llamadas en curso", in_flight)
             return {"dispatched": 0, "in_flight": in_flight}
 
+        # El tope no puede ser solo proporcional al cupo: los que caen fuera de
+        # ventana se lo comen y dejan sin despachar a los que sí están en
+        # horario más abajo en la cola. El colchón fijo cubre ese caso, y si
+        # aun así se corta queda registrado en vez de pasar inadvertido.
+        tope = free_slots * 3 + 50
         candidates = db.scalars(
             select(SurveyTarget)
             .where(
@@ -83,11 +90,17 @@ def dispatch_due_calls() -> dict:
                 SurveyTarget.scheduled_at <= now,
             )
             .order_by(SurveyTarget.scheduled_at)
-            .limit(free_slots * 3)  # margen por si varios caen fuera de ventana
+            .limit(tope)
+            # Dos corridas solapadas del despachador leerían el mismo cupo y
+            # despacharían ambas la tanda entera, pasándose de
+            # MAX_CONCURRENT_CALLS. Con el lock, la segunda saltea lo que la
+            # primera ya tomó en vez de duplicarlo.
+            .with_for_update(skip_locked=True)
         ).all()
+        truncated = len(candidates) == tope
 
         for target in candidates:
-            if dispatched >= free_slots:
+            if len(a_encolar) >= free_slots:
                 break
 
             campaign = target.campaign
@@ -97,6 +110,13 @@ def dispatch_due_calls() -> dict:
             window_start = parse_hhmm(campaign.call_window_start, settings.call_window_start)
             window_end = parse_hhmm(campaign.call_window_end, settings.call_window_end)
             allowed_days = parse_days(campaign.call_window_days)
+
+            # Un destinatario sin intentos disponibles se cierra antes de mirar
+            # la ventana: si no, cada corrida lo reprograma y nunca llega a
+            # cerrarse mientras esté fuera de horario.
+            if target.attempts >= campaign.max_attempts:
+                target.status = TargetStatus.NO_ANSWER
+                continue
 
             if not is_within_window(
                 now, window_start, window_end, allowed_days, settings.timezone
@@ -109,21 +129,28 @@ def dispatch_due_calls() -> dict:
                 skipped_window += 1
                 continue
 
-            if target.attempts >= campaign.max_attempts:
-                target.status = TargetStatus.NO_ANSWER
-                continue
-
             target.status = TargetStatus.QUEUED
-            db.flush()
-            place_call.delay(target.id)
-            dispatched += 1
+            a_encolar.append(target.id)
+
+    # Fuera del `with`: la transacción ya cerró y el estado QUEUED está escrito.
+    # Encolar adentro es una carrera perdida — el worker puede tomar la tarea
+    # antes del commit, leer el estado viejo, descartar la llamada, y dejar al
+    # destinatario en QUEUED, que el despachador ya no selecciona. Se queda
+    # colgado para siempre y sin ruido.
+    for target_id in a_encolar:
+        place_call.delay(target_id)
 
     if skipped_window:
         log.info("%d destinatarios reprogramados por estar fuera de ventana", skipped_window)
-    if dispatched:
-        log.info("%d llamadas encoladas", dispatched)
+    if a_encolar:
+        log.info("%d llamadas encoladas", len(a_encolar))
+    if truncated:
+        log.warning(
+            "Se leyeron %d candidatos, el tope de la consulta: puede haber más "
+            "esperando. Se despachan en la próxima corrida.", tope,
+        )
 
-    return {"dispatched": dispatched, "skipped_window": skipped_window}
+    return {"dispatched": len(a_encolar), "skipped_window": skipped_window}
 
 
 # ---------------------------------------------------------------------------
@@ -132,13 +159,36 @@ def dispatch_due_calls() -> dict:
 @shared_task(name="callbot.place_call", bind=True, max_retries=2)
 def place_call(self, target_id: int) -> dict:  # noqa: ANN001
     with session_scope() as db:
-        target = db.get(SurveyTarget, target_id)
+        # Con la fila bloqueada, dos workers que reciban la misma tarea se
+        # serializan: el segundo ve el estado que dejó el primero en vez de
+        # marcar un intento en paralelo.
+        target = db.scalar(
+            select(SurveyTarget).where(SurveyTarget.id == target_id).with_for_update()
+        )
         if target is None:
             return {"error": "target inexistente"}
 
-        if target.status not in (TargetStatus.QUEUED, TargetStatus.SCHEDULED):
+        if target.status is not TargetStatus.QUEUED:
             log.warning("Target %s en estado %s, no se llama", target_id, target.status)
             return {"skipped": True, "status": target.status.value}
+
+        # `task_acks_late` hace que Celery reentregue la tarea si el worker
+        # muere antes del ack. Si murió después de marcar pero antes del
+        # commit, el estado sigue en QUEUED y sin esta guarda le llamaríamos al
+        # cliente una segunda vez. Un intento abierto es la señal de que la
+        # llamada ya salió.
+        abierto = db.scalar(
+            select(func.count(CallAttempt.id)).where(
+                CallAttempt.target_id == target.id,
+                CallAttempt.ended_at.is_(None),
+                CallAttempt.started_at >= datetime.now(timezone.utc) - timedelta(minutes=10),
+            )
+        ) or 0
+        if abierto:
+            log.warning(
+                "Target %s ya tiene un intento en curso, no se vuelve a llamar", target_id
+            )
+            return {"skipped": True, "reason": "intento en curso"}
 
         if not target.phone:
             target.status = TargetStatus.SKIPPED
@@ -160,26 +210,30 @@ def place_call(self, target_id: int) -> dict:  # noqa: ANN001
         entity_type_id = target.bitrix_entity_type_id
         entity_id = target.bitrix_entity_id
 
-        # Registramos la llamada en la telefonía de Bitrix antes de marcar
-        if settings.bitrix_register_call:
-            try:
-                with BitrixClient() as client:
-                    attempt.bitrix_call_id = client.register_call(
-                        user_id=settings.bitrix_telephony_user_id,
-                        phone_number=phone,
-                        call_start_date=attempt.started_at,
-                        crm_entity_type=ENTITY_TYPE_NAMES.get(entity_type_id),
-                        crm_entity_id=entity_id if entity_type_id in ENTITY_TYPE_NAMES else None,
-                    )
-            except Exception as exc:  # noqa: BLE001 - nunca frenar la llamada por esto
-                log.warning("No se registró la llamada en Bitrix: %s", exc)
-
         try:
             with AriClient() as ari:
                 channel_id = ari.originate(phone=phone, session_uuid=session_uuid)
             attempt.asterisk_channel_id = channel_id
             target.status = TargetStatus.CALLING
             target.last_error = None
+
+            # Recién acá se registra en Bitrix. Hacerlo antes del originate
+            # dejaba en el historial del cliente llamadas que nunca salieron.
+            if settings.bitrix_register_call:
+                try:
+                    with BitrixClient() as client:
+                        attempt.bitrix_call_id = client.register_call(
+                            user_id=settings.bitrix_telephony_user_id,
+                            phone_number=phone,
+                            call_start_date=attempt.started_at,
+                            crm_entity_type=ENTITY_TYPE_NAMES.get(entity_type_id),
+                            crm_entity_id=(
+                                entity_id if entity_type_id in ENTITY_TYPE_NAMES else None
+                            ),
+                        )
+                except Exception as exc:  # noqa: BLE001 - nunca frenar la llamada por esto
+                    log.warning("No se registró la llamada en Bitrix: %s", exc)
+
             log.info(
                 "Llamando a %s (target=%s, intento=%s, canal=%s)",
                 phone, target.id, target.attempts, channel_id,

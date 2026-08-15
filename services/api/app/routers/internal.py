@@ -19,7 +19,7 @@ import uuid as uuid_mod
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
@@ -190,24 +190,27 @@ def submit_answer(
 
     call = _load_call(db, session_uuid)
 
-    # Si va a repreguntar, no guardamos todavía: la buena es la última
-    if not should_retry:
-        existing = db.scalar(
-            select(Answer).where(
-                Answer.call_id == call.id, Answer.question_id == question.id
-            )
+    # Se guarda siempre, también cuando va a repreguntar. La fila se pisa con
+    # cada intento, así que la última sigue siendo la buena — pero si el
+    # cliente corta justo durante la repregunta, antes se perdía sin dejar
+    # rastro lo que había llegado a decir. Para auditar una interpretación
+    # dudosa hace falta esa transcripción.
+    existing = db.scalar(
+        select(Answer).where(
+            Answer.call_id == call.id, Answer.question_id == question.id
         )
-        answer = existing or Answer(call_id=call.id, question_id=question.id)
-        answer.transcript = payload.transcript
-        answer.asr_confidence = payload.asr_confidence
-        answer.audio_path = payload.audio_path
-        answer.duration_seconds = payload.duration_seconds
-        answer.retries_used = payload.retries_used
-        answer.value_numeric = result.value
-        answer.value_source = "rules" if result.understood else None
+    )
+    answer = existing or Answer(call_id=call.id, question_id=question.id)
+    answer.transcript = payload.transcript
+    answer.asr_confidence = payload.asr_confidence
+    answer.audio_path = payload.audio_path
+    answer.duration_seconds = payload.duration_seconds
+    answer.retries_used = payload.retries_used
+    answer.value_numeric = result.value
+    answer.value_source = "rules" if result.understood else None
 
-        if existing is None:
-            db.add(answer)
+    if existing is None:
+        db.add(answer)
 
     if result.is_optout:
         call.target.status = TargetStatus.OPTED_OUT
@@ -221,7 +224,7 @@ def submit_answer(
         is_optout=result.is_optout,
         is_silence=result.is_silence,
         should_retry=should_retry,
-        saved=not should_retry,
+        saved=True,
     )
 
 
@@ -241,10 +244,21 @@ def session_finished(
 
     call.ended_at = now
     call.duration_seconds = int((now - (call.started_at or now)).total_seconds())
-    call.questions_asked = payload.questions_asked
-    call.questions_answered = payload.questions_answered
     call.hangup_cause = payload.hangup_cause
     call.recording_path = payload.recording_path
+
+    # Los conteos se derivan de lo que quedó guardado, no de lo que dice el
+    # agente. Si el agente muere a mitad del reporte, o repregunta y la llamada
+    # se corta, su número y las filas de `answers` dejan de coincidir — y el
+    # que se usa después para calcular tasas es este.
+    contadas = db.execute(
+        select(
+            func.count(Answer.id),
+            func.count(Answer.value_numeric),
+        ).where(Answer.call_id == call.id)
+    ).one()
+    call.questions_asked = max(payload.questions_asked, contadas[0])
+    call.questions_answered = contadas[1]
 
     # Si el cliente pidió salir, respetamos eso por encima del outcome reportado
     if call.target.status is TargetStatus.OPTED_OUT:
