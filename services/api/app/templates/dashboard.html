@@ -155,8 +155,9 @@
   {% if sentiment | length == 1 %}
     {% for name, count in sentiment.items() %}
     <p class="statement">
-      Las {{ count }} llamada{{ "s" if count != 1 }} analizada{{ "s" if count != 1 }}
-      {{ "dieron" if count != 1 else "dio" }} <span class="pill {{ name }}">{{ name or "sin clasificar" }}</span>.
+      {%- if count == 1 %}La única llamada analizada dio
+      {%- else %}Las {{ count }} llamadas analizadas dieron{% endif %}
+      <span class="pill {{ name }}">{{ name or "sin clasificar" }}</span>.
     </p>
     {% endfor %}
   {% else %}
