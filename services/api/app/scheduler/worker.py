@@ -11,12 +11,14 @@ import logging
 from celery import Celery
 from celery.schedules import crontab
 
+from app import log_redaction
 from app.config import settings
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
 )
+log_redaction.instalar()
 
 celery_app = Celery(
     "callbot",

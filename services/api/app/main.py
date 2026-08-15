@@ -7,6 +7,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app import log_redaction
 from app.config import settings
 from app.routers import admin, internal, simulator
 
@@ -22,6 +23,7 @@ logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
 )
+log_redaction.instalar()
 log = logging.getLogger(__name__)
 
 app = FastAPI(
