@@ -3,136 +3,410 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>{% block title %}Callbot{% endblock %}</title>
 <style>
+/* Callbot · panel de operaciones · densidad de datos sobre decoración
+ *
+ * Tipografía: stack del sistema + monoespaciada para datos. A propósito no se
+ * cargan fuentes web: es una herramienta interna, y una dependencia externa
+ * que bloquea el render no compra nada acá. La jerarquía la hacen el peso, el
+ * tamaño y el espacio.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* ---- superficies ---- */
+  --paper:        oklch(98.2% 0.004 250);
+  --surface:      oklch(100% 0 0);
+  --surface-2:    oklch(96.5% 0.006 250);
+  --surface-hover:oklch(97.4% 0.008 250);
+
+  /* ---- texto ---- */
+  --ink:          oklch(24% 0.02 255);
+  --ink-2:        oklch(44% 0.015 255);
+  --ink-muted:    oklch(56% 0.014 255);
+
+  /* ---- líneas ---- */
+  --line:         oklch(91.5% 0.006 250);
+  --line-strong:  oklch(84% 0.01 250);
+
+  /* ---- acento ---- */
+  --accent:       oklch(48% 0.17 258);
+  --accent-ink:   oklch(100% 0 0);
+  --accent-soft:  oklch(95% 0.03 258);
+  --accent-line:  oklch(80% 0.08 258);
+
+  /* ---- estados. Cada uno con tinte propio para fondo de etiqueta ---- */
+  --ok:           oklch(48% 0.13 152);
+  --ok-soft:      oklch(95% 0.045 152);
+  --warn:         oklch(52% 0.13 70);
+  --warn-soft:    oklch(95.5% 0.05 80);
+  --bad:          oklch(50% 0.19 25);
+  --bad-soft:     oklch(95% 0.045 25);
+  --info:         oklch(48% 0.14 245);
+  --info-soft:    oklch(95% 0.04 245);
+
+  /* ---- escala de espacio, 4pt ---- */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+  /* ---- escala tipográfica ---- */
+  --t-xs: 11.5px; --t-sm: 13px; --t-base: 14.5px;
+  --t-md: 17px;   --t-lg: 21px; --t-xl: 28px; --t-2xl: 38px;
+
+  --radius:    7px;
+  --radius-sm: 5px;
+
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-data: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
+
+  --shadow-1: 0 1px 2px oklch(24% 0.02 255 / 0.05);
+  --shadow-2: 0 4px 16px oklch(24% 0.02 255 / 0.09);
+}
+
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #f6f7f9;
-    --panel: #ffffff;
-    --ink: #1a1d21;
-    --muted: #6b7280;
-    --line: #e3e6ea;
-    --accent: #2563eb;
-    --ok: #15803d;
-    --warn: #b45309;
-    --bad: #b91c1c;
-    --radius: 8px;
+    /* Oscuro con variantes tonales propias, no colores invertidos: el
+       contraste se calcula para este fondo, no se hereda del claro. */
+    --paper:        oklch(17% 0.012 255);
+    --surface:      oklch(21% 0.014 255);
+    --surface-2:    oklch(25% 0.016 255);
+    --surface-hover:oklch(27% 0.018 255);
+
+    --ink:          oklch(94% 0.006 250);
+    --ink-2:        oklch(78% 0.012 250);
+    --ink-muted:    oklch(64% 0.014 250);
+
+    --line:         oklch(30% 0.016 255);
+    --line-strong:  oklch(40% 0.02 255);
+
+    --accent:       oklch(72% 0.14 255);
+    --accent-ink:   oklch(17% 0.012 255);
+    --accent-soft:  oklch(29% 0.06 255);
+    --accent-line:  oklch(45% 0.1 255);
+
+    --ok:           oklch(78% 0.15 152);
+    --ok-soft:      oklch(29% 0.06 152);
+    --warn:         oklch(80% 0.13 80);
+    --warn-soft:    oklch(30% 0.055 70);
+    --bad:          oklch(72% 0.16 25);
+    --bad-soft:     oklch(29% 0.07 25);
+    --info:         oklch(76% 0.12 245);
+    --info-soft:    oklch(29% 0.06 245);
+
+    --shadow-1: 0 1px 2px oklch(0% 0 0 / 0.3);
+    --shadow-2: 0 4px 16px oklch(0% 0 0 / 0.4);
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--ink);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { overflow-x: clip; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: var(--t-base)/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; text-underline-offset: 2px; }
+
+/* Anillo de foco visible en todo lo interactivo. No se anima: tiene que
+   aparecer en el momento, si no el tabulado se siente roto. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------------------------------------------------------------- cabecera */
+.top {
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20;
+}
+.top-in {
+  max-width: 1400px; margin: 0 auto;
+  padding: 0 var(--s5);
+  display: flex; align-items: center; gap: var(--s5);
+}
+.brand {
+  display: flex; align-items: center; gap: var(--s2);
+  font-weight: 640; letter-spacing: -0.01em;
+  padding: var(--s4) 0; margin-right: var(--s2);
+  color: var(--ink); flex: none;
+}
+.brand .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); flex: none;
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+
+.nav { display: flex; gap: var(--s1); overflow-x: auto; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.nav a {
+  padding: var(--s4) var(--s3);
+  color: var(--ink-muted); font-weight: 500; font-size: var(--t-sm);
+  white-space: nowrap; position: relative;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.nav a:hover { color: var(--ink); text-decoration: none; }
+.nav a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+.nav a[aria-current="page"]::after {
+  content: ""; position: absolute; left: var(--s3); right: var(--s3); bottom: 0;
+  height: 2px; background: var(--accent); border-radius: 2px 2px 0 0;
+}
+.top form { margin-left: auto; flex: none; }
+
+/* ------------------------------------------------------------------ layout */
+main { max-width: 1400px; margin: 0 auto; padding: var(--s5) var(--s5) var(--s8); }
+
+.page-head {
+  display: flex; align-items: flex-end; gap: var(--s4);
+  flex-wrap: wrap; margin-bottom: var(--s5);
+}
+h1 { font-size: var(--t-lg); font-weight: 640; letter-spacing: -0.02em; margin: 0; }
+h2 { font-size: var(--t-md); font-weight: 620; letter-spacing: -0.01em; margin: 0; }
+h3 { font-size: var(--t-base); font-weight: 620; margin: 0; }
+.sub { color: var(--ink-muted); font-size: var(--t-sm); margin: 2px 0 0; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+  margin-bottom: var(--s5);
+  overflow: hidden;
+  padding: var(--s5);
+}
+/* Las tarjetas con cabecera propia manejan su padding por dentro: el de
+   afuera dejaría la cabecera flotando en vez de pegada al borde. */
+.card.sectioned { padding: 0; }
+
+/* Compatibilidad con las páginas que todavía meten el contenido directo
+   dentro de .card, sin card-head/card-body. */
+.card > h2:first-child, .card > h1:first-child { margin-bottom: var(--s3); }
+.card > h2:not(:first-child) { margin-top: var(--s5); margin-bottom: var(--s3); }
+.card > p, .card > .scroll, .card > table { margin-top: 0; }
+.card > table:not(:last-child), .card > .scroll:not(:last-child) { margin-bottom: var(--s4); }
+
+.card-head {
+  display: flex; align-items: baseline; gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.card-head .note { color: var(--ink-muted); font-size: var(--t-sm); }
+.card-body { padding: var(--s5); }
+.card-body > :first-child { margin-top: 0; }
+.card-body > :last-child { margin-bottom: 0; }
+
+/* Variante de alerta: la barra al costado marca urgencia sin gritar. */
+.card.alert { border-color: var(--bad); }
+.card.alert .card-head {
+  background: var(--bad-soft);
+  border-bottom-color: var(--bad);
+  color: var(--bad);
+}
+
+/* --------------------------------------------------------------------- KPI */
+/* .grid es el nombre que usan las páginas viejas para esta misma rejilla. */
+.kpis, .grid {
+  display: grid; gap: var(--s3);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: var(--s5);
+}
+.kpi {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: var(--s4);
+  box-shadow: var(--shadow-1);
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.kpi .n {
+  font: 620 var(--t-xl)/1.1 var(--font);
+  font-variant-numeric: tabular-nums; letter-spacing: -0.03em;
+}
+.kpi .n .u { font-size: var(--t-base); font-weight: 500; color: var(--ink-muted); }
+.kpi .l { color: var(--ink-muted); font-size: var(--t-sm); }
+.kpi .note { font-size: var(--t-xs); color: var(--ink-muted); margin-top: var(--s1); }
+.kpi.is-bad .n { color: var(--bad); }
+.kpi.is-ok  .n { color: var(--ok); }
+
+/* Destacado: el KPI que manda la lectura de la página. */
+.kpi.lead { grid-column: span 2; background: var(--surface); }
+.kpi.lead .n { font-size: var(--t-2xl); }
+@media (max-width: 560px) { .kpi.lead { grid-column: span 1; } }
+
+/* ------------------------------------------------------------------ tablas */
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+thead th {
+  text-align: left; padding: var(--s2) var(--s4);
+  font-size: var(--t-xs); font-weight: 620;
+  text-transform: uppercase; letter-spacing: 0.055em;
+  color: var(--ink-muted); background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap; position: sticky; top: 0;
+}
+tbody td { padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr { transition: background var(--dur-fast) var(--ease-out); }
+tbody tr:hover { background: var(--surface-hover); }
+
+/* Todo lo numérico va con cifras tabulares: sin esto las columnas bailan
+   al cambiar de fila y la tabla se vuelve ilegible de un vistazo. */
+.num, td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--font-data); font-size: 0.94em; }
+.strong { font-weight: 620; }
+.dim { color: var(--ink-muted); }
+
+th[aria-sort] { cursor: pointer; }
+th[aria-sort="ascending"]::after  { content: " ↑"; color: var(--accent); }
+th[aria-sort="descending"]::after { content: " ↓"; color: var(--accent); }
+
+/* ---------------------------------------------------------------- etiquetas */
+/* El color nunca es la única señal: cada etiqueta lleva su texto, y los
+   estados críticos además un glifo. */
+.tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px var(--s2); border-radius: 20px;
+  font-size: var(--t-xs); font-weight: 620; letter-spacing: 0.01em;
+  background: var(--surface-2); color: var(--ink-2);
+  white-space: nowrap;
+}
+.tag::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; flex: none;
+}
+.tag.completed, .tag.positivo   { background: var(--ok-soft);   color: var(--ok); }
+.tag.pending, .tag.scheduled,
+.tag.queued, .tag.neutral       { background: var(--warn-soft); color: var(--warn); }
+.tag.calling, .tag.in_progress  { background: var(--info-soft); color: var(--info); }
+.tag.failed, .tag.no_answer,
+.tag.opted_out, .tag.negativo   { background: var(--bad-soft);  color: var(--bad); }
+.tag.partial                    { background: var(--warn-soft); color: var(--warn); }
+
+.warn-mark { color: var(--bad); font-weight: 700; }
+
+/* Encabezado que existe para el lector de pantalla pero no ocupa lugar:
+   una columna de acciones sin <th> deja la tabla mal anunciada. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* -------------------------------------------------------------------- barra */
+.bar { height: 7px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+.bar > span { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.bar.ok  > span { background: var(--ok); }
+.bar.bad > span { background: var(--bad); }
+.bar.warn > span { background: var(--warn); }
+
+/* ------------------------------------------------------------------- forms */
+label { display: block; font-size: var(--t-sm); font-weight: 600; margin: var(--s4) 0 var(--s1); }
+label .hint { font-weight: 400; color: var(--ink-muted); }
+.hint { font-weight: 400; color: var(--ink-muted); font-size: var(--t-sm); }
+.help { font-size: var(--t-xs); color: var(--ink-muted); margin-top: var(--s1); }
+
+input[type=text], input[type=number], input[type=time],
+input[type=password], select, textarea {
+  width: 100%; padding: 9px var(--s3);
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  font: inherit; background: var(--surface); color: var(--ink);
+  transition: border-color var(--dur-fast) var(--ease-out);
+  min-height: 40px;
+}
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) {
+  border-color: var(--ink-muted);
+}
+input:disabled, select:disabled, textarea:disabled {
+  opacity: 0.55; cursor: not-allowed; background: var(--surface-2);
+}
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--bad); }
+textarea { min-height: 80px; resize: vertical; }
+
+.row { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.check { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s4); font-size: var(--t-sm); }
+.check input { width: auto; min-height: 0; }
+
+/* ------------------------------------------------------------------ botones */
+button, .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px var(--s4); min-height: 40px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--ink);
+  font: inherit; font-size: var(--t-sm); font-weight: 560;
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+button:hover:not(:disabled), .btn:hover { background: var(--surface-2); text-decoration: none; }
+button:active:not(:disabled) { background: var(--surface-hover); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary:hover:not(:disabled) { filter: brightness(1.1); }
+button.danger { color: var(--bad); border-color: var(--line-strong); }
+button.danger:hover:not(:disabled) { background: var(--bad-soft); border-color: var(--bad); }
+button.mini, .btn.mini { padding: 3px var(--s2); min-height: 0; font-size: var(--t-xs); }
+
+.actions { display: flex; gap: var(--s2); flex-wrap: wrap; align-items: center; margin-top: var(--s5); }
+.inline { display: inline; }
+
+/* --------------------------------------------------------------- vacío/misc */
+.empty {
+  color: var(--ink-muted); padding: var(--s7) var(--s5); text-align: center;
+}
+.empty strong { display: block; color: var(--ink); font-weight: 600; margin-bottom: var(--s1); }
+code {
+  background: var(--surface-2); padding: 1px 5px;
+  border-radius: 4px; font-family: var(--font-data); font-size: 0.9em;
+}
+
+/* Filas que exigen acción: barra a la izquierda en vez de fondo, para no
+   pelear con el color de la etiqueta de estado. */
+tr.flagged td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+
+@media (max-width: 700px) {
+  .top-in, main { padding-left: var(--s4); padding-right: var(--s4); }
+  thead th, tbody td { padding-left: var(--s3); padding-right: var(--s3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-
-  header {
-    background: var(--panel);
-    border-bottom: 1px solid var(--line);
-    padding: 0 24px;
-    display: flex; align-items: center; gap: 28px;
-    position: sticky; top: 0; z-index: 10;
-  }
-  header .brand { font-weight: 650; padding: 16px 0; margin-right: 8px; }
-  header nav { display: flex; gap: 20px; }
-  header nav a { padding: 16px 0; color: var(--muted); font-weight: 500; }
-  header nav a.on { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
-  header form { margin-left: auto; }
-
-  main { max-width: 1180px; margin: 0 auto; padding: 24px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  h2 { font-size: 16px; margin: 28px 0 12px; }
-  .sub { color: var(--muted); margin: 0 0 20px; }
-
-  .card {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 18px; margin-bottom: 18px;
-  }
-  .card > h2:first-child { margin-top: 0; }
-
-  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-  .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
-  .kpi .n { font-size: 26px; font-weight: 650; letter-spacing: -0.5px; }
-  .kpi .l { color: var(--muted); font-size: 13px; margin-top: 2px; }
-
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
-  th { font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); font-weight: 600; }
-  tbody tr:last-child td { border-bottom: 0; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .scroll { overflow-x: auto; }
-
-  .tag {
-    display: inline-block; padding: 2px 8px; border-radius: 20px;
-    font-size: 12px; font-weight: 600; background: #eef1f5; color: var(--muted);
-    white-space: nowrap;
-  }
-  .tag.completed, .tag.positivo { background: #dcfce7; color: var(--ok); }
-  .tag.pending, .tag.scheduled, .tag.queued, .tag.neutral { background: #fef3c7; color: var(--warn); }
-  .tag.calling { background: #dbeafe; color: var(--accent); }
-  .tag.failed, .tag.no_answer, .tag.opted_out, .tag.negativo { background: #fee2e2; color: var(--bad); }
-
-  label { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
-  label .hint { font-weight: 400; color: var(--muted); }
-  input[type=text], input[type=number], input[type=time], select, textarea {
-    width: 100%; padding: 8px 10px; border: 1px solid var(--line);
-    border-radius: 6px; font: inherit; background: #fff; color: var(--ink);
-  }
-  textarea { min-height: 74px; resize: vertical; }
-  .row { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
-  .check { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 14px; }
-  .check input { width: auto; }
-
-  button, .btn {
-    padding: 8px 14px; border: 1px solid var(--line); border-radius: 6px;
-    background: #fff; color: var(--ink); font: inherit; font-weight: 550;
-    cursor: pointer;
-  }
-  button:hover { background: #f3f4f6; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:hover { filter: brightness(1.08); }
-  button.danger { color: var(--bad); }
-  button.mini { padding: 3px 8px; font-size: 12px; }
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 18px; }
-  .inline { display: inline; }
-
-  .empty { color: var(--muted); padding: 26px; text-align: center; }
-  code { background: #eef1f5; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
-  .bar { height: 6px; background: #eef1f5; border-radius: 3px; overflow: hidden; }
-  .bar > span { display: block; height: 100%; background: var(--accent); }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #14161a; --panel: #1c1f24; --ink: #e6e8ea; --muted: #9aa3ad;
-      --line: #2b3038; --accent: #60a5fa;
-      --ok: #4ade80; --warn: #fbbf24; --bad: #f87171;
-    }
-    input, select, textarea, button, .btn { background: #22262c !important; color: var(--ink); }
-    button.primary { background: var(--accent) !important; color: #0b0d10; }
-    .tag { background: #262b32; }
-    .tag.completed, .tag.positivo { background: #14361f; }
-    .tag.pending, .tag.scheduled, .tag.queued, .tag.neutral { background: #3a2e10; }
-    .tag.calling { background: #16304f; }
-    .tag.failed, .tag.no_answer, .tag.opted_out, .tag.negativo { background: #3d1a1a; }
-    code, .bar { background: #262b32; }
-  }
+}
 </style>
 </head>
 <body>
-<header>
-  <span class="brand">Callbot</span>
-  <nav>
-    <a href="/" class="{{ 'on' if nav == 'dashboard' }}">Dashboard</a>
-    <a href="/campaigns" class="{{ 'on' if nav == 'campaigns' }}">Campañas</a>
-    <a href="/targets" class="{{ 'on' if nav == 'targets' }}">Destinatarios</a>
-    <a href="/voices" class="{{ 'on' if nav == 'voices' }}">Voz</a>
-    <a href="/simulador" class="{{ 'on' if nav == 'simulador' }}">Simulador</a>
-    <a href="/health-detail" class="{{ 'on' if nav == 'health' }}">Diagnóstico</a>
-  </nav>
-  <form method="post" action="/sync-now">
-    <button type="submit">Sincronizar Bitrix</button>
-  </form>
+<header class="top">
+  <div class="top-in">
+    <span class="brand"><span class="dot" aria-hidden="true"></span>Callbot</span>
+    <nav class="nav" aria-label="Secciones">
+      <a href="/"              {% if nav == 'dashboard' %}aria-current="page"{% endif %}>Dashboard</a>
+      <a href="/campaigns"     {% if nav == 'campaigns' %}aria-current="page"{% endif %}>Campañas</a>
+      <a href="/targets"       {% if nav == 'targets'   %}aria-current="page"{% endif %}>Destinatarios</a>
+      <a href="/voices"        {% if nav == 'voices'    %}aria-current="page"{% endif %}>Voz</a>
+      <a href="/simulador"     {% if nav == 'simulador' %}aria-current="page"{% endif %}>Simulador</a>
+      <a href="/health-detail" {% if nav == 'health'    %}aria-current="page"{% endif %}>Diagnóstico</a>
+    </nav>
+    <form method="post" action="/sync-now">
+      <button type="submit">Sincronizar Bitrix</button>
+    </form>
+  </div>
 </header>
 <main>
 {% block content %}{% endblock %}
