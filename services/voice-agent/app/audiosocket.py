@@ -16,6 +16,17 @@ Tipos:
 El pacing de la reproducción se toma del reloj de Asterisk: por cada trama de
 audio que entra, se escribe una de salida. Así no hace falta un timer propio y
 no hay drift ni desbordes de buffer.
+
+Ese reloj, sin embargo, solo late mientras entre RTP. Si el otro extremo no
+manda audio —NAT sin abrir, troncal de una vía— no entra ninguna trama, todo lo
+que espere una se cuelga para siempre y el bot se queda mudo. Y como tampoco
+sale RTP, el agujero de NAT que dejaría entrar el retorno nunca se abre: el
+silencio se sostiene solo.
+
+Por eso la lectura del socket vive en una tarea aparte que llena una cola, y
+`read_audio_frame` entrega silencio si no llegó nada en lo que dura una trama.
+El reloj sigue latiendo aunque el canal esté mudo: el bot habla igual, su audio
+abre el NAT, y el conteo de tramas del que dependen los timeouts no se detiene.
 """
 
 from __future__ import annotations
@@ -24,7 +35,7 @@ import asyncio
 import logging
 import uuid as uuid_mod
 
-from app.config import BYTES_PER_FRAME
+from app.config import BYTES_PER_FRAME, FRAME_MS
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +47,7 @@ TYPE_ERROR = 0xFF
 
 HEADER_SIZE = 3
 SILENCE_FRAME = b"\x00" * BYTES_PER_FRAME
+FRAME_SECONDS = FRAME_MS / 1000.0
 
 
 class AudioSocketClosed(Exception):
@@ -53,6 +65,13 @@ class AudioSocket:
         self.session_uuid: uuid_mod.UUID | None = None
         self.peer = writer.get_extra_info("peername")
         self.dtmf_digits: list[str] = []
+        # Lo que va leyendo la tarea de fondo, a la espera de que alguien lo
+        # consuma. Sin tope: a 20 ms por trama, una llamada larga entra de
+        # sobra en memoria, y descartar audio del cliente en silencio sería
+        # perder justo lo que vino a escuchar.
+        self._incoming: asyncio.Queue[bytes] = asyncio.Queue()
+        self._closed: AudioSocketClosed | None = None
+        self._pump: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------ lectura
     async def read_frame(self) -> tuple[int, bytes]:
@@ -98,18 +117,62 @@ class AudioSocket:
 
         raise AudioSocketClosed("no llegó el UUID de sesión")
 
+    def start_pump(self) -> None:
+        """Arranca la lectura de fondo. Se llama una vez leído el UUID."""
+        if self._pump is None:
+            self._pump = asyncio.create_task(self._pump_loop())
+
+    async def _pump_loop(self) -> None:
+        """Vacía el socket hacia la cola, sin que nadie tenga que estar leyendo.
+
+        Que la lectura viva acá es lo que permite entregar silencio por timeout
+        más abajo: cancelar una espera sobre la cola es inofensivo, mientras que
+        cancelar un `readexactly` a mitad de trama desincronizaría el stream.
+        """
+        try:
+            while True:
+                frame_type, payload = await self.read_frame()
+
+                if frame_type == TYPE_AUDIO:
+                    await self._incoming.put(payload)
+
+                elif frame_type == TYPE_DTMF and payload:
+                    digit = payload.decode("ascii", errors="ignore")
+                    self.dtmf_digits.append(digit)
+                    log.debug("DTMF recibido: %s", digit)
+
+        except AudioSocketClosed as exc:
+            self._closed = exc
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - que no muera en silencio
+            log.warning("La lectura del AudioSocket se cortó: %s", exc)
+            self._closed = AudioSocketClosed(str(exc))
+
     async def read_audio_frame(self) -> bytes:
-        """Devuelve el próximo bloque de audio entrante, salteando lo demás."""
-        while True:
-            frame_type, payload = await self.read_frame()
+        """Próximo bloque de audio entrante, o silencio si no llegó ninguno.
 
-            if frame_type == TYPE_AUDIO:
-                return payload
+        Devolver silencio en vez de esperar es lo que mantiene vivo el reloj
+        cuando el otro extremo no manda RTP: quien reproduce sigue escribiendo
+        y quien escucha sigue contando tramas para sus timeouts.
+        """
+        if self._pump is None:
+            # Nadie arrancó la tarea: se lee derecho, como antes.
+            while True:
+                frame_type, payload = await self.read_frame()
+                if frame_type == TYPE_AUDIO:
+                    return payload
 
-            if frame_type == TYPE_DTMF and payload:
-                digit = payload.decode("ascii", errors="ignore")
-                self.dtmf_digits.append(digit)
-                log.debug("DTMF recibido: %s", digit)
+        try:
+            return await asyncio.wait_for(
+                self._incoming.get(), timeout=FRAME_SECONDS
+            )
+        except asyncio.TimeoutError:
+            # Con la llamada terminada no hay más audio que esperar: lo que
+            # sigue es el corte, no otro silencio.
+            if self._closed is not None and self._incoming.empty():
+                raise self._closed
+            return SILENCE_FRAME
 
     # ----------------------------------------------------------------- escritura
     def _write_frame(self, frame_type: int, payload: bytes = b"") -> None:
@@ -150,6 +213,14 @@ class AudioSocket:
             pass
 
     async def close(self) -> None:
+        if self._pump is not None:
+            self._pump.cancel()
+            try:
+                await self._pump
+            except (asyncio.CancelledError, AudioSocketClosed):
+                pass
+            self._pump = None
+
         try:
             self._writer.close()
             await self._writer.wait_closed()

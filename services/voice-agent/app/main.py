@@ -40,6 +40,10 @@ async def handle_connection(
         session_uuid = await socket.read_uuid()
         log.info("Sesión %s", session_uuid)
 
+        # Desde acá la lectura del socket corre sola. Es lo que sostiene el
+        # reloj de las tramas cuando el otro extremo no manda audio.
+        socket.start_pump()
+
         try:
             script = await api.get_script(session_uuid)
         except ApiError as exc:
