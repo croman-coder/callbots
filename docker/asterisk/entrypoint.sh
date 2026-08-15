@@ -79,6 +79,12 @@ client_uri = sip:${TRUNK_USER}@${TRUNK_HOST}
 ; la central de Personal lo rechaza con 403 antes de pedir la contraseña.
 contact_user = ${TRUNK_USER}
 retry_interval = 60
+; Un 403 —contraseña mal cargada, cuenta suspendida— deja el registro caído
+; para siempre: PJSIP lo trata como fatal y no reintenta nunca más. Con esto
+; vuelve a probar cada 5 minutos, así arreglar la causa alcanza para que se
+; recupere solo, sin reiniciar el contenedor.
+forbidden_retry_interval = 300
+fatal_retry_interval = 300
 
 [trunk-identify]
 type = identify
