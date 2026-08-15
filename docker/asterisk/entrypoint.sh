@@ -75,6 +75,9 @@ transport = transport-udp
 outbound_auth = trunk-auth
 server_uri = sip:${TRUNK_HOST}
 client_uri = sip:${TRUNK_USER}@${TRUNK_HOST}
+; Sin esto el Contact sale como sip:s@..., con la 's' literal de Asterisk, y
+; la central de Personal lo rechaza con 403 antes de pedir la contraseña.
+contact_user = ${TRUNK_USER}
 retry_interval = 60
 
 [trunk-identify]
