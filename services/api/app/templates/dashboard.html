@@ -1,242 +1,210 @@
 {% extends "base.html" %}
 {% set nav = "dashboard" %}
-{% block title %}Dashboard · Callbot{% endblock %}
+{% block title %}Resultados · Callbot{% endblock %}
 
-{% block content %}
-{#
-  Orden deliberado: primero lo que exige una acción, después el estado de la
-  operación, y al final el registro. La versión anterior abría con seis KPIs
-  del mismo peso y dejaba los clientes que hay que llamar de nuevo en cuarto
-  lugar — que es exactamente al revés de para qué se abre este panel.
-#}
-<div class="page-head">
+{% block topbar %}
+<div class="bar">
   <div>
-    <h1>Encuestas post-taller</h1>
-    <p class="sub">
+    <h1>Resultados</h1>
+    <p class="lede">
       {% if avg_score is not none %}
-        Promedio {{ avg_score }}/10 sobre {{ counts.get(TargetStatus.COMPLETED, 0) }} encuestas completadas
+        {{ counts.get(TargetStatus.COMPLETED, 0) }} encuestas completadas · umbral {{ satisfactory_min | round(0) | int }}/10
       {% else %}
         Todavía sin encuestas completadas
       {% endif %}
     </p>
   </div>
+  <div class="right">
+    <a class="btn" href="/targets">Destinatarios</a>
+  </div>
 </div>
+{% endblock %}
 
-{# ---------------------------------------------------------------- acción #}
+{% block content %}
+{#
+  El orden es el del trabajo real: primero a quién hay que llamar, después si el
+  taller mejora, y al final el registro de lo que pasó.
+#}
 {% if needs_followup %}
-<div class="card sectioned alert">
-  <div class="card-head">
+<section class="urgent">
+  <header>
     <h2>{{ needs_followup | length }} cliente{{ "s" if needs_followup | length != 1 }} para volver a llamar</h2>
-    <span class="note">Alguna respuesta por debajo de {{ satisfactory_min | round(0) | int }}/10</span>
+    <span class="note">Puntuaron por debajo de {{ satisfactory_min | round(0) | int }}</span>
+  </header>
+  <div class="tablewrap">
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Cliente</th>
+            <th scope="col">Motivo</th>
+            <th scope="col" class="num">Puntaje</th>
+            <th scope="col"><span class="sr-only">Acción</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in needs_followup %}
+          <tr>
+            <td class="name">{{ a.call.target.contact_name or a.call.target.phone or "Sin nombre" }}</td>
+            <td>{{ a.followup_reason or a.summary or "Sin detalle registrado" }}</td>
+            <td class="num">
+              {% if a.satisfaction_score is not none %}
+                <span class="score-bad">{{ a.satisfaction_score | round(1) }}</span>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td class="num"><a class="link" href="/calls/{{ a.call_id }}">Ver llamada</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
-  <div class="scroll">
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Cliente</th>
-          <th scope="col">Motivo</th>
-          <th scope="col" class="num">Puntaje</th>
-          <th scope="col"><span class="sr-only">Acción</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in needs_followup %}
-        <tr class="flagged">
-          <td class="strong">{{ a.call.target.contact_name or a.call.target.phone or "—" }}</td>
-          <td>{{ a.followup_reason or a.summary or "Sin detalle registrado" }}</td>
-          <td class="num">
-            {% if a.satisfaction_score is not none %}
-              <span class="strong" style="color:var(--bad)">{{ a.satisfaction_score | round(1) }}</span>
-              <span class="warn-mark" aria-label="requiere seguimiento">!</span>
-            {% else %}<span class="dim">—</span>{% endif %}
-          </td>
-          <td class="num"><a href="/calls/{{ a.call_id }}">Ver llamada</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+</section>
 {% endif %}
 
-{# ------------------------------------------------------------- operación #}
-<div class="kpis">
-  <div class="kpi lead {% if avg_score is not none and avg_score < satisfactory_min %}is-bad{% elif avg_score is not none %}is-ok{% endif %}">
-    <div class="n">
-      {% if avg_score is not none %}{{ avg_score }}<span class="u">/10</span>{% else %}—{% endif %}
+<div class="metrics">
+  <div class="metric hero {% if avg_score is not none and avg_score < satisfactory_min %}is-bad{% endif %}">
+    <div class="k">Satisfacción</div>
+    <div class="v">
+      {% if avg_score is not none %}{{ avg_score }}<small> /10</small>{% else %}—{% endif %}
     </div>
-    <div class="l">Satisfacción promedio</div>
     {% if avg_score is not none %}
-      <div class="note">
-        {{ "Por encima del umbral" if avg_score >= satisfactory_min else "Bajo el umbral de " ~ (satisfactory_min | round(0) | int) }}
-      </div>
+    <div class="f">
+      {{ "Sobre el umbral" if avg_score >= satisfactory_min else "Bajo el umbral" }}
+    </div>
     {% endif %}
   </div>
-
-  <div class="kpi">
-    <div class="n">{{ response_rate }}<span class="u">%</span></div>
-    <div class="l">Tasa de respuesta</div>
+  <div class="metric">
+    <div class="k">Respuesta</div>
+    <div class="v">{{ response_rate }}<small> %</small></div>
   </div>
-
-  <div class="kpi">
-    <div class="n">{{ counts.get(TargetStatus.COMPLETED, 0) }}</div>
-    <div class="l">Completadas</div>
+  <div class="metric">
+    <div class="k">Completadas</div>
+    <div class="v">{{ counts.get(TargetStatus.COMPLETED, 0) }}</div>
   </div>
-
-  <div class="kpi">
-    <div class="n">{{ calls_today }}</div>
-    <div class="l">Llamadas hoy</div>
+  <div class="metric">
+    <div class="k">Hoy</div>
+    <div class="v">{{ calls_today }}</div>
+    <div class="f">llamadas</div>
   </div>
-
-  <div class="kpi">
-    <div class="n">{{ counts.get(TargetStatus.PENDING, 0) + counts.get(TargetStatus.SCHEDULED, 0) }}</div>
-    <div class="l">En cola</div>
+  <div class="metric">
+    <div class="k">En cola</div>
+    <div class="v">{{ counts.get(TargetStatus.PENDING, 0) + counts.get(TargetStatus.SCHEDULED, 0) }}</div>
   </div>
-
-  <div class="kpi">
-    <div class="n">{{ total }}</div>
-    <div class="l">Destinatarios</div>
+  <div class="metric">
+    <div class="k">Destinatarios</div>
+    <div class="v">{{ total }}</div>
   </div>
 </div>
 
-{# ------------------------------------------------------------ diagnóstico #}
 {% if per_question %}
-<div class="card sectioned">
-  <div class="card-head">
+<section class="section">
+  <header>
     <h2>Dónde se cae el puntaje</h2>
-    <span class="note">De peor a mejor promedio</span>
+    <span class="note">De peor a mejor</span>
+  </header>
+  <div class="chart">
+    {% for text, qtype, avg, n in per_question %}
+      {#- Cada escala se normaliza sobre su propio máximo: un 4/5 y un 4/10 no
+          pueden dibujar la misma barra. -#}
+      {%- if qtype.value == "scale_1_10" %}{% set pct = avg / 10 * 100 %}{% set esc = "/ 10" %}
+      {%- elif qtype.value == "scale_1_5" %}{% set pct = avg / 5 * 100 %}{% set esc = "/ 5" %}
+      {%- else %}{% set pct = avg * 100 %}{% set esc = "sí" %}{% endif -%}
+      {%- set low = qtype.value == "scale_1_10" and avg < satisfactory_min -%}
+    <div class="chart-row">
+      <div>
+        <div class="lbl">{{ text }}</div>
+        <div class="track">
+          <span class="fill {{ 'low' if low }}" style="width: {{ pct | round(1) }}%"
+                role="img" aria-label="{{ avg | round(1) }} {{ esc }}"></span>
+        </div>
+      </div>
+      <div class="val">
+        <span {% if low %}class="score-bad"{% endif %}>{{ avg | round(1) }}</span>
+        <small>{{ n }} respuesta{{ "s" if n != 1 }}</small>
+      </div>
+    </div>
+    {% endfor %}
   </div>
-  <div class="scroll">
-    <table>
-      <thead>
-        <tr>
-          <th scope="col" style="width:38%">Pregunta</th>
-          <th scope="col">Distribución</th>
-          <th scope="col" class="num" style="width:96px">Promedio</th>
-          <th scope="col" class="num" style="width:88px">Respuestas</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for text, qtype, avg, n in per_question %}
-          {#- La barra se normaliza según la escala de cada pregunta: sin esto
-              un 4/5 y un 4/10 dibujarían el mismo ancho. -#}
-          {%- if qtype.value == "scale_1_10" %}{% set pct = avg / 10 * 100 %}
-          {%- elif qtype.value == "scale_1_5" %}{% set pct = avg / 5 * 100 %}
-          {%- else %}{% set pct = avg * 100 %}{% endif -%}
-          {%- set below = qtype.value == "scale_1_10" and avg < satisfactory_min -%}
-        <tr>
-          <td>{{ text }}</td>
-          <td>
-            <div class="bar {{ 'bad' if below else 'ok' }}"
-                 role="img"
-                 aria-label="{{ pct | round(0) | int }} por ciento de la escala">
-              <span style="width: {{ pct | round(1) }}%"></span>
-            </div>
-          </td>
-          <td class="num">
-            <span class="strong" {% if below %}style="color:var(--bad)"{% endif %}>{{ avg | round(2) }}</span>
-            {%- if qtype.value == "scale_1_5" %}<span class="dim"> / 5</span>
-            {%- elif qtype.value == "scale_1_10" %}<span class="dim"> / 10</span>
-            {%- elif qtype.value == "yes_no" %}<span class="dim"> sí</span>
-            {%- endif %}
-            {%- if below %} <span class="warn-mark" aria-label="bajo el umbral">!</span>{% endif %}
-          </td>
-          <td class="num dim">{{ n }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+</section>
 {% endif %}
 
 {% if sentiment %}
-<div class="card sectioned">
-  <div class="card-head"><h2>Sentimiento</h2></div>
-  <div class="scroll">
-    <table>
-      <tbody>
-        {% set total_sent = sentiment.values() | sum %}
-        {% for name, count in sentiment.items() %}
-        <tr>
-          <td style="width:150px"><span class="tag {{ name }}">{{ name or "sin clasificar" }}</span></td>
-          <td>
-            <div class="bar" role="img"
-                 aria-label="{{ (count / total_sent * 100) | round(0) | int }} por ciento">
-              <span style="width: {{ (count / total_sent * 100) | round(1) }}%"></span>
-            </div>
-          </td>
-          <td class="num" style="width:110px">
-            <span class="strong">{{ count }}</span>
-            <span class="dim">({{ (count / total_sent * 100) | round(0) | int }}%)</span>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<section class="section">
+  <header><h2>Sentimiento</h2></header>
+  <div class="chart">
+    {% set total_sent = sentiment.values() | sum %}
+    {% for name, count in sentiment.items() %}
+    <div class="chart-row">
+      <div>
+        <div class="lbl"><span class="pill {{ name }}">{{ name or "sin clasificar" }}</span></div>
+        <div class="track">
+          <span class="fill" style="width: {{ (count / total_sent * 100) | round(1) }}%"
+                role="img" aria-label="{{ (count / total_sent * 100) | round(0) | int }} por ciento"></span>
+        </div>
+      </div>
+      <div class="val">
+        {{ count }}
+        <small>{{ (count / total_sent * 100) | round(0) | int }}%</small>
+      </div>
+    </div>
+    {% endfor %}
   </div>
-</div>
+</section>
 {% endif %}
 
-{# ----------------------------------------------------------------- registro #}
-<div class="card sectioned">
-  <div class="card-head">
+<section class="section">
+  <header>
     <h2>Últimas llamadas</h2>
     <span class="note">{{ recent_calls | length }} más recientes</span>
+  </header>
+  <div class="tablewrap">
+    {% if recent_calls %}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Fecha</th>
+            <th scope="col">Cliente</th>
+            <th scope="col">Teléfono</th>
+            <th scope="col">Resultado</th>
+            <th scope="col" class="num">Duración</th>
+            <th scope="col" class="num">Respuestas</th>
+            <th scope="col" class="num">Puntaje</th>
+            <th scope="col"><span class="sr-only">Acción</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in recent_calls %}
+            {%- set low = c.analysis and c.analysis.satisfaction_score is not none
+                          and c.analysis.satisfaction_score < satisfactory_min -%}
+          <tr>
+            <td class="muted tnum">{{ c.started_at.strftime("%d/%m %H:%M") if c.started_at else "—" }}</td>
+            <td class="name">{{ c.target.contact_name or "Sin nombre" }}</td>
+            <td class="mono muted">{{ c.target.phone or "—" }}</td>
+            <td><span class="pill {{ c.outcome.value if c.outcome else 'calling' }}">{{ c.outcome.value if c.outcome else "en curso" }}</span></td>
+            <td class="num">
+              {%- if c.duration_seconds %}{{ c.duration_seconds // 60 }}:{{ "%02d" | format(c.duration_seconds % 60) }}
+              {%- else %}<span class="muted">—</span>{% endif -%}
+            </td>
+            <td class="num">{{ c.questions_answered }}<span class="muted">/{{ c.questions_asked }}</span></td>
+            <td class="num">
+              {%- if c.analysis and c.analysis.satisfaction_score is not none -%}
+                <span {% if low %}class="score-bad"{% endif %}>{{ c.analysis.satisfaction_score | round(1) }}</span>
+              {%- else -%}<span class="muted">—</span>{%- endif -%}
+            </td>
+            <td class="num"><a class="link" href="/calls/{{ c.id }}">Ver</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="empty">
+        <strong>Todavía no hay llamadas</strong>
+        Cargá destinatarios en una campaña y el bot llama dentro de la ventana horaria.
+      </p>
+    {% endif %}
   </div>
-  {% if recent_calls %}
-  <div class="scroll">
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">Fecha</th>
-          <th scope="col">Cliente</th>
-          <th scope="col">Teléfono</th>
-          <th scope="col">Resultado</th>
-          <th scope="col" class="num">Duración</th>
-          <th scope="col" class="num">Respuestas</th>
-          <th scope="col" class="num">Puntaje</th>
-          <th scope="col"><span class="sr-only">Acción</span></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in recent_calls %}
-          {%- set flagged = c.analysis and c.analysis.satisfaction_score is not none
-                            and c.analysis.satisfaction_score < satisfactory_min -%}
-        <tr {% if flagged %}class="flagged"{% endif %}>
-          <td class="dim">{{ c.started_at.strftime("%d/%m %H:%M") if c.started_at else "—" }}</td>
-          <td class="strong">{{ c.target.contact_name or "—" }}</td>
-          <td class="mono">{{ c.target.phone or "—" }}</td>
-          <td>
-            <span class="tag {{ c.outcome.value if c.outcome else 'calling' }}">
-              {{ c.outcome.value if c.outcome else "en curso" }}
-            </span>
-          </td>
-          <td class="num">
-            {%- if c.duration_seconds %}{{ c.duration_seconds // 60 }}m {{ "%02d" | format(c.duration_seconds % 60) }}s
-            {%- else %}<span class="dim">—</span>{% endif -%}
-          </td>
-          <td class="num">
-            {{ c.questions_answered }}<span class="dim">/{{ c.questions_asked }}</span>
-          </td>
-          <td class="num">
-            {%- if c.analysis and c.analysis.satisfaction_score is not none -%}
-              {%- set s = c.analysis.satisfaction_score -%}
-              <span class="strong" {% if flagged %}style="color:var(--bad)"{% endif %}>{{ s | round(1) }}</span>
-              {%- if flagged %} <span class="warn-mark" aria-label="bajo el umbral">!</span>{% endif -%}
-            {%- else -%}<span class="dim">—</span>{%- endif -%}
-          </td>
-          <td class="num"><a href="/calls/{{ c.id }}">Ver</a></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% else %}
-    <p class="empty">
-      <strong>Todavía no hay llamadas</strong>
-      Cargá destinatarios en una campaña y el bot va a llamar dentro de la ventana horaria.
-    </p>
-  {% endif %}
-</div>
+</section>
 {% endblock %}
