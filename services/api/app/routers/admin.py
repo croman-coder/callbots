@@ -399,10 +399,23 @@ def move_question(
 def list_targets(
     request: Request,
     status: str | None = None,
-    campaign_id: int | None = None,
-    page: int = 1,
+    # Llegan como texto a propósito. El <select> de "todas las campañas" manda
+    # `campaign_id=` vacío, y declarado como int eso no es "sin filtro" sino un
+    # 422: la página entera moría con un JSON de error apenas se tocaba el
+    # filtro de estado. Mismo motivo para `page`, que viaja en los enlaces de
+    # paginación junto al filtro vacío.
+    campaign_id: str | None = None,
+    page: str | None = None,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    def _entero(valor: str | None, por_defecto: int | None = None) -> int | None:
+        try:
+            return int(valor) if valor not in (None, "") else por_defecto
+        except ValueError:
+            return por_defecto
+
+    campaign_id = _entero(campaign_id)
+    page = max(1, _entero(page, 1) or 1)
     per_page = 50
 
     # Los filtros se arman una vez y se aplican a las dos consultas. Contar sobre
