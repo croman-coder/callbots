@@ -63,20 +63,29 @@
 {% endif %}
 
 <div class="metrics">
-  <div class="metric hero {% if avg_score is not none and avg_score < satisfactory_min %}is-bad{% endif %}">
+  {#- Sin encuestas todavía, la celda destacada no puede ser una caja del doble
+      de ancho con un guión adentro: es lo más grande de la pantalla y no dice
+      nada. Ocupa una sola columna y explica qué falta. -#}
+  <div class="metric {{ 'hero' if avg_score is not none }}
+              {%- if avg_score is not none and avg_score < satisfactory_min %} is-bad{% endif %}">
     <div class="k">Satisfacción</div>
-    <div class="v">
-      {% if avg_score is not none %}{{ avg_score }}<small> /10</small>{% else %}—{% endif %}
-    </div>
     {% if avg_score is not none %}
-    <div class="f">
-      {{ "Sobre el umbral" if avg_score >= satisfactory_min else "Bajo el umbral" }}
-    </div>
+      <div class="v">{{ avg_score }}<small> /10</small></div>
+      <div class="f">{{ "Sobre el umbral" if avg_score >= satisfactory_min else "Bajo el umbral" }}</div>
+    {% else %}
+      <div class="v pending">Sin datos</div>
+      <div class="f">Aparece con la primera encuesta completada</div>
     {% endif %}
   </div>
   <div class="metric">
     <div class="k">Respuesta</div>
-    <div class="v">{{ response_rate }}<small> %</small></div>
+    {% if contacted %}
+      <div class="v">{{ response_rate }}<small> %</small></div>
+      <div class="f">{{ counts.get(TargetStatus.COMPLETED, 0) }} de {{ contacted }} contactado{{ "s" if contacted != 1 }}</div>
+    {% else %}
+      <div class="v pending">—</div>
+      <div class="f">Nadie contactado todavía</div>
+    {% endif %}
   </div>
   <div class="metric">
     <div class="k">Completadas</div>
@@ -135,11 +144,18 @@
   <div class="chart">
     {% set total_sent = sentiment.values() | sum %}
     {% for name, count in sentiment.items() %}
+      {#- La barra tiene que llevar el color del sentimiento que mide. Estaba
+          fija en verde, así que un "neutral" salía con pastilla ámbar y barra
+          verde: dos señales contradictorias sobre el mismo dato. -#}
+      {%- if name == "positivo" %}{% set tono = "ok" %}
+      {%- elif name == "negativo" %}{% set tono = "bad" %}
+      {%- elif name == "neutral" %}{% set tono = "warn" %}
+      {%- else %}{% set tono = "flat" %}{% endif -%}
     <div class="chart-row">
       <div>
         <div class="lbl"><span class="pill {{ name }}">{{ name or "sin clasificar" }}</span></div>
         <div class="track">
-          <span class="fill" style="width: {{ (count / total_sent * 100) | round(1) }}%"
+          <span class="fill {{ tono }}" style="width: {{ (count / total_sent * 100) | round(1) }}%"
                 role="img" aria-label="{{ (count / total_sent * 100) | round(0) | int }} por ciento"></span>
         </div>
       </div>

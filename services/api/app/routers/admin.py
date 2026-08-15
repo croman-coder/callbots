@@ -134,8 +134,13 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
             "counts": counts,
             "total": sum(counts.values()),
             "calls_today": calls_today,
-            "avg_score": round(avg_score, 1) if avg_score else None,
+            # `if avg_score` convertía un promedio real de 0.0 en "sin datos":
+            # justo el caso que más urge mirar.
+            "avg_score": round(avg_score, 1) if avg_score is not None else None,
             "response_rate": round(response_rate, 1),
+            # El porcentaje solo se entiende con su denominador: 100% sobre un
+            # contactado no dice lo mismo que 100% sobre ochenta.
+            "contacted": contacted,
             "sentiment": sentiment,
             "per_question": per_question,
             "recent_calls": recent_calls,

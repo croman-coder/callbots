@@ -234,6 +234,9 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
 .metric.hero { grid-column: span 2; background: var(--raised); }
 .metric.hero .v { font-size: var(--t-3xl); }
 .metric.is-bad .v { color: var(--bad); }
+/* Métrica sin dato: baja de tamaño y de peso. Un número que no existe no
+   puede gritar más que los que sí. */
+.metric .v.pending { font-size: var(--t-md); font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
 @media (max-width: 620px) { .metric.hero { grid-column: span 1; } }
 
 /* ═══════════════════════════════════════════════════ tablas */
@@ -292,8 +295,13 @@ td.name { font-weight: 550; }
   height: 22px; background: var(--active-soft); border-radius: var(--r-sm);
   overflow: hidden; margin-top: 5px;
 }
-.chart-row .fill { display: block; height: 100%; background: var(--ok); border-radius: var(--r-sm); }
-.chart-row .fill.low { background: var(--bad); }
+/* La barra no tiene color propio: lo toma de lo que mide. Sin esto un
+   "neutral" salía verde y contradecía su propia pastilla. */
+.chart-row .fill { display: block; height: 100%; background: var(--ink-3); border-radius: var(--r-sm); }
+.chart-row .fill.ok   { background: var(--ok); }
+.chart-row .fill.warn { background: var(--warn); }
+.chart-row .fill.bad, .chart-row .fill.low { background: var(--bad); }
+.chart-row .fill.flat { background: var(--ink-3); }
 .chart-row .val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 620; }
 .chart-row .val small { display:block; font-weight:400; font-size: var(--t-xs); color: var(--ink-3); }
 
