@@ -25,6 +25,14 @@ celery_app = Celery(
     include=["app.scheduler.tasks"],
 )
 
+# Crear la app solo la deja como "actual" en el thread que la importó, y las
+# tareas con @shared_task resuelven el broker recién al encolar, leyendo ese
+# valor. FastAPI atiende los endpoints sync en un thread del pool, donde no
+# está seteado: ahí caían en la app default —sin broker— y todo .delay() moría
+# con "Connection refused" contra localhost. set_default() la fija para todos
+# los threads del proceso.
+celery_app.set_default()
+
 celery_app.conf.update(
     timezone=settings.tz,
     enable_utc=True,
