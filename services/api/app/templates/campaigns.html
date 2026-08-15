@@ -2,75 +2,103 @@
 {% set nav = "campaigns" %}
 {% block title %}Campañas · Callbot{% endblock %}
 
-{% block content %}
-<h1>Campañas</h1>
-<p class="sub">Cada campaña define de dónde salen los destinatarios y qué se les pregunta</p>
-
-<div class="card">
-  {% if campaigns %}
-  <div class="scroll">
-  <table>
-    <thead>
-      <tr><th>Nombre</th><th>Entidad Bitrix</th><th>Campo disparador</th>
-          <th class="num">Demora</th><th class="num">Preguntas</th>
-          <th class="num">Destinatarios</th><th class="num">Completadas</th><th>Estado</th><th></th></tr>
-    </thead>
-    <tbody>
-    {% for c in campaigns %}
-      <tr>
-        <td><strong>{{ c.name }}</strong>
-          {% if c.description %}<br><span style="color:var(--muted);font-size:13px">{{ c.description }}</span>{% endif %}</td>
-        <td><code>{{ c.bitrix_entity_type_id }}</code></td>
-        <td><code>{{ c.trigger_field }}</code></td>
-        <td class="num">{{ c.delay_hours }}h</td>
-        <td class="num">{{ c.questions | selectattr("is_active") | list | length }}</td>
-        <td class="num">{{ stats.get(c.id, {}).get("targets", 0) }}</td>
-        <td class="num">{{ stats.get(c.id, {}).get("completed", 0) }}</td>
-        <td><span class="tag {{ 'completed' if c.is_active else 'failed' }}">{{ "activa" if c.is_active else "pausada" }}</span></td>
-        <td><a href="/campaigns/{{ c.id }}">editar</a></td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Campañas</h1>
+    <p class="lede">De dónde salen los destinatarios y qué se les pregunta</p>
   </div>
-  {% else %}
-    <p class="empty">No hay campañas todavía. Creá la primera abajo.</p>
-  {% endif %}
+  <div class="right">
+    <a class="btn" href="#nueva">Nueva campaña</a>
+  </div>
 </div>
+{% endblock %}
 
-<div class="card">
-  <h2>Nueva campaña</h2>
-  <form method="post" action="/campaigns">
-    <label>Nombre
-      <input type="text" name="name" required placeholder="Satisfacción post-taller">
-    </label>
-    <label>Descripción <span class="hint">(opcional)</span>
-      <input type="text" name="description" placeholder="Encuesta 48hs después del ingreso al taller">
-    </label>
+{% block content %}
+<section class="section">
+  <div class="tablewrap">
+    {% if campaigns %}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Campaña</th>
+            <th scope="col">Disparador</th>
+            <th scope="col" class="num">Demora</th>
+            <th scope="col" class="num">Preguntas</th>
+            <th scope="col" class="num">Destinatarios</th>
+            <th scope="col" class="num">Completadas</th>
+            <th scope="col">Estado</th>
+            <th scope="col"><span class="sr-only">Acción</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in campaigns %}
+          <tr>
+            <td class="name">
+              {{ c.name }}
+              {% if c.description %}<span class="sub-line">{{ c.description }}</span>{% endif %}
+            </td>
+            <td>
+              <span class="mono">{{ c.trigger_field }}</span>
+              <span class="sub-line mono">entidad {{ c.bitrix_entity_type_id }}</span>
+            </td>
+            <td class="num">{{ c.delay_hours }} h</td>
+            <td class="num">{{ c.questions | selectattr("is_active") | list | length }}</td>
+            <td class="num">{{ stats.get(c.id, {}).get("targets", 0) }}</td>
+            <td class="num">{{ stats.get(c.id, {}).get("completed", 0) }}</td>
+            <td><span class="pill {{ 'completed' if c.is_active else 'no_answer' }}">{{ "activa" if c.is_active else "pausada" }}</span></td>
+            <td class="num"><a class="link" href="/campaigns/{{ c.id }}">Editar</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="empty">
+        <strong>Todavía no hay campañas</strong>
+        Una campaña define a quién se llama, cuándo y qué se le pregunta. Creá la primera abajo.
+      </p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="section" id="nueva">
+  <header>
+    <h2>Nueva campaña</h2>
+    <span class="note">Se crea pausada: agregale preguntas antes de activarla</span>
+  </header>
+
+  <form method="post" action="/campaigns" class="panel-form">
+    <label for="c-name">Nombre</label>
+    <input id="c-name" type="text" name="name" required placeholder="Satisfacción post-taller">
+
+    <label for="c-desc">Descripción <span class="hint">opcional</span></label>
+    <input id="c-desc" type="text" name="description" placeholder="Encuesta 48hs después del ingreso al taller">
+
     <div class="row">
       <div>
-        <label>entityTypeId de Bitrix</label>
-        <input type="number" name="bitrix_entity_type_id" value="{{ default_entity }}" required>
+        <label for="c-entity">entityTypeId de Bitrix</label>
+        <input id="c-entity" type="number" name="bitrix_entity_type_id" value="{{ default_entity }}" required>
       </div>
       <div>
-        <label>Campo disparador (T0)</label>
-        <input type="text" name="trigger_field" required placeholder="ufCrm5_1639669411830">
+        <label for="c-trigger">Campo disparador (T0)</label>
+        <input id="c-trigger" type="text" name="trigger_field" required placeholder="ufCrm5_1639669411830">
       </div>
       <div>
-        <label>Demora (horas)</label>
-        <input type="number" name="delay_hours" value="48" required>
+        <label for="c-delay">Demora en horas</label>
+        <input id="c-delay" type="number" name="delay_hours" value="48" required>
       </div>
     </div>
-    <p class="sub" style="margin:14px 0 0;font-size:13px">
-      ¿No sabés el <code>entityTypeId</code> ni el código del campo? Corré:<br>
-      <code>docker compose exec api python scripts/bitrix_discover.py</code>
+    <p class="hint">
+      Si no sabés el <code>entityTypeId</code> ni el código del campo, corré
+      <code>docker compose exec api python scripts/bitrix_discover.py</code> y te
+      los lista contra el portal.
     </p>
+
     <div class="actions">
       <button type="submit" class="primary">Crear campaña</button>
     </div>
-    <p style="color:var(--muted);font-size:13px;margin:10px 0 0">
-      Se crea pausada. Agregale preguntas y después activala.
-    </p>
   </form>
-</div>
+</section>
 {% endblock %}

@@ -2,126 +2,149 @@
 {% set nav = "targets" %}
 {% block title %}Destinatarios · Callbot{% endblock %}
 
-{% block content %}
-<h1>Destinatarios</h1>
-<p class="sub">{{ total }} registros · página {{ page }} de {{ pages }}</p>
-
-<div class="card">
-  <h2 style="margin-top:0">Cargar destinatarios</h2>
-  <p class="sub" style="margin-bottom:14px">
-    Una línea por persona: <code>teléfono, nombre</code>. El nombre es
-    opcional. Los teléfonos se normalizan igual que los que vienen de Bitrix,
-    así que <code>0981 123 456</code> y <code>+595981123456</code> son el mismo.
-  </p>
-
-  {% if request.query_params.get('ok') is not none %}
-  <p style="color:var(--ok)">
-    {{ request.query_params.get('ok') }} cargados ·
-    {{ request.query_params.get('dup') }} ya estaban ·
-    {{ request.query_params.get('mal') }} sin teléfono válido
-  </p>
-  {% endif %}
-
-  <form method="post" action="/targets">
-    <div class="row">
-      <label>Campaña
-        <select name="campaign_id" required>
-          {% for c in campaigns %}
-          <option value="{{ c.id }}">{{ c.name }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <label>Cuándo llamar
-        <select name="cuando">
-          <option value="ahora">En el próximo horario permitido</option>
-          <option value="espera">Respetando la demora de la campaña</option>
-        </select>
-      </label>
-    </div>
-    <label>Lista
-      <textarea name="lote" rows="6" required
-                placeholder="0981123456, Juan Perez&#10;+595971234567, Maria Gomez&#10;0976953263"></textarea>
-    </label>
-    <div class="actions">
-      <button type="submit" class="primary">Cargar</button>
-    </div>
-  </form>
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Destinatarios</h1>
+    <p class="lede">{{ total }} registro{{ "s" if total != 1 }}{% if pages > 1 %} · página {{ page }} de {{ pages }}{% endif %}</p>
+  </div>
+  <div class="right">
+    <a class="btn" href="#cargar">Cargar destinatarios</a>
+  </div>
 </div>
+{% endblock %}
 
-<div class="card">
-  <form method="get" action="/targets">
-    <div class="row">
-      <div>
-        <label>Estado</label>
-        <select name="status" onchange="this.form.submit()">
-          <option value="">todos</option>
+{% block content %}
+{% if request.query_params.get('ok') is not none %}
+<div class="notice ok">
+  <strong>{{ request.query_params.get('ok') }} cargados.</strong>
+  {{ request.query_params.get('dup') }} ya estaban, {{ request.query_params.get('mal') }} sin teléfono válido.
+</div>
+{% endif %}
+
+<section class="section">
+  <header>
+    <h2>Cola de llamadas</h2>
+    <div class="right">
+      {#- Los filtros van acá arriba, pegados a lo que filtran, en vez de en una
+          tarjeta aparte que obliga a mirar en dos lugares. -#}
+      <form method="get" action="/targets" class="filters">
+        <select name="status" onchange="this.form.submit()" aria-label="Filtrar por estado">
+          <option value="">Todos los estados</option>
           {% for s in statuses %}
           <option value="{{ s.value }}" {% if current_status == s.value %}selected{% endif %}>{{ s.value }}</option>
           {% endfor %}
         </select>
-      </div>
-      <div>
-        <label>Campaña</label>
-        <select name="campaign_id" onchange="this.form.submit()">
-          <option value="">todas</option>
+        <select name="campaign_id" onchange="this.form.submit()" aria-label="Filtrar por campaña">
+          <option value="">Todas las campañas</option>
           {% for c in campaigns %}
           <option value="{{ c.id }}" {% if current_campaign == c.id %}selected{% endif %}>{{ c.name }}</option>
           {% endfor %}
         </select>
-      </div>
+      </form>
     </div>
-  </form>
-</div>
+  </header>
 
-<div class="card">
-  {% if targets %}
-  <div class="scroll">
-  <table>
-    <thead>
-      <tr><th>Cliente</th><th>Teléfono</th><th>Bitrix</th>
-          <th>Ingreso taller (T0)</th><th>Agendado</th>
-          <th>Estado</th><th class="num">Int.</th><th></th></tr>
-    </thead>
-    <tbody>
-    {% for t in targets %}
-      <tr>
-        <td>{{ t.contact_name or "—" }}
-          {% if t.bitrix_title %}<br><span style="color:var(--muted);font-size:13px">{{ t.bitrix_title }}</span>{% endif %}</td>
-        <td><code>{{ t.phone or "sin teléfono" }}</code></td>
-        <td><code>{{ t.bitrix_entity_type_id }}#{{ t.bitrix_entity_id }}</code></td>
-        <td>{{ t.trigger_at.strftime("%d/%m/%Y %H:%M") }}</td>
-        <td>{{ t.scheduled_at.strftime("%d/%m/%Y %H:%M") }}</td>
-        <td><span class="tag {{ t.status.value }}">{{ t.status.value }}</span>
-          {% if t.last_error %}<br><span style="color:var(--bad);font-size:12px">{{ t.last_error[:70] }}</span>{% endif %}</td>
-        <td class="num">{{ t.attempts }}</td>
-        <td style="white-space:nowrap">
-          <form method="post" action="/targets/{{ t.id }}/call-now" class="inline"
-                onsubmit="return confirm('¿Llamar ahora a {{ t.phone }}? Ignora la ventana horaria.')">
-            <button type="submit" class="mini">llamar</button>
-          </form>
-          <form method="post" action="/targets/{{ t.id }}/reschedule" class="inline">
-            <button type="submit" class="mini">reagendar</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
+  <div class="tablewrap">
+    {% if targets %}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Cliente</th>
+            <th scope="col">Teléfono</th>
+            <th scope="col">Ingreso al taller</th>
+            <th scope="col">Agendado</th>
+            <th scope="col">Estado</th>
+            <th scope="col" class="num">Int.</th>
+            <th scope="col"><span class="sr-only">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in targets %}
+          <tr>
+            <td class="name">
+              {{ t.contact_name or "Sin nombre" }}
+              {% if t.bitrix_title %}<span class="sub-line">{{ t.bitrix_title }}</span>{% endif %}
+              {% if t.bitrix_entity_id %}<span class="sub-line mono">{{ t.bitrix_entity_type_id }}#{{ t.bitrix_entity_id }}</span>{% endif %}
+            </td>
+            <td class="mono">{{ t.phone or "—" }}</td>
+            <td class="muted tnum">{{ t.trigger_at.strftime("%d/%m/%y %H:%M") if t.trigger_at else "—" }}</td>
+            <td class="tnum">{{ t.scheduled_at.strftime("%d/%m/%y %H:%M") if t.scheduled_at else "—" }}</td>
+            <td>
+              <span class="pill {{ t.status.value }}">{{ t.status.value }}</span>
+              {% if t.last_error %}<span class="sub-line err">{{ t.last_error[:80] }}</span>{% endif %}
+            </td>
+            <td class="num">{{ t.attempts }}</td>
+            <td class="num nowrap">
+              <form method="post" action="/targets/{{ t.id }}/call-now" class="inline"
+                    onsubmit="return confirm('¿Llamar ahora a {{ t.phone }}? Ignora la ventana horaria.')">
+                <button type="submit" class="mini">Llamar</button>
+              </form>
+              <form method="post" action="/targets/{{ t.id }}/reschedule" class="inline">
+                <button type="submit" class="mini">Reagendar</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="empty">
+        <strong>No hay destinatarios con estos filtros</strong>
+        Cargalos abajo, o si acabás de crear la campaña sincronizá con Bitrix desde la barra lateral.
+      </p>
+    {% endif %}
   </div>
 
   {% if pages > 1 %}
-  <div class="actions">
-    {% set qs = "&status=" ~ (current_status or "") ~ "&campaign_id=" ~ (current_campaign or "") %}
-    {% if page > 1 %}<a class="btn" href="/targets?page={{ page - 1 }}{{ qs }}">← Anterior</a>{% endif %}
-    {% if page < pages %}<a class="btn" href="/targets?page={{ page + 1 }}{{ qs }}">Siguiente →</a>{% endif %}
-  </div>
+  {% set qs = "&status=" ~ (current_status or "") ~ "&campaign_id=" ~ (current_campaign or "") %}
+  <nav class="pager" aria-label="Paginación">
+    {% if page > 1 %}<a class="btn" href="/targets?page={{ page - 1 }}{{ qs }}">Anterior</a>{% endif %}
+    <span class="muted">Página {{ page }} de {{ pages }}</span>
+    {% if page < pages %}<a class="btn" href="/targets?page={{ page + 1 }}{{ qs }}">Siguiente</a>{% endif %}
+  </nav>
   {% endif %}
+</section>
 
-  {% else %}
-    <p class="empty">
-      No hay destinatarios con estos filtros.<br>
-      Si acabás de crear la campaña, tocá <strong>Sincronizar Bitrix</strong> arriba a la derecha.
+<section class="section" id="cargar">
+  <header>
+    <h2>Cargar destinatarios</h2>
+    <span class="note">Una línea por persona</span>
+  </header>
+
+  <form method="post" action="/targets" class="panel-form">
+    <div class="row">
+      <div>
+        <label for="f-campaign">Campaña</label>
+        <select id="f-campaign" name="campaign_id" required>
+          {% for c in campaigns %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="f-cuando">Cuándo llamar</label>
+        <select id="f-cuando" name="cuando">
+          <option value="ahora">En el próximo horario permitido</option>
+          <option value="espera">Respetando la demora de la campaña</option>
+        </select>
+      </div>
+    </div>
+
+    <label for="f-lote">Lista</label>
+    <textarea id="f-lote" name="lote" rows="6" required
+              placeholder="0981123456, Juan Perez&#10;+595971234567, Maria Gomez&#10;0976953263"></textarea>
+    <p class="hint">
+      Formato <code>teléfono, nombre</code>; el nombre es opcional. Los teléfonos se
+      normalizan igual que los que vienen de Bitrix, así que <code>0981 123 456</code>
+      y <code>+595981123456</code> son el mismo número.
     </p>
-  {% endif %}
-</div>
+
+    <div class="actions">
+      <button type="submit" class="primary">Cargar</button>
+    </div>
+  </form>
+</section>
 {% endblock %}

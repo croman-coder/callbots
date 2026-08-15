@@ -2,51 +2,92 @@
 {% set nav = "health" %}
 {% block title %}Diagnóstico · Callbot{% endblock %}
 
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Diagnóstico</h1>
+    <p class="lede">
+      {% set fallando = checks | rejectattr("ok") | list | length %}
+      {% if fallando %}{{ fallando }} de {{ checks | length }} dependencias con problemas
+      {% else %}Las {{ checks | length }} dependencias responden{% endif %}
+    </p>
+  </div>
+</div>
+{% endblock %}
+
 {% block content %}
-<h1>Diagnóstico</h1>
-<p class="sub">Estado de cada dependencia externa</p>
+<section class="section">
+  <header><h2>Dependencias</h2></header>
+  {#
+    Una fila por dependencia, con el detalle a la derecha. El estado va con
+    texto además del color: "no configurado" y "roto" son cosas distintas y
+    confundirlas hace perder tiempo.
+  #}
+  <div class="tablewrap">
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col" style="width:200px">Servicio</th>
+            <th scope="col" style="width:110px">Estado</th>
+            <th scope="col">Detalle</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in checks %}
+          <tr>
+            <td class="name">{{ c.name }}</td>
+            <td><span class="pill {{ 'completed' if c.ok else 'failed' }}">{{ "ok" if c.ok else "falla" }}</span></td>
+            <td class="muted">{{ c.detail }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
-<div class="card">
-  <table>
-    <tbody>
-    {% for c in checks %}
-      <tr>
-        <td style="width:180px"><strong>{{ c.name }}</strong></td>
-        <td style="width:90px"><span class="tag {{ 'completed' if c.ok else 'failed' }}">{{ "ok" if c.ok else "falla" }}</span></td>
-        <td>{{ c.detail }}</td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<div class="card">
-  <h2>Configuración activa</h2>
-  <table>
-    <tbody>
-      <tr><th style="width:260px">Zona horaria</th><td><code>{{ settings.tz }}</code></td></tr>
-      <tr><th>Demora de la encuesta</th><td>{{ settings.survey_delay_hours }} horas</td></tr>
-      <tr><th>Ventana horaria</th>
-          <td>{{ settings.call_window_start.strftime("%H:%M") }} – {{ settings.call_window_end.strftime("%H:%M") }}
-              · días <code>{{ settings.call_window_days }}</code></td></tr>
-      <tr><th>Llamadas simultáneas</th><td>{{ settings.max_concurrent_calls }}</td></tr>
-      <tr><th>Máx. intentos</th><td>{{ settings.max_call_attempts }} (reintento cada {{ settings.retry_interval_minutes }} min)</td></tr>
-      <tr><th>Entidad Bitrix por default</th><td><code>{{ settings.bitrix_entity_type_id }}</code></td></tr>
-      <tr><th>Campo disparador por default</th><td><code>{{ settings.bitrix_field_workshop_entry }}</code></td></tr>
-      <tr><th>Endpoint que se marca</th><td><code>{{ settings.asterisk_dial_template }}</code></td></tr>
-      <tr><th>Voz del bot</th>
-          <td>{% if settings.voicebox_url %}
-                Voicebox · motor <code>{{ settings.voicebox_engine }}</code> ·
-                perfil <code>{{ settings.voicebox_profile_id or "(sin definir)" }}</code>
-              {% else %}
-                Piper (voz genérica) — <span style="color:var(--muted)">configurá VOICEBOX_URL para usar una voz clonada</span>
-              {% endif %}</td></tr>
-      <tr><th>Modelo de Ollama</th><td><code>{{ settings.ollama_model }}</code>{% if not settings.ollama_enabled %} <span class="tag">deshabilitado</span>{% endif %}</td></tr>
-    </tbody>
-  </table>
-  <p style="color:var(--muted);font-size:13px;margin:14px 0 0">
-    Estos valores vienen del <code>.env</code> y son los defaults. Cada campaña puede
-    sobrescribir la ventana horaria, los intentos y la demora.
-  </p>
-</div>
+<section class="section">
+  <header>
+    <h2>Configuración activa</h2>
+    <span class="note">Valores por defecto; cada campaña puede sobrescribir horario, intentos y demora</span>
+  </header>
+  <div class="tablewrap">
+    <div class="scroll">
+      <table>
+        <tbody>
+          <tr><th scope="row" style="width:280px">Zona horaria</th><td class="mono">{{ settings.tz }}</td></tr>
+          <tr><th scope="row">Demora de la encuesta</th><td>{{ settings.survey_delay_hours }} horas</td></tr>
+          <tr><th scope="row">Ventana horaria</th>
+              <td>
+                <span class="tnum">{{ settings.call_window_start.strftime("%H:%M") }} – {{ settings.call_window_end.strftime("%H:%M") }}</span>
+                <span class="muted">· días</span> <span class="mono">{{ settings.call_window_days }}</span>
+              </td></tr>
+          <tr><th scope="row">Llamadas simultáneas</th><td class="tnum">{{ settings.max_concurrent_calls }}</td></tr>
+          <tr><th scope="row">Máximo de intentos</th>
+              <td><span class="tnum">{{ settings.max_call_attempts }}</span>
+                  <span class="muted">· reintento cada {{ settings.retry_interval_minutes }} min</span></td></tr>
+          <tr><th scope="row">Entidad Bitrix por defecto</th><td class="mono">{{ settings.bitrix_entity_type_id }}</td></tr>
+          <tr><th scope="row">Campo disparador por defecto</th><td class="mono">{{ settings.bitrix_field_workshop_entry or "—" }}</td></tr>
+          <tr><th scope="row">Endpoint que se marca</th><td class="mono">{{ settings.asterisk_dial_template }}</td></tr>
+          <tr><th scope="row">Voz del bot</th>
+              <td>
+                {% if settings.voicebox_url %}
+                  Voicebox · motor <span class="mono">{{ settings.voicebox_engine }}</span> ·
+                  perfil <span class="mono">{{ settings.voicebox_profile_id or "sin definir" }}</span>
+                {% else %}
+                  Piper, voz genérica
+                  <span class="sub-line">Configurá <span class="mono">VOICEBOX_URL</span> para usar una voz clonada</span>
+                {% endif %}
+              </td></tr>
+          <tr><th scope="row">Modelo de Ollama</th>
+              <td>
+                <span class="mono">{{ settings.ollama_model }}</span>
+                {% if not settings.ollama_enabled %} <span class="pill">deshabilitado</span>{% endif %}
+              </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 {% endblock %}

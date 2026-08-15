@@ -1,228 +1,262 @@
 {% extends "base.html" %}
 {% set nav = "voices" %}
-{% block title %}Voz del bot · Callbot{% endblock %}
+{% block title %}Voz · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Voz</h1>
+    <p class="lede">
+      {% if configured and active %}Hablando con <strong>{{ active.name }}</strong>, voz clonada
+      {% else %}Hablando con Piper, voz genérica{% endif %}
+    </p>
+  </div>
+  <div class="right">
+    <a class="btn" href="/simulador">Escuchar en el simulador</a>
+  </div>
+</div>
+{% endblock %}
 
 {% block content %}
-<h1>Voz del bot</h1>
-<p class="sub">Cómo suena, y con qué voz habla</p>
+{% if ok %}<div class="notice ok">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad"><strong>No se pudo completar.</strong> {{ error }}</div>{% endif %}
 
-{% if ok %}
-  <div class="card" style="border-left:3px solid var(--ok)">
-    <strong style="color:var(--ok)">✓ {{ ok }}</strong>
-  </div>
-{% endif %}
-{% if error %}
-  <div class="card" style="border-left:3px solid var(--bad)">
-    <strong style="color:var(--bad)">No se pudo completar</strong>
-    <p style="margin:6px 0 0">{{ error }}</p>
-  </div>
-{% endif %}
-
-<div class="card">
-  <h2 style="margin-top:0">Cómo suena</h2>
-  <p class="sub" style="margin-bottom:16px">
-    Se guarda por campaña y se aplica en la próxima llamada. Para escuchar el
-    resultado, entrá al <a href="/simulador">simulador</a>.
-  </p>
+<section class="section">
+  <header>
+    <h2>Cómo suena</h2>
+    <span class="note">Se guarda por campaña y se aplica en la próxima llamada</span>
+  </header>
 
   {% for c in campaigns %}
-  <form method="post" action="/voices/campaign/{{ c.id }}"
-        style="{% if not loop.first %}border-top:1px solid var(--line);padding-top:18px;margin-top:18px{% endif %}">
-    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:12px">
-      <strong>{{ c.name }}</strong>
-      {% if c.is_active %}<span class="hint" style="color:var(--ok)">activa</span>
-      {% else %}<span class="hint">pausada</span>{% endif %}
+  <form method="post" action="/voices/campaign/{{ c.id }}" class="panel-form" style="margin-bottom:var(--s4)">
+    <div class="form-head">
+      <h3>{{ c.name }}</h3>
+      <span class="pill {{ 'completed' if c.is_active else 'no_answer' }}">{{ "activa" if c.is_active else "pausada" }}</span>
     </div>
 
     <div class="row">
-      <label>Velocidad
-        <input type="range" name="voice_speed" min="0.6" max="1.6" step="0.05"
+      <div class="slider">
+        <div class="top">
+          <label for="sp-{{ c.id }}">Velocidad</label>
+          <output class="val" for="sp-{{ c.id }}">{{ c.voice_speed }}x</output>
+        </div>
+        <input id="sp-{{ c.id }}" type="range" name="voice_speed" min="0.6" max="1.6" step="0.05"
                value="{{ c.voice_speed }}"
-               oninput="this.nextElementSibling.textContent = this.value + 'x'">
-        <span class="hint">{{ c.voice_speed }}x</span>
-      </label>
-      <label>Tono
-        <input type="range" name="voice_pitch" min="0.8" max="1.25" step="0.01"
+               oninput="this.previousElementSibling.querySelector('.val').textContent = this.value + 'x'">
+      </div>
+      <div class="slider">
+        <div class="top">
+          <label for="pi-{{ c.id }}">Tono</label>
+          <output class="val" for="pi-{{ c.id }}">{{ c.voice_pitch }}</output>
+        </div>
+        <input id="pi-{{ c.id }}" type="range" name="voice_pitch" min="0.8" max="1.25" step="0.01"
                value="{{ c.voice_pitch }}"
-               oninput="this.nextElementSibling.textContent = this.value">
-        <span class="hint">{{ c.voice_pitch }}
-          <span style="opacity:.7">— menos es más grave</span></span>
-      </label>
-      <label>Expresividad
-        <input type="range" name="voice_expressiveness" min="0" max="1.2" step="0.02"
+               oninput="this.previousElementSibling.querySelector('.val').textContent = this.value">
+        <p class="why">Menos es más grave</p>
+      </div>
+      <div class="slider">
+        <div class="top">
+          <label for="ex-{{ c.id }}">Expresividad</label>
+          <output class="val" for="ex-{{ c.id }}">{{ c.voice_expressiveness }}</output>
+        </div>
+        <input id="ex-{{ c.id }}" type="range" name="voice_expressiveness" min="0" max="1.2" step="0.02"
                value="{{ c.voice_expressiveness }}"
-               oninput="this.nextElementSibling.textContent = this.value">
-        <span class="hint">{{ c.voice_expressiveness }}
-          <span style="opacity:.7">— 0 es plano</span></span>
-      </label>
-      <label>Volumen
-        <input type="range" name="voice_volume" min="0.4" max="1.2" step="0.05"
+               oninput="this.previousElementSibling.querySelector('.val').textContent = this.value">
+        <p class="why">Cero es plano</p>
+      </div>
+      <div class="slider">
+        <div class="top">
+          <label for="vo-{{ c.id }}">Volumen</label>
+          <output class="val" for="vo-{{ c.id }}">{{ c.voice_volume }}x</output>
+        </div>
+        <input id="vo-{{ c.id }}" type="range" name="voice_volume" min="0.4" max="1.2" step="0.05"
                value="{{ c.voice_volume }}"
-               oninput="this.nextElementSibling.textContent = this.value + 'x'">
-        <span class="hint">{{ c.voice_volume }}x
-          <span style="opacity:.7">— arriba de 1 satura</span></span>
-      </label>
+               oninput="this.previousElementSibling.querySelector('.val').textContent = this.value + 'x'">
+        <p class="why">Arriba de 1 satura</p>
+      </div>
     </div>
 
     <div class="actions">
       <button type="submit" class="primary">Guardar voz</button>
-      <a class="btn" href="/campaigns/{{ c.id }}">Guion y prompts de esta campaña</a>
+      <a class="btn" href="/campaigns/{{ c.id }}">Guion de esta campaña</a>
     </div>
   </form>
   {% else %}
-  <p>No hay campañas todavía. Creá una en <a href="/campaigns">Campañas</a>.</p>
+  <div class="tablewrap">
+    <p class="empty">
+      <strong>No hay campañas todavía</strong>
+      La voz se configura por campaña. Creá una en <a class="link" href="/campaigns">Campañas</a>.
+    </p>
+  </div>
   {% endfor %}
-</div>
+</section>
 
 {% if not configured %}
-  <div class="card" style="border-left:3px solid var(--warn)">
-    <h2 style="margin-top:0">Voicebox no está configurado</h2>
-    <p>Ahora mismo el bot habla con <strong>Piper</strong>: funciona bien, pero suena sintético.
-       Para llamar con una voz humana clonada hace falta levantar Voicebox aparte:</p>
-    <pre style="background:#0000000d;padding:12px;border-radius:6px;overflow-x:auto"><code>git clone https://github.com/jamiepine/voicebox.git
+<section class="section">
+  <header><h2>Voicebox no está configurado</h2></header>
+  <div class="panel-form">
+    <p style="margin-top:0">
+      El bot habla con <strong>Piper</strong>: funciona bien, pero suena sintético.
+      Para llamar con una voz humana clonada hace falta levantar Voicebox aparte.
+    </p>
+    <pre><code>git clone https://github.com/jamiepine/voicebox.git
 cd voicebox &amp;&amp; docker compose up -d</code></pre>
-    <p>Después poné en el <code>.env</code> del callbot y reiniciá:</p>
-    <pre style="background:#0000000d;padding:12px;border-radius:6px;overflow-x:auto"><code>VOICEBOX_URL=http://host.docker.internal:17600</code></pre>
+    <p>Después, en el <code>.env</code> del callbot, y reiniciar:</p>
+    <pre><code>VOICEBOX_URL=http://host.docker.internal:17600</code></pre>
   </div>
+</section>
+
 {% else %}
 
-  <!-- ------------------------------------------------ voz activa -->
-  <div class="card">
-    <h2>Voz en uso</h2>
+<section class="section">
+  <header><h2>Voz en uso</h2></header>
+  <div class="tablewrap">
     {% if active %}
+    <div class="scroll">
       <table>
         <tbody>
-          <tr><th style="width:160px">Perfil</th><td><strong>{{ active.name }}</strong></td></tr>
-          <tr><th>ID</th><td><code>{{ active.id }}</code></td></tr>
-          <tr><th>Idioma</th><td>{{ active.language or "—" }}</td></tr>
-          <tr><th>Motor TTS</th><td><code>{{ settings.voicebox_engine }}</code></td></tr>
+          <tr><th scope="row" style="width:200px">Perfil</th><td class="name">{{ active.name }}</td></tr>
+          <tr><th scope="row">ID</th><td class="mono">{{ active.id }}</td></tr>
+          <tr><th scope="row">Idioma</th><td>{{ active.language or "—" }}</td></tr>
+          <tr><th scope="row">Motor TTS</th><td class="mono">{{ settings.voicebox_engine }}</td></tr>
         </tbody>
       </table>
-      <div class="actions">
-        <a class="btn" href="/voices?preview={{ active.id }}">Escuchar</a>
-      </div>
+    </div>
     {% elif active_id %}
-      <p style="color:var(--bad)">
-        El <code>VOICEBOX_PROFILE_ID</code> configurado (<code>{{ active_id }}</code>)
-        no coincide con ningún perfil de Voicebox. El bot está hablando con Piper.
+      <p class="empty">
+        <strong>El perfil configurado no existe en Voicebox</strong>
+        <span class="mono">{{ active_id }}</span> no coincide con ningún perfil, así que el bot está hablando con Piper.
       </p>
     {% else %}
-      <p style="color:var(--muted)">
-        Todavía no hay ninguna voz seleccionada: el bot habla con Piper.
-        Cloná una abajo y pegá su ID en el <code>.env</code>.
+      <p class="empty">
+        <strong>Todavía no hay ninguna voz seleccionada</strong>
+        El bot habla con Piper. Cloná una abajo y pegá su ID en el <code>.env</code>.
       </p>
     {% endif %}
   </div>
+  {% if active %}
+  <div class="actions">
+    <a class="btn" href="/voices?preview={{ active.id }}">Escuchar</a>
+  </div>
+  {% endif %}
+</section>
 
-  <!-- ------------------------------------------------ reproductor -->
-  {% if preview %}
-  <div class="card">
+{% if preview %}
+<section class="section">
+  <header>
     <h2>Muestra</h2>
-    <p style="color:var(--muted);font-size:13px;margin:-6px 0 12px">
-      Generando puede tardar varios segundos la primera vez. En la llamada real
-      va a sonar más apagado: la telefonía trabaja a 8 kHz.
-    </p>
-    <audio controls preload="auto" style="width:100%"
-           src="/voices/preview?profile_id={{ preview }}">
+    <span class="note">En la llamada real suena más apagado: la telefonía trabaja a 8 kHz</span>
+  </header>
+  <div class="panel-form">
+    <audio controls preload="auto" style="width:100%" src="/voices/preview?profile_id={{ preview }}">
       Tu navegador no puede reproducir audio.
     </audio>
   </div>
-  {% endif %}
+</section>
+{% endif %}
 
-  <!-- ------------------------------------------------ clonar -->
-  <div class="card">
-    <h2>Clonar una voz nueva</h2>
+<section class="section">
+  <header><h2>Clonar una voz nueva</h2></header>
 
-    <div style="border-left:3px solid var(--warn);padding-left:12px;margin:0 0 16px">
-      <p style="margin:0 0 6px"><strong>Antes de subir nada</strong></p>
-      <p style="margin:0;color:var(--muted);font-size:14px">
-        Necesitás el permiso explícito de la persona cuya voz vas a clonar: es su
-        voz, y en varias jurisdicciones también un dato biométrico. Y una voz
-        humana convincente hace <em>más</em> fuerte la obligación de avisar que la
-        llamada es automatizada, no menos — revisá que el guion de presentación
-        lo diga.
-      </p>
-    </div>
-
-    <form method="post" action="/voices/clone" enctype="multipart/form-data">
-      <label>Nombre del perfil
-        <input type="text" name="name" required placeholder="Recepción taller">
-      </label>
-
-      <label>Grabación de referencia
-        <span class="hint">— 10 a 30 segundos, sin ruido de fondo, una sola persona</span>
-        <input type="file" name="audio" accept="audio/*" required>
-      </label>
-
-      <label>Transcripción exacta de la grabación
-        <span class="hint">— palabra por palabra; si no coincide, el clon sale peor</span>
-        <textarea name="reference_text" required
-                  placeholder="Escribí acá exactamente lo que se escucha en el audio."></textarea>
-      </label>
-
-      <div class="actions">
-        <button type="submit" class="primary">Clonar voz</button>
-      </div>
-      <p style="color:var(--muted);font-size:13px;margin:10px 0 0">
-        El procesamiento puede tardar un par de minutos. No cierres la pestaña.
-      </p>
-    </form>
+  <div class="notice">
+    <strong>Antes de subir nada.</strong>
+    Necesitás el permiso explícito de la persona cuya voz vas a clonar: es su voz, y en
+    varias jurisdicciones también un dato biométrico. Y una voz humana convincente hace
+    <em>más</em> fuerte la obligación de avisar que la llamada es automatizada, no menos:
+    revisá que el guion de presentación lo diga.
   </div>
 
-  <!-- ------------------------------------------------ perfiles -->
-  <div class="card">
-    <h2>Perfiles en Voicebox</h2>
+  <form method="post" action="/voices/clone" enctype="multipart/form-data" class="panel-form">
+    <label for="v-name">Nombre del perfil</label>
+    <input id="v-name" type="text" name="name" required placeholder="Recepción taller">
 
+    <label for="v-audio">Grabación de referencia</label>
+    <input id="v-audio" type="file" name="audio" accept="audio/*" required>
+    <p class="hint">10 a 30 segundos, sin ruido de fondo, una sola persona hablando.</p>
+
+    <label for="v-text">Transcripción exacta de la grabación</label>
+    <textarea id="v-text" name="reference_text" required
+              placeholder="Escribí acá exactamente lo que se escucha en el audio."></textarea>
+    <p class="hint">Palabra por palabra. Si no coincide con el audio, el clon sale peor.</p>
+
+    <div class="actions">
+      <button type="submit" class="primary">Clonar voz</button>
+      <span class="hint">Puede tardar un par de minutos. No cierres la pestaña.</span>
+    </div>
+  </form>
+</section>
+
+<section class="section">
+  <header><h2>Perfiles en Voicebox</h2></header>
+  <div class="tablewrap">
     {% if load_error %}
-      <p style="color:var(--bad)">{{ load_error }}</p>
+      <p class="empty"><strong>No se pudieron leer los perfiles</strong>{{ load_error }}</p>
     {% elif profiles %}
-      <div class="scroll">
+    <div class="scroll">
       <table>
-        <thead><tr><th>Nombre</th><th>ID</th><th>Idioma</th><th>Tipo</th><th></th><th></th></tr></thead>
-        <tbody>
-        {% for p in profiles %}
+        <thead>
           <tr>
-            <td><strong>{{ p.name }}</strong>
-              {% if p.id == active_id %}<span class="tag completed">en uso</span>{% endif %}</td>
-            <td><code>{{ p.id }}</code></td>
+            <th scope="col">Nombre</th>
+            <th scope="col">ID</th>
+            <th scope="col">Idioma</th>
+            <th scope="col">Tipo</th>
+            <th scope="col"><span class="sr-only">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in profiles %}
+          <tr>
+            <td class="name">
+              {{ p.name }}
+              {% if p.id == active_id %}<span class="pill completed">en uso</span>{% endif %}
+            </td>
+            <td class="mono muted">{{ p.id }}</td>
             <td>{{ p.language or "—" }}</td>
-            <td><span class="tag">{{ p.voice_type or "—" }}</span></td>
-            <td><a href="/voices?preview={{ p.id }}">escuchar</a></td>
-            <td>
+            <td><span class="pill">{{ p.voice_type or "—" }}</span></td>
+            <td class="num nowrap">
+              <a class="link" href="/voices?preview={{ p.id }}">Escuchar</a>
               {% if p.id != active_id %}
-                <details>
-                  <summary style="cursor:pointer;color:var(--accent)">usar esta</summary>
-                  <div style="margin-top:8px;font-size:13px;color:var(--muted)">
-                    Pegá en el <code>.env</code> y reiniciá:
-                    <pre style="background:#0000000d;padding:8px;border-radius:6px;margin:6px 0 0;overflow-x:auto"><code>VOICEBOX_PROFILE_ID={{ p.id }}</code></pre>
-                    <code>make warm-tts</code>
-                  </div>
-                </details>
+              <details class="howto">
+                <summary>Usar esta</summary>
+                <div>
+                  Pegá en el <code>.env</code>, reiniciá y precalentá:
+                  <pre><code>VOICEBOX_PROFILE_ID={{ p.id }}
+make warm-tts</code></pre>
+                </div>
+              </details>
               {% endif %}
             </td>
           </tr>
-        {% endfor %}
+          {% endfor %}
         </tbody>
       </table>
-      </div>
+    </div>
     {% else %}
-      <p class="empty">No hay perfiles todavía. Cloná el primero arriba.</p>
+      <p class="empty">
+        <strong>No hay perfiles todavía</strong>
+        Cloná el primero con el formulario de arriba.
+      </p>
     {% endif %}
   </div>
+</section>
 
-  <div class="card">
+<section class="section">
+  <header>
     <h2>Cómo aplicar un cambio de voz</h2>
-    <p style="color:var(--muted);font-size:14px;margin:0 0 10px">
-      El perfil activo se lee del <code>.env</code> al arrancar el voice-agent, así
-      que cambiarlo requiere reiniciar. El guion completo se pre-sintetiza una
-      sola vez y queda cacheado en disco:
+    <span class="note">El perfil se lee al arrancar el voice-agent</span>
+  </header>
+  <div class="panel-form">
+    <p style="margin-top:0">
+      El guion completo se pre-sintetiza una sola vez y queda cacheado en disco, así que
+      cambiar de voz obliga a reiniciar y volver a precalentar.
     </p>
-    <ol style="color:var(--muted);font-size:14px;margin:0;padding-left:20px">
+    <ol class="steps">
       <li>Poné el <code>VOICEBOX_PROFILE_ID</code> en el <code>.env</code></li>
       <li>Corré <code>make warm-tts</code></li>
       <li>Seguí el precalentado con <code>make logs-agent</code></li>
     </ol>
   </div>
+</section>
 
 {% endif %}
 {% endblock %}

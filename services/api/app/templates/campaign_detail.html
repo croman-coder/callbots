@@ -2,20 +2,29 @@
 {% set nav = "campaigns" %}
 {% block title %}{{ campaign.name }} · Callbot{% endblock %}
 
-{% block content %}
-<h1>{{ campaign.name }}</h1>
-<p class="sub">
-  <a href="/campaigns">← Campañas</a> ·
-  <span class="tag {{ 'completed' if campaign.is_active else 'failed' }}">{{ "activa" if campaign.is_active else "pausada" }}</span>
-  {% if total_targets %} · {{ total_targets }} destinatarios{% endif %}
-</p>
+{% block topbar %}
+<div class="bar">
+  <div>
+    <p class="crumb"><a class="link" href="/campaigns">Campañas</a></p>
+    <h1>{{ campaign.name }}</h1>
+    <p class="lede">
+      {{ campaign.questions | selectattr("is_active") | list | length }} preguntas activas
+      {%- if total_targets %} · {{ total_targets }} destinatarios{% endif %}
+    </p>
+  </div>
+  <div class="right">
+    <span class="pill {{ 'completed' if campaign.is_active else 'no_answer' }}">{{ "activa" if campaign.is_active else "pausada" }}</span>
+  </div>
+</div>
+{% endblock %}
 
+{% block content %}
 {% if target_counts %}
-<div class="grid" style="margin-bottom:18px">
+<div class="metrics">
   {% for status, count in target_counts.items() %}
-  <div class="kpi">
-    <div class="n">{{ count }}</div>
-    <div class="l">{{ status.value }}</div>
+  <div class="metric">
+    <div class="k">{{ status.value }}</div>
+    <div class="v">{{ count }}</div>
   </div>
   {% endfor %}
 </div>

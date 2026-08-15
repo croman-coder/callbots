@@ -2,15 +2,26 @@
 {% set nav = "simulador" %}
 {% block title %}Simulador · Callbot{% endblock %}
 
-{% block content %}
-<h1>Simulador de llamada</h1>
-<p class="sub">Hablá con el bot desde el navegador, sin teléfono</p>
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Simulador</h1>
+    <p class="lede">
+      {% if campaign %}Hablá con el bot desde el navegador, sin teléfono
+      {% else %}Necesita una campaña activa{% endif %}
+    </p>
+  </div>
+</div>
+{% endblock %}
 
+{% block content %}
 {% if not campaign %}
-<div class="card">
-  <strong>No hay ninguna campaña activa.</strong>
-  <p>El simulador corre la campaña activa, igual que la extensión 9000.
-     Activá una en <a href="/campaigns">Campañas</a> y volvé.</p>
+<div class="tablewrap">
+  <p class="empty">
+    <strong>No hay ninguna campaña activa</strong>
+    El simulador corre la campaña activa, igual que la extensión 9000.
+    Activá una en <a class="link" href="/campaigns">Campañas</a> y volvé.
+  </p>
 </div>
 {% else %}
 
