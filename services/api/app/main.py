@@ -10,6 +10,14 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.routers import admin, internal, simulator
 
+# Las tareas se declaran con @shared_task, que resuelve el broker recién al
+# encolar, mirando la app de Celery "actual" del proceso. El worker arranca con
+# -A app.scheduler.worker y la tiene; la API no importaba ese módulo por ningún
+# lado, así que cada .delay() caía en la app default de Celery —sin broker— y
+# terminaba en "Connection refused" contra localhost. Importarlo la registra
+# para todo el proceso.
+from app.scheduler import worker as _celery_worker  # noqa: F401
+
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
