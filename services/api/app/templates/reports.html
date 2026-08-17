@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% set nav = "reportes" %}
+{% block title %}Reportes · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Reportes</h1>
+    <p class="lede">
+      {{ total }} llamada{{ "s" if total != 1 }}
+      {%- if descripcion %} · {{ descripcion }}{% endif %}
+      {%- if pages > 1 %} · página {{ page }} de {{ pages }}{% endif %}
+    </p>
+  </div>
+  <div class="right">
+    {#- El export arrastra los mismos filtros de la URL: lo que se descarga es
+        exactamente lo que está en pantalla, no todo el histórico. -#}
+    <a class="btn primary" href="/reportes/export.xlsx{% if query_export %}?{{ query_export }}{% endif %}">
+      Exportar a Excel
+    </a>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<section class="section">
+  <header>
+    <h2>Filtros</h2>
+    <span class="note">Se aplican también a la exportación</span>
+  </header>
+
+  <form method="get" action="/reportes" class="filters">
+    <label>
+      <span class="sr-only">Desde</span>
+      <input type="date" name="desde" value="{{ f.desde }}" aria-label="Desde">
+    </label>
+    <label>
+      <span class="sr-only">Hasta</span>
+      <input type="date" name="hasta" value="{{ f.hasta }}" aria-label="Hasta">
+    </label>
+
+    <select name="campaign_id" aria-label="Campaña">
+      <option value="">Todas las campañas</option>
+      {% for c in campaigns %}
+      <option value="{{ c.id }}" {% if f.campaign_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <select name="outcome" aria-label="Resultado">
+      <option value="">Todos los resultados</option>
+      {% for o in outcomes %}
+      <option value="{{ o.value }}" {% if f.outcome == o.value %}selected{% endif %}>{{ o.value }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="check">
+      <input type="checkbox" name="solo_alertas" value="true" {% if f.solo_alertas %}checked{% endif %}>
+      Solo advertencias
+    </label>
+
+    <button type="submit">Aplicar</button>
+    {% if descripcion %}<a class="btn" href="/reportes">Limpiar</a>{% endif %}
+  </form>
+</section>
+
+<div class="metrics">
+  <div class="metric">
+    <div class="num tnum" {% if promedio is not none and promedio < satisfactory_min %}style="color:var(--bad)"{% endif %}>
+      {{ promedio if promedio is not none else "—" }}{% if promedio is not none %}<span class="sub-line">/10</span>{% endif %}
+    </div>
+    <div class="sub">Satisfacción promedio</div>
+  </div>
+  <div class="metric">
+    <div class="num tnum">{{ completadas }}</div>
+    <div class="sub">Encuestas completadas</div>
+  </div>
+  <div class="metric">
+    <div class="num tnum" {% if alertas %}style="color:var(--bad)"{% endif %}>{{ alertas }}</div>
+    <div class="sub">Requieren seguimiento</div>
+  </div>
+  <div class="metric">
+    <div class="num tnum">
+      {%- if duracion_media is not none -%}
+        {{ duracion_media // 60 }}<span class="sub-line">m</span> {{ duracion_media % 60 }}<span class="sub-line">s</span>
+      {%- else -%}—{%- endif -%}
+    </div>
+    <div class="sub">Duración media</div>
+  </div>
+</div>
+
+<section class="section">
+  <header>
+    <h2>Llamadas</h2>
+    <span class="note">Una fila por intento · el detalle por pregunta está en el Excel</span>
+  </header>
+
+  <div class="tablewrap">
+    {% if calls %}
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Fecha</th>
+            <th scope="col">Cliente</th>
+            <th scope="col">Teléfono</th>
+            <th scope="col">Campaña</th>
+            <th scope="col">Resultado</th>
+            <th scope="col" class="num">Duración</th>
+            <th scope="col" class="num">Resp.</th>
+            <th scope="col" class="num">Puntaje</th>
+            <th scope="col">Sentimiento</th>
+            <th scope="col"><span class="sr-only">Detalle</span></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for c in calls %}
+          {% set a = c.analysis %}
+          {% set s = a.satisfaction_score if a else none %}
+          <tr>
+            <td class="nowrap">{{ c.started_at.strftime("%d/%m/%y %H:%M") if c.started_at else "—" }}</td>
+            <td>{{ c.target.contact_name or "—" }}</td>
+            <td><span class="mono">{{ c.target.phone or "—" }}</span></td>
+            <td>{{ c.target.campaign.name if c.target.campaign else "—" }}</td>
+            <td>
+              <span class="tag {{ c.outcome.value if c.outcome else '' }}">
+                {{ c.outcome.value if c.outcome else "en curso" }}
+              </span>
+              {% if a and a.requires_followup %}<span class="flag" title="{{ a.followup_reason or '' }}">⚠</span>{% endif %}
+            </td>
+            <td class="num tnum nowrap">
+              {%- if c.duration_seconds -%}
+                {{ c.duration_seconds // 60 }}m {{ c.duration_seconds % 60 }}s
+              {%- else -%}—{%- endif -%}
+            </td>
+            <td class="num tnum">{{ c.questions_answered }}/{{ c.questions_asked }}</td>
+            <td class="num tnum">
+              {%- if s is not none -%}
+                <strong {% if s < satisfactory_min %}class="score-bad"{% endif %}>{{ s | round(1) }}</strong>
+              {%- else -%}—{%- endif -%}
+            </td>
+            <td>
+              {%- if a and a.sentiment -%}
+                <span class="tag {{ a.sentiment }}">{{ a.sentiment }}</span>
+              {%- else -%}—{%- endif -%}
+            </td>
+            <td><a class="link" href="/calls/{{ c.id }}">ver</a></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pages > 1 %}
+    <div class="pager">
+      {#- La query la arma el servidor omitiendo las claves vacías. Concatenarla
+          acá a mano metía `campaign_id=` cuando no había filtro de campaña, y
+          eso es un 422, no un "sin filtro". -#}
+      {% set base = "/reportes?" ~ query_page ~ ("&" if query_page else "") %}
+      {% if page > 1 %}<a class="btn" href="{{ base }}page={{ page - 1 }}">← Anterior</a>{% endif %}
+      <span class="muted tnum">{{ page }} / {{ pages }}</span>
+      {% if page < pages %}<a class="btn" href="{{ base }}page={{ page + 1 }}">Siguiente →</a>{% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="empty">
+      {%- if descripcion -%}
+        No hay llamadas con estos filtros. <a class="link" href="/reportes">Ver todas</a>.
+      {%- else -%}
+        Todavía no se registraron llamadas.
+      {%- endif -%}
+    </p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="section">
+  <header><h2>Qué trae el Excel</h2></header>
+  <div class="howto">
+    <p>Dos hojas, porque son dos preguntas distintas:</p>
+    <ul>
+      <li><strong>Llamadas</strong> — una fila por llamada y <strong>una columna por
+        pregunta</strong>, con puntaje, sentimiento, motivo de la advertencia y el
+        registro de Bitrix. Es la hoja para filtrar y leer.</li>
+      <li><strong>Respuestas</strong> — una fila por respuesta, con la
+        transcripción textual de lo que dijo el cliente y la confianza del
+        reconocimiento de voz. Es la que sirve para tablas dinámicas.</li>
+    </ul>
+    <p class="muted">
+      Las escalas van como número para que Excel pueda promediarlas. La columna
+      «Conforme» ya aplica el umbral de {{ satisfactory_min | round(0) | int }}/10,
+      así nadie tiene que recordarlo al armar un gráfico.
+    </p>
+  </div>
+</section>
+
+{% endblock %}

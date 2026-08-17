@@ -11,7 +11,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -26,11 +26,13 @@ from app.routers.simulator import emitir_ticket
 from app.bitrix.client import normalize_phone_py
 from app.scheduling import next_call_slot, parse_days, parse_hhmm
 from app.services import voicebox
+from app.services.export import construir_excel
 from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
     Answer,
     CallAnalysis,
     CallAttempt,
+    CallOutcome,
     Campaign,
     Question,
     QuestionType,
@@ -58,6 +60,28 @@ QUESTION_TYPE_LABELS = {
 def _redirect(path: str) -> RedirectResponse:
     """303 para que el navegador convierta el POST en GET y no reenvíe el form."""
     return RedirectResponse(path, status_code=303)
+
+
+def _entero(valor: str | None, por_defecto: int | None = None) -> int | None:
+    """Convierte a int el valor de un <select> o de la paginación, tolerando el vacío.
+
+    Un `<option value="">` manda `campo=` en la query. Si el parámetro se
+    declarara `int | None`, FastAPI rechazaría esa cadena vacía con un 422 y
+    elegir "todas" rompería la página entera con un JSON de error. Los
+    formularios HTML siempre mandan el campo, así que la tolerancia vive acá y
+    no repetida en cada ruta.
+    """
+    try:
+        return int(valor) if valor not in (None, "") else por_defecto
+    except ValueError:
+        return por_defecto
+
+
+def _query_sin(params, *excluir: str) -> str:
+    """Rearma la query string omitiendo claves vacías y las excluidas."""
+    return urlencode(
+        {k: v for k, v in params.items() if v not in ("", None) and k not in excluir}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -408,12 +432,6 @@ def list_targets(
     page: str | None = None,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    def _entero(valor: str | None, por_defecto: int | None = None) -> int | None:
-        try:
-            return int(valor) if valor not in (None, "") else por_defecto
-        except ValueError:
-            return por_defecto
-
     campaign_id = _entero(campaign_id)
     page = max(1, _entero(page, 1) or 1)
     per_page = 50
@@ -611,6 +629,215 @@ def reanalyze(call_id: int) -> RedirectResponse:
 
     reanalyze_call.delay(call_id)
     return _redirect(f"/calls/{call_id}")
+
+
+# ---------------------------------------------------------------------------
+# Reportes
+# ---------------------------------------------------------------------------
+POR_PAGINA = 60
+
+
+def _filtros_reporte(
+    db: Session,
+    desde: str | None,
+    hasta: str | None,
+    campaign_id: int | None,
+    outcome: str | None,
+    solo_alertas: bool,
+) -> tuple[list, str]:
+    """Traduce los filtros de la URL a condiciones SQL y a texto legible.
+
+    La pantalla y el Excel comparten esta función a propósito: si cada uno
+    armara sus filtros, el archivo descargado podría no coincidir con lo que la
+    persona acaba de mirar, y no habría forma de notarlo.
+    """
+    condiciones = []
+    partes: list[str] = []
+
+    def _dia(valor: str) -> datetime | None:
+        try:
+            return datetime.fromisoformat(valor).replace(tzinfo=settings.timezone)
+        except (ValueError, TypeError):
+            return None
+
+    if desde:
+        inicio = _dia(desde)
+        if inicio:
+            condiciones.append(CallAttempt.started_at >= inicio)
+            partes.append(f"desde {desde}")
+
+    if hasta:
+        fin = _dia(hasta)
+        if fin:
+            # El día "hasta" se incluye completo: quien pide 15/08 espera que
+            # entren las llamadas de esa tarde, no solo las de medianoche.
+            condiciones.append(CallAttempt.started_at < fin + timedelta(days=1))
+            partes.append(f"hasta {hasta}")
+
+    if campaign_id:
+        condiciones.append(SurveyTarget.campaign_id == campaign_id)
+        nombre = db.scalar(select(Campaign.name).where(Campaign.id == campaign_id))
+        partes.append(f"campaña «{nombre or campaign_id}»")
+
+    if outcome:
+        try:
+            condiciones.append(CallAttempt.outcome == CallOutcome(outcome))
+            partes.append(f"resultado {outcome}")
+        except ValueError:
+            pass
+
+    if solo_alertas:
+        condiciones.append(CallAnalysis.requires_followup.is_(True))
+        partes.append("solo advertencias")
+
+    return condiciones, " · ".join(partes)
+
+
+def _con_joins(stmt, condiciones: list):
+    """Aplica los joins y filtros del reporte a cualquier select.
+
+    Definido una sola vez porque el listado, el conteo y los agregados tienen
+    que recorrer exactamente las mismas filas. Con la cadena repetida en tres
+    lugares, agregar un join después dejaría los totales desalineados con la
+    tabla y nada avisaría.
+
+    El outer join sobre CallAnalysis es deliberado: una llamada que no atendió
+    no tiene análisis, y sigue siendo un resultado que hay que poder ver.
+    """
+    return (
+        stmt.select_from(CallAttempt)
+        .join(SurveyTarget, CallAttempt.target_id == SurveyTarget.id)
+        .outerjoin(CallAnalysis, CallAnalysis.call_id == CallAttempt.id)
+        .where(*condiciones)
+    )
+
+
+@router.get("/reportes", response_class=HTMLResponse)
+def reportes(
+    request: Request,
+    desde: str | None = None,
+    hasta: str | None = None,
+    campaign_id: str | None = None,
+    outcome: str | None = None,
+    solo_alertas: bool = False,
+    page: int = 1,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    campaign = _entero(campaign_id)
+    condiciones, descripcion = _filtros_reporte(
+        db, desde, hasta, campaign, outcome, solo_alertas
+    )
+
+    total = db.scalar(_con_joins(select(func.count()), condiciones)) or 0
+
+    resumen = db.execute(
+        _con_joins(
+            select(
+                func.avg(CallAnalysis.satisfaction_score),
+                func.count(CallAnalysis.id).filter(
+                    CallAnalysis.requires_followup.is_(True)
+                ),
+                func.count(CallAttempt.id).filter(
+                    CallAttempt.outcome == CallOutcome.COMPLETED
+                ),
+                func.avg(CallAttempt.duration_seconds),
+            ),
+            condiciones,
+        )
+    ).one()
+
+    paginas = max(1, (total + POR_PAGINA - 1) // POR_PAGINA)
+    page = max(1, min(page, paginas))
+
+    calls = db.scalars(
+        _con_joins(select(CallAttempt), condiciones)
+        .options(
+            selectinload(CallAttempt.target).selectinload(SurveyTarget.campaign),
+            selectinload(CallAttempt.analysis),
+        )
+        .order_by(CallAttempt.started_at.desc())
+        .offset((page - 1) * POR_PAGINA)
+        .limit(POR_PAGINA)
+    ).all()
+
+    return templates.TemplateResponse(
+        request,
+        "reports.html",
+        {
+            "calls": calls,
+            "total": total,
+            "page": page,
+            "pages": paginas,
+            "promedio": round(resumen[0], 1) if resumen[0] is not None else None,
+            "alertas": resumen[1] or 0,
+            "completadas": resumen[2] or 0,
+            "duracion_media": int(resumen[3]) if resumen[3] is not None else None,
+            "descripcion": descripcion,
+            "campaigns": db.scalars(select(Campaign).order_by(Campaign.name)).all(),
+            "outcomes": list(CallOutcome),
+            "f": {
+                "desde": desde or "",
+                "hasta": hasta or "",
+                "campaign_id": campaign,
+                "outcome": outcome or "",
+                "solo_alertas": solo_alertas,
+            },
+            # Sin `page`: el export no pagina, arrastrarlo daría a entender
+            # que descarga solo la página que se está viendo.
+            "query_export": _query_sin(request.query_params, "page"),
+            # Para el paginador: los mismos filtros, listos para agregar &page=N
+            "query_page": _query_sin(request.query_params, "page"),
+            "satisfactory_min": SATISFACTORY_MIN,
+        },
+    )
+
+
+@router.get("/reportes/export.xlsx")
+def exportar_reportes(
+    desde: str | None = None,
+    hasta: str | None = None,
+    campaign_id: str | None = None,
+    outcome: str | None = None,
+    solo_alertas: bool = False,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Descarga los resultados filtrados como Excel.
+
+    Sin paginar: el archivo trae todo lo que cumple el filtro, que es
+    justamente para lo que se exporta.
+    """
+    condiciones, descripcion = _filtros_reporte(
+        db, desde, hasta, _entero(campaign_id), outcome, solo_alertas
+    )
+
+    calls = db.scalars(
+        _con_joins(select(CallAttempt), condiciones)
+        .options(
+            selectinload(CallAttempt.target).selectinload(SurveyTarget.campaign),
+            selectinload(CallAttempt.analysis),
+            selectinload(CallAttempt.answers).selectinload(Answer.question),
+        )
+        .order_by(CallAttempt.started_at.desc())
+    ).all()
+
+    contenido, truncado = construir_excel(
+        list(calls), tz=settings.timezone, descripcion_filtros=descripcion
+    )
+
+    nombre = f"encuestas-{datetime.now(settings.timezone):%Y%m%d-%H%M}.xlsx"
+    log.info(
+        "Export de %d llamadas (%s)%s",
+        len(calls), descripcion or "sin filtros", " [truncado]" if truncado else "",
+    )
+
+    return Response(
+        content=contenido,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nombre}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

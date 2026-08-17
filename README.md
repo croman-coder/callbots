@@ -498,6 +498,38 @@ tuyas:
 Los datos de clientes (nombre, teléfono, audio, transcripciones) quedan en tu
 servidor. Nada sale hacia servicios de terceros: por eso el stack es local.
 
+## Reportes y exportación a Excel
+
+El panel tiene dos vistas de resultados, porque son dos preguntas distintas:
+
+| Vista | Responde |
+|---|---|
+`/` **Resultados** | ¿cómo vamos? Promedios, sentimiento, peor pregunta, qué requiere seguimiento |
+`/reportes` **Reportes** | dame los datos. Una fila por llamada, filtrable y exportable |
+
+En `/reportes` se filtra por rango de fechas, campaña, resultado y "solo
+advertencias", y el botón **Exportar a Excel** descarga exactamente lo filtrado
+— no todo el histórico. Filtros y export comparten el mismo código, así que el
+archivo nunca puede diferir de lo que se ve en pantalla.
+
+El `.xlsx` trae tres hojas:
+
+- **Acerca de** — cuándo se generó, qué filtros se aplicaron y cuál es el umbral
+  de conformidad. Sin esto, una planilla suelta en un correo no dice de qué
+  período habla.
+- **Llamadas** — una fila por llamada y **una columna por pregunta**, con
+  puntaje, sentimiento, motivo de la advertencia y el registro de Bitrix.
+- **Respuestas** — una fila por respuesta, con la **transcripción textual** de lo
+  que dijo el cliente y la confianza del reconocimiento de voz. Formato largo,
+  para tablas dinámicas.
+
+Las escalas van como número para que Excel las pueda promediar, y la columna
+*Conforme* ya aplica el umbral de 9/10 — así nadie tiene que recordarlo al armar
+un gráfico.
+
+Tope de 20.000 filas por archivo. Si se alcanza, la hoja *Acerca de* lo avisa en
+lugar de entregar un recorte silencioso que se leería como el total.
+
 ## Versiones
 
 Versionado semántico `vMAYOR.MENOR.PARCHE`: MAYOR para una herramienta o

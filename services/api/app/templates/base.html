@@ -318,8 +318,10 @@ button, .btn {
 button:hover:not(:disabled), .btn:hover { background: var(--raised); }
 button:active:not(:disabled) { background: var(--active-soft); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.primary { background: var(--active); border-color: var(--active); color: var(--active-ink); }
-button.primary:hover:not(:disabled) { opacity: 0.88; }
+/* .btn incluido: la acción principal de una página a veces es un enlace (una
+   descarga, por ejemplo) y debe verse igual que un botón principal. */
+button.primary, .btn.primary { background: var(--active); border-color: var(--active); color: var(--active-ink); }
+button.primary:hover:not(:disabled), .btn.primary:hover { opacity: 0.88; background: var(--active); }
 button.danger { color: var(--bad); }
 button.danger:hover:not(:disabled) { background: var(--bad-bg); border-color: var(--bad); }
 button.mini, .btn.mini { padding: 3px var(--s2); min-height: 0; font-size: var(--t-xs); }
@@ -428,9 +430,11 @@ input[type=file] {
 .kpi .l { color: var(--ink-3); font-size: var(--t-sm); }
 .tag { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:20px; font-size: var(--t-xs); font-weight:600; background: var(--active-soft); color: var(--ink-2); white-space:nowrap; }
 .tag.completed,.tag.positivo { background: var(--ok-bg); color: var(--ok); }
-.tag.pending,.tag.scheduled,.tag.queued,.tag.neutral { background: var(--warn-bg); color: var(--warn); }
+/* `partial` es ámbar y no rojo a propósito: el cliente atendió y contestó
+   algo, así que hay dato para mirar. No es lo mismo que no haber hablado. */
+.tag.pending,.tag.scheduled,.tag.queued,.tag.neutral,.tag.partial,.tag.busy { background: var(--warn-bg); color: var(--warn); }
 .tag.calling { background: var(--live-bg); color: var(--live); }
-.tag.failed,.tag.no_answer,.tag.opted_out,.tag.negativo { background: var(--bad-bg); color: var(--bad); }
+.tag.failed,.tag.no_answer,.tag.opted_out,.tag.negativo,.tag.rejected { background: var(--bad-bg); color: var(--bad); }
 .sub { color: var(--ink-3); font-size: var(--t-sm); margin: 2px 0 var(--s5); }
 
 /* ═══════════════════════════════════════════════════ responsive */
@@ -460,6 +464,7 @@ input[type=file] {
     <nav aria-label="Secciones">
       <span class="group">Operación</span>
       <a href="/" {% if nav=='dashboard' %}aria-current="page"{% endif %}>Resultados</a>
+      <a href="/reportes" {% if nav=='reportes' %}aria-current="page"{% endif %}>Reportes</a>
       <a href="/targets" {% if nav=='targets' %}aria-current="page"{% endif %}>Destinatarios</a>
       <span class="group">Configuración</span>
       <a href="/campaigns" {% if nav=='campaigns' %}aria-current="page"{% endif %}>Campañas</a>
