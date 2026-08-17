@@ -498,6 +498,24 @@ tuyas:
 Los datos de clientes (nombre, teléfono, audio, transcripciones) quedan en tu
 servidor. Nada sale hacia servicios de terceros: por eso el stack es local.
 
+## Pruebas de seguridad
+
+El callbot guarda datos sensibles y credenciales de varios sistemas. Antes de
+producción conviene testearlo con [Strix](https://github.com/usestrix/strix), un
+pentester autónomo con IA que confirma cada hallazgo con un proof-of-concept
+real. No es un servicio del sistema (no está en el compose): se corre contra la
+app cuando querés.
+
+```bash
+make security-scan
+```
+
+Y en cada pull request vía [`.github/workflows/security.yml`](.github/workflows/security.yml),
+que se omite solo hasta que configures el LLM.
+
+Detalles, costo y —sobre todo— **qué se puede escanear y qué no** (tu app sí,
+Bitrix y la troncal SIP no): [SECURITY.md](SECURITY.md).
+
 ## Reportes y exportación a Excel
 
 El panel tiene dos vistas de resultados, porque son dos preguntas distintas:
@@ -572,7 +590,10 @@ git tag -n1
 ```
 callbots/
 ├── docker-compose.yml            servicios
-├── .github/workflows/release.yml publica la release al empujar un tag
+├── SECURITY.md                   cómo y qué escanear con Strix
+├── .github/workflows/
+│   ├── release.yml               publica la release al empujar un tag
+│   └── security.yml              pentest con Strix en cada PR
 ├── docker-compose.gpu.yml        overlay para GPU NVIDIA
 ├── docker/asterisk/              imagen y configuración del PBX
 │   ├── entrypoint.sh             renderiza los .conf con envsubst

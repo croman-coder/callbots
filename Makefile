@@ -5,6 +5,7 @@ COMPOSE     := docker compose
 COMPOSE_GPU := docker compose -f docker-compose.yml -f docker-compose.gpu.yml
 
 .PHONY: help setup models up up-gpu down restart logs logs-api logs-agent logs-asterisk \
+        _strix-check security-install security-scan security-scan-deep \
         ps build discover seed shell-api shell-db migrate migration sync test-call \
         asterisk-cli sip-status clean reset
 
@@ -128,6 +129,27 @@ test-call: ## Recordatorio de cómo probar la encuesta
 	@echo "  3. Marcá 9000 -> corre la encuesta de la campaña activa (modo demo)"
 	@echo ""
 	@$(MAKE) sip-status
+
+# ----------------------------------------------------------------- seguridad
+# Strix corre en el host, no en un contenedor: es una herramienta de testing,
+# no un servicio. Escanea SOLO lo tuyo (ver SECURITY.md) — nunca Bitrix ni la
+# troncal SIP.
+_strix-check:
+	@command -v strix >/dev/null 2>&1 || { echo "Strix no está instalado. Corré: make security-install"; exit 1; }
+	@docker info >/dev/null 2>&1 || { echo "Docker no está corriendo. Strix necesita el daemon para su sandbox."; exit 1; }
+	@test -n "$$STRIX_LLM"   || { echo "Falta STRIX_LLM en el entorno. Ver SECURITY.md."; exit 1; }
+	@test -n "$$LLM_API_KEY" || { echo "Falta LLM_API_KEY en el entorno. Ver SECURITY.md."; exit 1; }
+
+security-install: ## Instala Strix localmente (pipx, versión pineada desde PyPI)
+	pipx install "strix-agent==1.5.3"
+
+security-scan: _strix-check ## Pentest rápido del proyecto (STRIX_TARGET=url para una instancia corriendo)
+	strix -n --target "$${STRIX_TARGET:-./}" --scan-mode quick --max-budget "$${STRIX_MAX_BUDGET:-5}"
+	@echo "Informe en strix_runs/ — ver el .md y run.json (llm_usage.cost)"
+
+security-scan-deep: _strix-check ## Pentest profundo: más lento y más caro, techo de gasto más alto
+	strix -n --target "$${STRIX_TARGET:-./}" --scan-mode deep --max-budget "$${STRIX_MAX_BUDGET:-20}"
+	@echo "Informe en strix_runs/ — ver el .md y run.json (llm_usage.cost)"
 
 # -------------------------------------------------------------------- limpieza
 clean: ## Baja todo y borra los volúmenes de datos (NO los modelos)

@@ -1,0 +1,130 @@
+name: Seguridad
+
+# Pentest automático en cada pull request, acotado a lo que cambió.
+#
+# No corre hasta que configures el LLM. Sin el secret LLM_API_KEY el workflow se
+# omite solo, con un aviso, en vez de fallar cada PR con un error de secreto
+# faltante. Para activarlo, en Settings → Secrets and variables → Actions:
+#   LLM_API_KEY  = tu API key
+#   STRIX_LLM    = id del modelo (ej. openai/gpt-5.4)
+#
+# Se puede disparar a mano desde la pestaña Actions (workflow_dispatch), que hace
+# un escaneo rápido de todo el repositorio en vez de solo el diff.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Para subir el SARIF a la pestaña Security. Si el repo no tiene code scanning
+  # habilitado, ese paso se saltea sin romper nada (continue-on-error abajo).
+  security-events: write
+
+# Un pentest por rama: si se empuja de nuevo, se cancela el anterior en curso y
+# no se acumulan corridas pagas.
+concurrency:
+  group: seguridad-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pentest:
+    name: Pentest con Strix
+    runs-on: ubuntu-latest
+
+    env:
+      # Techo de gasto por corrida, en dólares. Subilo o bajalo según cuánto
+      # quieras arriesgar por PR. Configurable con la variable de repo.
+      STRIX_MAX_BUDGET: ${{ vars.STRIX_MAX_BUDGET || '5' }}
+
+    steps:
+      - name: Traer el repositorio
+        uses: actions/checkout@v4
+        with:
+          # El escaneo por diff necesita el commit base con qué comparar.
+          fetch-depth: 0
+
+      # ---------------------------------------------------------------------
+      - name: ¿Está configurado el LLM?
+        id: guard
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          if [ -z "$LLM_API_KEY" ]; then
+            echo "listo=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Escaneo omitido::Falta el secret LLM_API_KEY. Agregalo para activar el pentest en cada PR."
+          else
+            echo "listo=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar Strix
+        if: steps.guard.outputs.listo == 'true'
+        run: |
+          # Versión pineada desde PyPI, no `curl | bash`: una herramienta de
+          # seguridad no debería instalarse ejecutando un script remoto sin fijar.
+          pipx install "strix-agent==1.5.3"
+
+      - name: Ejecutar el pentest
+        id: scan
+        if: steps.guard.outputs.listo == 'true'
+        env:
+          STRIX_LLM: ${{ secrets.STRIX_LLM }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          # Búsqueda web opcional, mejora el reconocimiento. Sin esta key, Strix
+          # funciona igual.
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+        run: |
+          # El código de salida se maneja en el paso "Bloquear", después de
+          # subir los artefactos: un fallo acá no debe perder el informe.
+          set +e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            strix -n --target ./ \
+              --scan-mode quick \
+              --scope-mode diff \
+              --diff-base "origin/${{ github.base_ref }}" \
+              --max-budget "${STRIX_MAX_BUDGET}"
+          else
+            # Disparo manual: no hay diff, se escanea todo el repo.
+            strix -n --target ./ \
+              --scan-mode quick \
+              --max-budget "${STRIX_MAX_BUDGET}"
+          fi
+          echo "codigo=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Guardar el informe
+        if: always() && steps.guard.outputs.listo == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: strix-informe
+          path: strix_runs/
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Subir hallazgos a la pestaña Security
+        if: always() && steps.guard.outputs.listo == 'true'
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          # El directorio: sube cualquier .sarif que haya, sin depender del
+          # nombre dinámico de la corrida.
+          sarif_file: strix_runs/
+
+      - name: Bloquear si hay vulnerabilidades
+        if: steps.guard.outputs.listo == 'true'
+        run: |
+          CODIGO="${{ steps.scan.outputs.codigo }}"
+          case "$CODIGO" in
+            0)
+              echo "Sin vulnerabilidades en lo analizado."
+              ;;
+            2)
+              echo "::error title=Vulnerabilidades encontradas::Strix confirmó hallazgos. Descargá el artefacto «strix-informe» para ver el detalle y los PoCs."
+              # Para que los hallazgos avisen SIN bloquear el merge, cambiá la
+              # línea de abajo por:  exit 0
+              exit 1
+              ;;
+            *)
+              echo "::error title=Strix falló::El escaneo terminó con código ${CODIGO} (error, no hallazgos). Revisá el log; puede ser presupuesto agotado o un problema de configuración."
+              exit 1
+              ;;
+          esac

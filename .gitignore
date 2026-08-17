@@ -20,6 +20,10 @@ voices/*
 *.wav
 *.gsm
 
+# Resultados de los pentests (Strix): pueden contener detalles de
+# vulnerabilidades y PoCs. No se versionan.
+strix_runs/
+
 # Logs
 *.log
 logs/
