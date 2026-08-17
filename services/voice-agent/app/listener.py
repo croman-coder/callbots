@@ -25,6 +25,17 @@ from app.config import BYTES_PER_FRAME, FRAME_MS, SAMPLE_RATE, config
 log = logging.getLogger(__name__)
 
 
+def pico_de(frame: bytes) -> int:
+    """Amplitud máxima de la trama, para saber si hay señal de verdad."""
+    return max(
+        (
+            abs(int.from_bytes(frame[i : i + 2], "little", signed=True))
+            for i in range(0, len(frame), 2)
+        ),
+        default=0,
+    )
+
+
 class ListenResult(str, Enum):
     SPEECH = "speech"        # habló y terminó
     SILENCE = "silence"      # nunca habló
@@ -97,6 +108,15 @@ async def listen(
         try:
             is_speech = vad.is_speech(frame, SAMPLE_RATE)
         except Exception:  # noqa: BLE001 - trama malformada: la tratamos como silencio
+            is_speech = False
+
+        # webrtcvad se entusiasma: el ruido de la sala, el aire de la línea o el
+        # eco del propio bot por los parlantes le alcanzan para decir "voz". Con
+        # eso el silencio final nunca se acumula, la respuesta no termina nunca
+        # y la escucha se estira hasta el tope — el cliente contesta "un diez",
+        # el bot se queda mudo quince segundos y después dice que no escuchó.
+        # El piso de energía descarta lo que suena pero no es alguien hablando.
+        if is_speech and pico_de(frame) < config.speech_floor:
             is_speech = False
 
         if not speaking:

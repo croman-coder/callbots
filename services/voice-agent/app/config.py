@@ -58,6 +58,11 @@ class Config:
 
     # --- Detección de fin de respuesta ---
     vad_aggressiveness: int = int(os.getenv("VAD_AGGRESSIVENESS", "2"))
+    # Amplitud mínima (0-32767) para que una trama cuente como voz. Acompaña al
+    # VAD, que por sí solo confunde ruido de sala con habla y deja la escucha
+    # abierta hasta el tope. Subirlo si el bot no corta cuando el cliente
+    # termina; bajarlo si corta a gente que habla bajito.
+    speech_floor: int = int(os.getenv("SPEECH_FLOOR", "700"))
     silence_ms_to_stop: int = int(os.getenv("SILENCE_MS_TO_STOP", "1200"))
     max_answer_seconds: int = int(os.getenv("MAX_ANSWER_SECONDS", "30"))
     no_speech_timeout_seconds: int = int(os.getenv("NO_SPEECH_TIMEOUT_SECONDS", "8"))
