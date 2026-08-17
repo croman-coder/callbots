@@ -430,15 +430,47 @@ echo var_export(\$a->custom_labels, true);
    que subirlo hasta la cantidad de canales simultáneos que dé la troncal, no
    más.
 
-4. **Telefonía sin probar.** El dominio público solo expone el panel HTTP. SIP
-   (`5060/udp`) y RTP no pasan por el túnel: un softphone tiene que registrarse
-   contra la IP del server por LAN o Tailscale, con el usuario `softphone-1` y
-   la `SOFTPHONE_PASSWORD` del `.env`. Marcá `9001` (eco) antes que `9000`
-   (encuesta en modo demo): si el eco no anda, el problema es de red o audio y
-   no tiene sentido seguir.
+4. **Falta el reenvío de puertos en el router: el bot habla pero no escucha.**
+   Probado de punta a punta el 2026-08-15 con una llamada real a un celular:
+   Asterisk se registra en la troncal de Personal, marca, el cliente atiende,
+   el bot dice la encuesta completa (2.340+ paquetes RTP salientes,
+   confirmados con `pjsip show channelstats`) — pero la voz del cliente nunca
+   llega. Recepción RTP se mantiene en 0 durante toda la llamada.
 
-   Para que el audio funcione hace falta `SIP_EXTERNAL_ADDRESS` — ver más
-   arriba. Sin eso la llamada conecta y no se escucha nada.
+   Se descartó que sea el server: firewall local inactivo, Asterisk escucha en
+   los 51 puertos de `10000-10050/udp`, `SIP_EXTERNAL_ADDRESS` anuncia la IP
+   pública correcta en el SDP. El bloqueo es el NAT del router de la oficina.
+
+   **El router es un FortiGate (Fortinet), en `192.168.221.1`.** Administración
+   completamente cerrada desde la red del server — ni HTTP, ni HTTPS, ni SSH,
+   ni los puertos de gestión habituales de Fortinet responden. Es un equipo
+   gestionado, no un router doméstico: hace falta que alguien con acceso al
+   FortiGate (IT, o quien administre la red de la oficina) cargue la regla.
+
+   Pedido exacto — **NAT / Virtual IP** (o Policy → NAT en FortiOS):
+   ```
+   Protocolo:     UDP
+   Puerto externo: 10000-10050
+   IP interna:     192.168.221.87
+   Puerto interno: 10000-10050   (mismo rango, sin traducir — si el
+                                   FortiGate reescribe a otro puerto,
+                                   el problema vuelve a aparecer)
+   ```
+   Después hace falta una política de firewall que permita ese tráfico desde
+   afuera hacia adentro sobre esa Virtual IP — en FortiOS el NAT solo no
+   alcanza, la policy es la que deja pasar el paquete.
+
+   Alternativa que evita tocar el router: pedirle a **Personal** que active
+   *symmetric RTP* (también llamado *comedia*) en la cuenta SIP `400022`. Con
+   eso la central manda el audio al puerto de origen del paquete que recibió,
+   ignorando el SDP, y el NAT deja de importar — es un pedido de una línea al
+   soporte técnico, no un cambio de infraestructura. Se puede probar cualquiera
+   de las dos rutas primero; no son excluyentes.
+
+   Verificación cuando esté hecho: repetir la llamada de prueba (panel →
+   Destinatarios → Llamar) y confirmar con
+   `docker exec <asterisk> asterisk -rx "pjsip show channelstats"` que la
+   columna de recepción deja de estar en 0.
 
 5. **El panel está publicado con HTTP Basic como única defensa.** Alcanza para
    ahora, pero si se expone algo más sensible conviene meterlo detrás de

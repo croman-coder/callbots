@@ -234,7 +234,10 @@ un martes.
    mano. Las opciones son un conector al sistema del taller, espejar esos
    registros en Bitrix, o seguir manual.
 2. **Reenvío de UDP 10000-10050 en el router** hacia el server. Sin eso el bot
-   habla pero no escucha: la voz del cliente nunca llega.
+   habla pero no escucha: la voz del cliente nunca llega. El router es un
+   FortiGate con administración cerrada desde la red del server — detalle,
+   pedido exacto y alternativa sin tocar el router en
+   [`deploy-coolify.md`](deploy-coolify.md), punto 4 de Pendientes.
 3. **Autenticación del panel.** HTTP Basic alcanza para ahora; si se expone algo
    más sensible, conviene Cloudflare Access.
 4. **Subir `MAX_CONCURRENT_CALLS`** hasta la cantidad de canales que dé la
