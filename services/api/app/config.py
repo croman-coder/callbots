@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     # ajenas si el puerto de la API queda expuesto.
     internal_token: str = "dev-internal-token"
 
+    # Acceso desde el CRM (app/sso.py). Secreto compartido con el CRM, que firma
+    # los tickets. Vacío o menor a 32 caracteres = desactivado: no existe /sso y
+    # ninguna cookie de sesión vale. Es el estado por defecto, a propósito.
+    sso_secret: str = Field("", validation_alias="CALLBOT_SSO_SECRET")
+    # Quién puede enmarcar el panel en un iframe (CSP frame-ancestors). Separados
+    # por espacio. Sin esto cualquier página ajena podría enmarcarlo y montarle
+    # botones encima al operador que ya tiene sesión abierta (clickjacking).
+    frame_ancestors: str = "https://crm.santarosa.lat"
+
     recordings_dir: str = "/recordings"
 
     # AudioSocket del voice-agent. Lo usa el simulador del panel para hacer de

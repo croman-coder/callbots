@@ -43,6 +43,7 @@ def _secretos() -> list[str]:
         settings.admin_password,
         settings.ari_password,
         settings.gemini_api_key,
+        settings.sso_secret,
     ]
     # Sin duplicados y de más largo a más corto: si un secreto contiene a otro,
     # se redacta primero el largo para no dejar un pedazo suelto.

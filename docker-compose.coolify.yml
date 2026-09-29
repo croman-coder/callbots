@@ -71,6 +71,8 @@ services:
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      CALLBOT_SSO_SECRET: ${CALLBOT_SSO_SECRET:-}
+      FRAME_ANCESTORS: ${FRAME_ANCESTORS:-https://crm.santarosa.lat}
       RECORDINGS_DIR: /recordings
       LOG_LEVEL: ${LOG_LEVEL}
       TZ: ${TZ}
