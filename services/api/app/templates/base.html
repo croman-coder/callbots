@@ -3,52 +3,54 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#111936">
+<link rel="preload" href="/static/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/inter-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+/* Tema y modo embebido, resueltos ANTES del primer pintado para que no haya
+   destello. Oscuro por defecto, igual que el CRM: quien opera largas sesiones
+   junto a otras pantallas se cansa menos. Dentro del CRM el tema llega por
+   ?theme= y manda el del CRM, no el guardado acá.
+   El acceso al storage va en try/catch: en ventanas privadas o con datos de
+   sitio bloqueados lanza, y la página tiene que renderizar igual. */
+(function () {
+  var d = document.documentElement, tema = "dark";
+  try {
+    var q = new URLSearchParams(location.search).get("theme");
+    if (q === "light" || q === "dark") sessionStorage.setItem("callbot-tema", q);
+    tema = sessionStorage.getItem("callbot-tema") || localStorage.getItem("callbot-tema") || "dark";
+  } catch (e) {}
+  d.setAttribute("data-theme", tema === "light" ? "light" : "dark");
+  /* Comparar referencias no lanza aunque el padre sea de otro origen. */
+  if (window.top !== window.self) d.setAttribute("data-embed", "1");
+  var m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute("content", tema === "light" ? "#F8FAFC" : "#111936");
+})();
+</script>
 <title>{% block title %}Callbot{% endblock %}</title>
 <style>
-/* Callbot — panel de operaciones.
+/* Callbot · panel de operaciones — identidad del CRM de Santa Rosa.
  *
- * La interfaz es monocromática y cálida. Lo único saturado en pantalla son los
- * estados: si algo tiene color, es porque pide una decisión. Eso deja que la
- * lista de seguimiento se imponga sola, sin competir con seis tarjetas de
- * colores.
+ * Mismos valores que el CRM (frontend/src/index.css, tokens --bk-*): fondo
+ * #111936, azul de marca #1E3A8A, bordes finos en vez de sombras. Comprometido
+ * en el azul de marca, contenido en todo lo demás: el color saturado se
+ * reserva para la marca y para los estados.
  *
- * Sin fuentes web ni nada por CDN: herramienta interna, una dependencia
- * externa que bloquea el render no compra nada.
+ * Inter va autoalojada (/static/fonts), sin CDN: herramienta interna, una
+ * dependencia externa que bloquea el render no compra nada.
  */
+@font-face { font-family: "Inter"; font-weight: 400; font-style: normal; font-display: swap;
+  src: url("/static/fonts/inter-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 500; font-style: normal; font-display: swap;
+  src: url("/static/fonts/inter-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 600; font-style: normal; font-display: swap;
+  src: url("/static/fonts/inter-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-style: normal; font-display: swap;
+  src: url("/static/fonts/inter-latin-700-normal.woff2") format("woff2"); }
+
 :root {
-  color-scheme: light;
-
-  /* Neutros templados hacia el ámbar. Ningún gris es puro, ningún extremo es
-     #fff ni #000: a plena saturación de blanco la pantalla cansa. */
-  --paper:      oklch(98.6% 0.003 85);
-  --surface:    oklch(99.4% 0.002 85);
-  --panel:      oklch(96.6% 0.005 82);   /* barra lateral: capa aparte */
-  --raised:     oklch(97.4% 0.004 85);
-
-  --ink:        oklch(23% 0.009 75);
-  --ink-2:      oklch(43% 0.011 75);
-  --ink-3:      oklch(57% 0.012 78);
-
-  --line:       oklch(91% 0.006 82);
-  --line-2:     oklch(85% 0.008 82);
-
-  /* Lo interactivo se marca con contraste, no con un tinte de marca. El
-     "acento" es la tinta misma. */
-  --active:     oklch(23% 0.009 75);
-  --active-ink: oklch(98.6% 0.003 85);
-  --active-soft:oklch(93% 0.006 82);
-
-  /* Único lugar con croma real. */
-  --ok:         oklch(50% 0.13 150);
-  --ok-bg:      oklch(95.5% 0.04 150);
-  --warn:       oklch(53% 0.12 68);
-  --warn-bg:    oklch(95.5% 0.045 75);
-  --bad:        oklch(50% 0.18 25);
-  --bad-bg:     oklch(95.5% 0.04 25);
-  --live:       oklch(52% 0.13 250);
-  --live-bg:    oklch(95.5% 0.035 250);
-
+  /* Escala de espacio, tipografía y radios: no dependen del tema. */
   --s1:4px; --s2:8px; --s3:12px; --s4:16px;
   --s5:20px; --s6:28px; --s7:40px; --s8:56px;
 
@@ -58,44 +60,87 @@
   --r-sm:6px; --r:9px; --r-lg:13px;
 
   /* ease-out exponencial: arranca rápido y frena. Sin rebote. */
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --dur:  180ms;
-  --dur-fast: 110ms;
+  --dur-fast: 120ms;
 
-  --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
 
   --sidebar-w: 232px;
+
+  /* Marca Santa Rosa. --brand-2 es el azul de acción: el CRM usa #3B82F6,
+     pero blanco sobre ese azul da 3.7:1 y no llega a 4.5 en texto chico, así
+     que los rellenos usan #2563EB (5.2:1). */
+  --brand:   #1E3A8A;
+  --brand-2: #2563EB;
+  --active:     #1E3A8A;
+  --active-ink: #FFFFFF;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --paper:      oklch(17.5% 0.008 75);
-    --surface:    oklch(21% 0.009 75);
-    --panel:      oklch(19% 0.009 75);
-    --raised:     oklch(24.5% 0.011 75);
+/* ─────────────────────────────── oscuro (por defecto, como el CRM) */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
 
-    --ink:        oklch(94% 0.005 85);
-    --ink-2:      oklch(76% 0.009 82);
-    --ink-3:      oklch(61% 0.011 80);
+  --paper:   #111936;                      /* --bk-bg */
+  --panel:   #0d1327;                      /* --bk-bg-alt: barra lateral */
+  /* El CRM usa paneles translúcidos (rgba 58%/68% sobre --bk-bg). Acá van
+     sólidos, con el mismo resultado visual y sin depender de qué haya atrás. */
+  --surface: #1a2240;
+  --raised:  #212947;
 
-    --line:       oklch(28% 0.011 75);
-    --line-2:     oklch(37% 0.013 75);
+  --ink:   #F1F5F9;                        /* --bk-text */
+  --ink-2: #c4cce6;
+  --ink-3: #8492c4;                        /* --bk-text-muted, 5.7:1 sobre --paper */
 
-    --active:     oklch(94% 0.005 85);
-    --active-ink: oklch(17.5% 0.008 75);
-    --active-soft:oklch(27% 0.012 75);
+  --line:   rgba(189, 200, 240, 0.14);     /* --bk-divider */
+  --line-2: rgba(189, 200, 240, 0.26);
 
-    --ok:   oklch(76% 0.15 150);  --ok-bg:   oklch(28% 0.055 150);
-    --warn: oklch(79% 0.13 75);   --warn-bg: oklch(29% 0.05 70);
-    --bad:  oklch(70% 0.16 25);   --bad-bg:  oklch(28% 0.065 25);
-    --live: oklch(74% 0.12 250);  --live-bg: oklch(28% 0.055 250);
-  }
+  --link:  #60A5FA;
+  --focus: #60A5FA;
+  --active-soft: rgba(189, 200, 240, 0.10);
+
+  --ok:   #34D399;  --ok-bg:   rgba(16, 185, 129, 0.16);
+  --warn: #FBBF24;  --warn-bg: rgba(251, 191, 36, 0.14);
+  --bad:  #F87171;  --bad-bg:  rgba(248, 113, 113, 0.14);
+  --live: #60A5FA;  --live-bg: rgba(59, 130, 246, 0.18);
+
+  --float: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+/* ─────────────────────────────────────────────────────────── claro */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --paper:   #F8FAFC;
+  --panel:   #FFFFFF;
+  --surface: #FFFFFF;
+  --raised:  #F1F5F9;
+
+  --ink:   #0F172A;
+  --ink-2: #334155;
+  --ink-3: #475569;
+
+  --line:   rgba(15, 23, 42, 0.10);
+  --line-2: rgba(15, 23, 42, 0.20);
+
+  --link:  #1E40AF;
+  --focus: #1E3A8A;
+  --active-soft: rgba(15, 23, 42, 0.06);
+
+  --ok:   #047857;  --ok-bg:   #DCFCE7;
+  --warn: #B45309;  --warn-bg: #FEF3C7;
+  --bad:  #B91C1C;  --bad-bg:  #FEE2E2;
+  --live: #1D4ED8;  --live-bg: #DBEAFE;
+
+  --float: 0 12px 32px rgba(15, 23, 42, 0.14);
 }
 
 *,*::before,*::after { box-sizing: border-box; }
 html, body { overflow-x: clip; }
+/* La barra superior es sticky: sin esto un ancla (#cargar, #nueva) o el foco
+   por teclado dejan el destino escondido detrás de ella. */
+html { scroll-padding-top: 88px; }
 body {
   margin: 0;
   background: var(--paper);
@@ -105,9 +150,22 @@ body {
   text-rendering: optimizeLegibility;
 }
 a { color: inherit; text-decoration: none; }
+a, button, summary, label { touch-action: manipulation; }
+h1, h2, h3 { text-wrap: balance; }
+
+/* Salto al contenido: primera parada del tabulador, invisible hasta recibir
+   foco. Sin él, cada página obliga a recorrer toda la barra lateral. */
+.skip {
+  position: absolute; left: var(--s3); top: -48px; z-index: 100;
+  padding: var(--s2) var(--s4); border-radius: var(--r-sm);
+  background: var(--brand); color: #fff; font-weight: 600; font-size: var(--t-sm);
+  transition: top var(--dur-fast) var(--ease);
+}
+.skip:focus { top: var(--s3); }
+main:focus { outline: none; }
 
 :where(a,button,input,select,textarea,summary,[tabindex]):focus-visible {
-  outline: 2px solid var(--ink);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: var(--r-sm);
 }
@@ -179,7 +237,7 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
 /* ═══════════════════════════════════════════════════ secciones */
 /* Sin tarjeta: un título con una regla debajo separa igual de bien y no mete
    una caja dentro de otra caja. */
-.section { margin-bottom: var(--s7); }
+.section { margin-bottom: var(--s7); scroll-margin-top: 88px; }
 .section > header {
   display: flex; align-items: baseline; gap: var(--s3);
   padding-bottom: var(--s3); margin-bottom: var(--s4);
@@ -245,7 +303,7 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
   background: var(--surface); overflow: hidden;
 }
 .urgent .tablewrap, .tablewrap.bare { border: 0; border-radius: 0; }
-.scroll { overflow-x: auto; }
+.scroll { overflow-x: auto; overscroll-behavior-x: contain; }
 table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 thead th {
   text-align: left; padding: var(--s2) var(--s4);
@@ -291,13 +349,15 @@ td.name { font-weight: 550; }
 .chart { display: flex; flex-direction: column; gap: var(--s3); }
 .chart-row { display: grid; grid-template-columns: minmax(0,1fr) 92px; gap: var(--s4); align-items: center; }
 .chart-row .lbl { font-size: var(--t-sm); min-width: 0; }
+/* Trazo fino: el CRM es sobrio, y siete barras gruesas y saturadas juntas
+   compiten entre sí en vez de dejar leer cuál es la que importa. */
 .chart-row .track {
-  height: 22px; background: var(--active-soft); border-radius: var(--r-sm);
-  overflow: hidden; margin-top: 5px;
+  height: 8px; background: var(--active-soft); border-radius: 999px;
+  overflow: hidden; margin-top: 9px;
 }
 /* La barra no tiene color propio: lo toma de lo que mide. Sin esto un
    "neutral" salía verde y contradecía su propia pastilla. */
-.chart-row .fill { display: block; height: 100%; background: var(--ink-3); border-radius: var(--r-sm); }
+.chart-row .fill { display: block; height: 100%; background: var(--ink-3); border-radius: 999px; }
 .chart-row .fill.ok   { background: var(--ok); }
 .chart-row .fill.warn { background: var(--warn); }
 .chart-row .fill.bad, .chart-row .fill.low { background: var(--bad); }
@@ -320,13 +380,18 @@ button:active:not(:disabled) { background: var(--active-soft); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* .btn incluido: la acción principal de una página a veces es un enlace (una
    descarga, por ejemplo) y debe verse igual que un botón principal. */
-button.primary, .btn.primary { background: var(--active); border-color: var(--active); color: var(--active-ink); }
-button.primary:hover:not(:disabled), .btn.primary:hover { opacity: 0.88; background: var(--active); }
+/* Relleno con degradado de marca, como el CRM. El texto blanco tiene 5.2:1
+   contra el extremo claro del degradado. */
+button.primary, .btn.primary {
+  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
+  border-color: transparent; color: var(--active-ink);
+}
+button.primary:hover:not(:disabled), .btn.primary:hover { filter: brightness(1.12); }
 button.danger { color: var(--bad); }
 button.danger:hover:not(:disabled) { background: var(--bad-bg); border-color: var(--bad); }
 button.mini, .btn.mini { padding: 3px var(--s2); min-height: 0; font-size: var(--t-xs); }
-.link { color: var(--ink-2); font-weight: 550; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
-.link:hover { color: var(--ink); text-decoration-color: currentColor; }
+.link { color: var(--link); font-weight: 550; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.link:hover { text-decoration-color: currentColor; }
 
 label { display: block; font-size: var(--t-sm); font-weight: 600; margin: var(--s4) 0 5px; }
 label .hint, .hint { font-weight: 400; color: var(--ink-3); font-size: var(--t-sm); }
@@ -403,7 +468,7 @@ pre {
 pre code { background: none; padding: 0; font-size: inherit; }
 
 /* Controles deslizantes: los usa la pestaña de Voz. */
-input[type=range] { width: 100%; accent-color: var(--ink); min-height: 0; padding: 0; border: 0; background: none; }
+input[type=range] { width: 100%; accent-color: var(--brand-2); min-height: 0; padding: 0; border: 0; background: none; }
 .slider { margin-bottom: var(--s3); }
 .slider .top { display:flex; align-items:baseline; justify-content:space-between; gap: var(--s2); }
 .slider .val { font-size: var(--t-sm); font-variant-numeric: tabular-nums; color: var(--ink-2); font-weight: 550; }
@@ -455,12 +520,44 @@ input[type=file] {
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
 }
+
+/* Los <select> nativos ignoran color-scheme en el desplegable de Windows: sin
+   colores explícitos el menú sale blanco sobre texto claro. */
+select option { background: var(--surface); color: var(--ink); }
+
+/* Quién está adentro (solo fuera del CRM: adentro la barra lateral no se muestra) */
+.quien { margin: 0 0 var(--s3); font-size: var(--t-sm); color: var(--ink-2); word-break: break-all; line-height: 1.35; }
+.quien span { display: block; font-size: var(--t-xs); color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
+
+/* Botón de tema */
+.theme-toggle { width: 100%; margin-bottom: var(--s2); }
+
+/* ══════════════════════════════════════════ dentro del CRM (iframe)
+   El CRM ya trae su propia barra lateral: repetir la de acá dejaría dos
+   columnas de navegación. Se pasa a pestañas horizontales arriba y se quita
+   lo que sobra (marca, secciones, sincronizar, tema: el tema lo manda el CRM). */
+html[data-embed] .shell { grid-template-columns: 1fr; }
+html[data-embed] .side {
+  position: sticky; top: 0; z-index: 12; height: auto;
+  flex-direction: row; align-items: center; gap: var(--s2);
+  border-right: 0; border-bottom: 1px solid var(--line);
+  overflow-x: auto; padding: 0 var(--s4);
+}
+html[data-embed] .mark, html[data-embed] .side nav .group,
+html[data-embed] .side-foot { display: none; }
+html[data-embed] .side nav { flex-direction: row; padding: var(--s2) 0; gap: var(--s1); }
+html[data-embed] .side nav a { white-space: nowrap; }
+html[data-embed] .bar { position: static; }
+html[data-embed] { scroll-padding-top: 64px; }
+html[data-embed] .section { scroll-margin-top: 64px; }
+html[data-embed] body { background: var(--paper); }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Saltar al contenido</a>
 <div class="shell">
   <aside class="side">
-    <div class="mark"><span class="pulse" aria-hidden="true"></span>Callbot</div>
+    <div class="mark"><span class="pulse" aria-hidden="true"></span><span translate="no">Callbot</span></div>
     <nav aria-label="Secciones">
       <span class="group">Operación</span>
       <a href="/" {% if nav=='dashboard' %}aria-current="page"{% endif %}>Resultados</a>
@@ -471,9 +568,16 @@ input[type=file] {
       <a href="/voices" {% if nav=='voices' %}aria-current="page"{% endif %}>Voz</a>
       <span class="group">Herramientas</span>
       <a href="/simulador" {% if nav=='simulador' %}aria-current="page"{% endif %}>Simulador</a>
+      {#- calidad no ve Diagnóstico (la ruta le responde 403): el enlace no se muestra. -#}
+      {% if not (request.state.principal and request.state.principal.rol == 'calidad') %}
       <a href="/health-detail" {% if nav=='health' %}aria-current="page"{% endif %}>Diagnóstico</a>
+      {% endif %}
     </nav>
     <div class="side-foot">
+      {% if request.state.principal %}
+      <p class="quien" translate="no">{{ request.state.principal.usuario }}<span>{{ request.state.principal.rol }}</span></p>
+      {% endif %}
+      <button type="button" class="theme-toggle" id="tema-btn" aria-pressed="false">Tema: oscuro</button>
       <form method="post" action="/sync-now">
         <button type="submit" style="width:100%">Sincronizar Bitrix</button>
       </form>
@@ -482,10 +586,33 @@ input[type=file] {
 
   <div class="content">
     {% block topbar %}{% endblock %}
-    <div class="wrap">
+    <main class="wrap" id="main" tabindex="-1">
       {% block content %}{% endblock %}
-    </div>
+    </main>
   </div>
 </div>
+<script>
+/* Alterna claro/oscuro y lo recuerda. Fuera del CRM nada más: adentro el tema
+   lo manda el CRM por ?theme=. */
+(function () {
+  var b = document.getElementById("tema-btn");
+  if (!b) return;
+  var d = document.documentElement;
+  function pintar() {
+    var claro = d.getAttribute("data-theme") === "light";
+    b.textContent = claro ? "Tema: claro" : "Tema: oscuro";
+    b.setAttribute("aria-pressed", claro ? "true" : "false");
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", claro ? "#F8FAFC" : "#111936");
+  }
+  b.addEventListener("click", function () {
+    var nuevo = d.getAttribute("data-theme") === "light" ? "dark" : "light";
+    d.setAttribute("data-theme", nuevo);
+    try { localStorage.setItem("callbot-tema", nuevo); } catch (e) {}
+    pintar();
+  });
+  pintar();
+})();
+</script>
 </body>
 </html>

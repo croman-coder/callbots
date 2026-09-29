@@ -71,23 +71,23 @@
 
   <form method="post" action="/campaigns" class="panel-form">
     <label for="c-name">Nombre</label>
-    <input id="c-name" type="text" name="name" required placeholder="Satisfacción post-taller">
+    <input id="c-name" type="text" name="name" required placeholder="Satisfacción post-taller…" autocomplete="off">
 
     <label for="c-desc">Descripción <span class="hint">opcional</span></label>
-    <input id="c-desc" type="text" name="description" placeholder="Encuesta 48hs después del ingreso al taller">
+    <input id="c-desc" type="text" name="description" placeholder="Encuesta 48hs después del ingreso al taller…" autocomplete="off">
 
     <div class="row">
       <div>
         <label for="c-entity">entityTypeId de Bitrix</label>
-        <input id="c-entity" type="number" name="bitrix_entity_type_id" value="{{ default_entity }}" required>
+        <input id="c-entity" type="number" name="bitrix_entity_type_id" value="{{ default_entity }}" required autocomplete="off" spellcheck="false">
       </div>
       <div>
         <label for="c-trigger">Campo disparador (T0)</label>
-        <input id="c-trigger" type="text" name="trigger_field" required placeholder="ufCrm5_1639669411830">
+        <input id="c-trigger" type="text" name="trigger_field" required placeholder="ufCrm5_1639669411830…" autocomplete="off" spellcheck="false">
       </div>
       <div>
         <label for="c-delay">Demora en horas</label>
-        <input id="c-delay" type="number" name="delay_hours" value="48" required>
+        <input id="c-delay" type="number" name="delay_hours" value="48" required autocomplete="off">
       </div>
     </div>
     <p class="hint">

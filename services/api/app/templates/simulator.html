@@ -169,7 +169,7 @@
 
   async function llamar() {
     try {
-      estado.textContent = "Pidiendo el micrófono...";
+      estado.textContent = "Pidiendo el micrófono…";
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true,
                  autoGainControl: true, channelCount: 1 }
@@ -190,7 +190,7 @@
                        encodeURIComponent(TICKET));
     ws.binaryType = "arraybuffer";
 
-    ws.onopen = function () { log("Conectado. Esperando al bot..."); };
+    ws.onopen = function () { log("Conectado. Esperando al bot…"); };
 
     ws.onmessage = function (ev) {
       if (typeof ev.data === "string") {
@@ -237,7 +237,7 @@
         // y el bot se contesta solo.
         muestras.fill(0);
         nivelMic.style.width = "0";
-        estado.textContent = "El bot está hablando...";
+        estado.textContent = "El bot está hablando…";
       } else {
         nivelMic.style.width = Math.min(100, rms(entrada) * 300) + "%";
         estado.textContent = "Te escucho";

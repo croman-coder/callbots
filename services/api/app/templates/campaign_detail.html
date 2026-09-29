@@ -76,7 +76,7 @@
   <form method="post" action="/campaigns/{{ campaign.id }}/questions" style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
     <label>Nueva pregunta
       <input type="text" name="text" required
-             placeholder="Del cero al diez, ¿qué tan satisfecho quedó con el trabajo realizado?">
+             placeholder="Del cero al diez, ¿qué tan satisfecho quedó con el trabajo realizado?…" autocomplete="off">
     </label>
     <div class="row">
       <div>
@@ -89,11 +89,11 @@
       </div>
       <div>
         <label>Máx. segundos de respuesta</label>
-        <input type="number" name="max_answer_seconds" value="20">
+        <input type="number" name="max_answer_seconds" value="20" autocomplete="off">
       </div>
       <div>
         <label>Repreguntas si no entiende</label>
-        <input type="number" name="max_retries" value="1">
+        <input type="number" name="max_retries" value="1" autocomplete="off">
       </div>
     </div>
     <label class="check">
@@ -119,25 +119,25 @@
   </p>
   <form method="post" action="/campaigns/{{ campaign.id }}">
     <label>Nombre
-      <input type="text" name="name" value="{{ campaign.name }}" required>
+      <input type="text" name="name" value="{{ campaign.name }}" required autocomplete="off">
     </label>
     <label>Descripción
-      <input type="text" name="description" value="{{ campaign.description or '' }}">
+      <input type="text" name="description" value="{{ campaign.description or '' }}" autocomplete="off">
     </label>
 
     <h2>Origen de los datos</h2>
     <div class="row">
       <div>
         <label>entityTypeId</label>
-        <input type="number" name="bitrix_entity_type_id" value="{{ campaign.bitrix_entity_type_id }}" required>
+        <input type="number" name="bitrix_entity_type_id" value="{{ campaign.bitrix_entity_type_id }}" required autocomplete="off" spellcheck="false">
       </div>
       <div>
         <label>Campo disparador (T0)</label>
-        <input type="text" name="trigger_field" value="{{ campaign.trigger_field }}" required>
+        <input type="text" name="trigger_field" value="{{ campaign.trigger_field }}" required autocomplete="off" spellcheck="false">
       </div>
       <div>
         <label>Demora (horas)</label>
-        <input type="number" name="delay_hours" value="{{ campaign.delay_hours }}" required>
+        <input type="number" name="delay_hours" value="{{ campaign.delay_hours }}" required autocomplete="off">
       </div>
     </div>
 
@@ -145,23 +145,23 @@
     <div class="row">
       <div>
         <label>Desde</label>
-        <input type="time" name="call_window_start" value="{{ campaign.call_window_start }}">
+        <input type="time" name="call_window_start" value="{{ campaign.call_window_start }}" autocomplete="off">
       </div>
       <div>
         <label>Hasta</label>
-        <input type="time" name="call_window_end" value="{{ campaign.call_window_end }}">
+        <input type="time" name="call_window_end" value="{{ campaign.call_window_end }}" autocomplete="off">
       </div>
       <div>
         <label>Días <span class="hint">0=lun … 6=dom</span></label>
-        <input type="text" name="call_window_days" value="{{ campaign.call_window_days }}">
+        <input type="text" name="call_window_days" value="{{ campaign.call_window_days }}" autocomplete="off" spellcheck="false">
       </div>
       <div>
         <label>Máx. intentos</label>
-        <input type="number" name="max_attempts" value="{{ campaign.max_attempts }}">
+        <input type="number" name="max_attempts" value="{{ campaign.max_attempts }}" autocomplete="off">
       </div>
       <div>
         <label>Reintento (min)</label>
-        <input type="number" name="retry_interval_minutes" value="{{ campaign.retry_interval_minutes }}">
+        <input type="number" name="retry_interval_minutes" value="{{ campaign.retry_interval_minutes }}" autocomplete="off">
       </div>
     </div>
 
@@ -172,16 +172,16 @@
       simplemente desaparece y la frase queda natural.
     </p>
     <label>Presentación <span class="hint">— lo primero que escucha el cliente</span>
-      <textarea name="intro_script" required>{{ campaign.intro_script }}</textarea>
+      <textarea name="intro_script" required autocomplete="off">{{ campaign.intro_script }}</textarea>
     </label>
     <label>Cierre
-      <textarea name="outro_script" required>{{ campaign.outro_script }}</textarea>
+      <textarea name="outro_script" required autocomplete="off">{{ campaign.outro_script }}</textarea>
     </label>
     <label>Cuando no entiende la respuesta
-      <textarea name="fallback_script" required>{{ campaign.fallback_script }}</textarea>
+      <textarea name="fallback_script" required autocomplete="off">{{ campaign.fallback_script }}</textarea>
     </label>
     <label>Cuando el cliente no quiere responder
-      <textarea name="optout_script" required>{{ campaign.optout_script }}</textarea>
+      <textarea name="optout_script" required autocomplete="off">{{ campaign.optout_script }}</textarea>
     </label>
 
     <h2 id="conversacion" style="margin-top:26px">Respuestas conversacionales</h2>
@@ -193,7 +193,7 @@
     </p>
     <label>Contexto del taller
       <textarea name="conversation_prompt" rows="6"
-                placeholder="Ej.: El taller queda en Av. Eusebio Ayala 1234, atiende de 7 a 17. Trabajamos Renault, Mitsubishi y GWM. Si preguntan por el estado de un vehículo o por precios, decí que un asesor lo va a contactar: no tenés esos datos.">{{ campaign.conversation_prompt or '' }}</textarea>
+                placeholder="Ej.: El taller queda en Av. Eusebio Ayala 1234, atiende de 7 a 17. Trabajamos Renault, Mitsubishi y GWM. Si preguntan por el estado de un vehículo o por precios, decí que un asesor lo va a contactar: no tenés esos datos…" autocomplete="off">{{ campaign.conversation_prompt or '' }}</textarea>
       <span class="hint">
         El bot no puede inventar precios, plazos ni estados de vehículos —
         está instruido para derivar a un asesor. Lo que pongas acá es lo único
@@ -209,7 +209,7 @@
     </p>
     <label>Prompt de la campaña
       <textarea name="analysis_prompt" rows="8"
-                placeholder="Ej.: El taller atiende Renault, Mitsubishi y GWM. Tratá como grave cualquier mención a que el vehículo volvió por la misma falla. Si el cliente nombra a un asesor, incluilo en los topics.">{{ campaign.analysis_prompt or '' }}</textarea>
+                placeholder="Ej.: El taller atiende Renault, Mitsubishi y GWM. Tratá como grave cualquier mención a que el vehículo volvió por la misma falla. Si el cliente nombra a un asesor, incluilo en los topics…" autocomplete="off">{{ campaign.analysis_prompt or '' }}</textarea>
       <span class="hint">
         No cambia cómo habla el bot durante la llamada: el guion es
         determinista y el LLM interviene recién al final.

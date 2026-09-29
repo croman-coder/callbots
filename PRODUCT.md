@@ -47,23 +47,45 @@ de resultados; sí en diagnóstico, que lo lee alguien técnico.
 - **Panel de admin genérico** — pestañas arriba, tarjetas blancas iguales sobre
   gris, tablas sin jerarquía. Es lo que había y es exactamente lo que no se
   quiere.
-- **Azul corporativo de call center.** El primer reflejo para este rubro.
-- **Terminal oscuro de herramienta técnica.** El segundo reflejo.
+- **Un panel que no parezca del mismo sistema que el CRM.** Quien opera pasa de
+  una pantalla a la otra todo el día; que cambie la identidad entre ambas
+  cuesta atención y hace que Callbot se sienta pegado, no integrado.
 
 ## Principios
 
-- **El color significa algo.** La interfaz es monocromática; lo único saturado en
-  pantalla son los estados. Si algo tiene color, es porque pide una decisión.
+- **La identidad es la del CRM, no una propia.** Mismos tokens (`#111936` de
+  fondo, azul de marca `#1E3A8A`, Inter, bordes finos en vez de sombras), oscuro
+  por defecto y claro como alternativa de primera clase. Comprometido en el azul
+  de marca; el resto contenido. Fuente de verdad: `frontend/src/index.css` del
+  CRM (el `DESIGN.md` de ese repo desactualizó `#0F172A`; el código dice
+  `#111936`). Si el CRM cambia, esto cambia con él.
+- **El color saturado se reserva para la marca y los estados.** Verde, ámbar y
+  rojo significan algo; no se usan para decorar. Las barras son de trazo fino
+  para que la que importa no compita con seis más.
 - **La lista de seguimiento manda.** Es lo primero, siempre, y no compite con
   nada.
 - **Densidad con aire.** Es una herramienta de datos: caben muchas filas. Pero el
   ojo tiene que poder saltar entre bloques sin esfuerzo.
 - **Nada se celebra.** Los números se muestran, no se festejan.
 
+## Dónde vive y quién entra
+
+Callbot va **embebido dentro del CRM** (pestaña "Calidad", en un iframe) y solo
+lo abre el personal de calidad, que ya inició sesión en el CRM. No tiene una
+segunda contraseña: el CRM emite un ticket firmado y Callbot lo canjea por una
+sesión (`app/sso.py`). Quien administra el sistema entra directo con la
+credencial de operación (HTTP Basic).
+
+- El rol `calidad` ve todo menos **Diagnóstico** (expone infraestructura).
+- Dentro del iframe el panel pierde su barra lateral (el CRM ya trae la suya) y
+  pasa a pestañas arriba. El tema lo manda el CRM por `?theme=`.
+- El panel solo puede enmarcarse desde `FRAME_ANCESTORS` (por defecto
+  `https://crm.santarosa.lat`).
+
 ## Restricciones
 
 - Jinja2 renderizado en el servidor. **Sin build, sin framework de front, sin
-  dependencias externas** — ni fuentes web ni CDN. Es una herramienta interna y
+  dependencias externas** — sin CDN. Inter va autoalojada en `/static/fonts`. Es una herramienta interna y
   una dependencia que bloquea el render no compra nada.
-- Se accede por HTTP Basic, desde escritorio en la oficina. Móvil es secundario
-  pero tiene que funcionar.
+- Se accede desde el CRM (sesión por ticket) o, quien opera, con HTTP Basic.
+  Uso principal en escritorio; móvil es secundario pero tiene que funcionar.

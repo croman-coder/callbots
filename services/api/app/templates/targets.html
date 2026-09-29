@@ -16,7 +16,7 @@
 
 {% block content %}
 {% if request.query_params.get('ok') is not none %}
-<div class="notice ok">
+<div class="notice ok" role="status">
   <strong>{{ request.query_params.get('ok') }} cargados.</strong>
   {{ request.query_params.get('dup') }} ya estaban, {{ request.query_params.get('mal') }} sin teléfono válido.
 </div>
@@ -135,7 +135,7 @@
 
     <label for="f-lote">Lista</label>
     <textarea id="f-lote" name="lote" rows="6" required
-              placeholder="0981123456, Juan Perez&#10;+595971234567, Maria Gomez&#10;0976953263"></textarea>
+              placeholder="0981123456, Juan Perez&#10;+595971234567, Maria Gomez&#10;0976953263…" autocomplete="off" spellcheck="false"></textarea>
     <p class="hint">
       Formato <code>teléfono, nombre</code>; el nombre es opcional. Los teléfonos se
       normalizan igual que los que vienen de Bitrix, así que <code>0981 123 456</code>
