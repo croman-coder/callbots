@@ -120,7 +120,7 @@ sip-status: ## Estado de los softphones registrados
 	$(COMPOSE) exec asterisk asterisk -rx "pjsip show endpoints"
 
 test-api: ## Pruebas de la API (acceso desde el CRM, cabeceras). Necesita uv
-	cd services/api && uv venv -q .venv --python 3.12 && uv pip install -q --python .venv/bin/python -r requirements-dev.txt \
+	cd services/api && { [ -d .venv ] || uv venv -q .venv --python 3.12; } && uv pip install -q --python .venv/bin/python -r requirements-dev.txt \
 		&& .venv/bin/python -m pytest tests -q
 
 test-call: ## Recordatorio de cómo probar la encuesta

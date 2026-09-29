@@ -270,8 +270,9 @@ Lo que conviene no deshacer:
    FortiGate con administración cerrada desde la red del server — detalle,
    pedido exacto y alternativa sin tocar el router en
    [`deploy-coolify.md`](deploy-coolify.md), punto 4 de Pendientes.
-3. **Poner en marcha el acceso desde el CRM.** El código de Callbot ya está en producción y apagado. Falta la mitad
-   del CRM (rama `calidad-callbot`, sin mergear): migración 0100, `CALLBOT_SSO_SECRET` en las dos apps y el merge,
-   en ese orden. Pasos en el `DEPLOY.md` del CRM, sección "Calidad".
+3. **Probar el acceso desde el CRM con un usuario real de calidad.** Está en producción de punta a punta desde el
+   29/09/2026 (migración 0100, `CALLBOT_SSO_SECRET` en las dos apps, merge del CRM). Callbot se verificó con tickets
+   firmados como los firma el CRM; falta invitar a alguien con rol Calidad desde Equipo y comprobar que aterriza en la
+   pestaña Calidad y que su sesión no lee contactos del CRM.
 4. **Subir `MAX_CONCURRENT_CALLS`** hasta la cantidad de canales que dé la
    troncal, antes de producción real.
