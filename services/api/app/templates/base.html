@@ -575,7 +575,10 @@ html[data-embed] body { background: var(--paper); }
     </nav>
     <div class="side-foot">
       {% if request.state.principal %}
-      <p class="quien" translate="no">{{ request.state.principal.usuario }}<span>{{ request.state.principal.rol }}</span></p>
+      {#- Cloudflare reescribe todo email del HTML en un enlace de "protección" con un script que lo
+          decodifica: acá el email ES el dato que hay que mostrar, no un contacto que proteger de
+          los bots. El marcador le dice que no lo toque. -#}
+      <!--email_off--><p class="quien" translate="no">{{ request.state.principal.usuario }}<span>{{ request.state.principal.rol }}</span></p><!--/email_off-->
       {% endif %}
       <button type="button" class="theme-toggle" id="tema-btn" aria-pressed="false">Tema: oscuro</button>
       <form method="post" action="/sync-now">
