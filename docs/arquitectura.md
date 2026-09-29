@@ -228,6 +228,38 @@ un martes.
 
 ---
 
+## Quién entra al panel
+
+Dos puertas, cada una para un tipo de persona:
+
+| | Quién | Cómo | Ve |
+|---|---|---|---|
+| **CRM** | Personal de calidad, y owner/admin del CRM | Pestaña "Calidad": el CRM firma un ticket de 60 s y un solo uso, Callbot lo canjea en `/sso` por una cookie de sesión | Todo menos **Diagnóstico** (rol `calidad`) |
+| **Operación** | Quien administra el sistema | HTTP Basic con `ADMIN_USER` / `ADMIN_PASSWORD`, directo a `callbot.santarosa.lat` | Todo |
+
+```
+CRM (servidor)                          Callbot
+  verifica JWT + rol en team_members
+  firma ticket (60 s, un solo uso) ───► GET /sso?ticket=…
+                                        verifica firma, vigencia, rol, jti
+                                        Set-Cookie: callbot_session (HttpOnly · Secure · Lax)
+                                   ◄─── 303 → /?theme=dark
+```
+
+Diseño y motivos de cada decisión en [`services/api/app/sso.py`](../services/api/app/sso.py).
+Lo que conviene no deshacer:
+
+- **Ticket y sesión no son intercambiables.** Se firman con llaves derivadas distintas del mismo secreto.
+- **Falla cerrado.** Sin `CALLBOT_SSO_SECRET` (o con menos de 32 caracteres) `/sso` responde 404 y ninguna cookie vale.
+  Es el estado por defecto. **Matar todas las sesiones = rotar el secreto.**
+- **Solo el CRM puede enmarcar el panel.** CSP `frame-ancestors` con `FRAME_ANCESTORS` (por defecto `https://crm.santarosa.lat`).
+  Lo que no sea un origen exacto se descarta y se avisa en el log de arranque.
+- **Contrato con el CRM**: el ticket de referencia de `tests/test_sso.py` es el mismo que prueba el CRM
+  (`tests/callbot-sso.test.js`). Si cambia el formato o los roles en un lado, tiene que cambiar en el otro.
+- Dentro del iframe no hay barra lateral (el CRM ya trae la suya) y el tema lo manda el CRM por `?theme=`.
+
+`make test-api` corre las pruebas de este acceso (89).
+
 ## Lo que falta
 
 1. **De dónde salen los destinatarios de forma automática.** Hoy se cargan a
@@ -238,7 +270,8 @@ un martes.
    FortiGate con administración cerrada desde la red del server — detalle,
    pedido exacto y alternativa sin tocar el router en
    [`deploy-coolify.md`](deploy-coolify.md), punto 4 de Pendientes.
-3. **Autenticación del panel.** HTTP Basic alcanza para ahora; si se expone algo
-   más sensible, conviene Cloudflare Access.
+3. **Poner en marcha el acceso desde el CRM.** El código de Callbot ya está en producción y apagado. Falta la mitad
+   del CRM (rama `calidad-callbot`, sin mergear): migración 0100, `CALLBOT_SSO_SECRET` en las dos apps y el merge,
+   en ese orden. Pasos en el `DEPLOY.md` del CRM, sección "Calidad".
 4. **Subir `MAX_CONCURRENT_CALLS`** hasta la cantidad de canales que dé la
    troncal, antes de producción real.

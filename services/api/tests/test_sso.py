@@ -186,3 +186,38 @@ def test_secreto_corto_deshabilita_todo(corto):
 
 def test_secreto_de_32_alcanza():
     assert sso.habilitado("x" * 32)
+
+
+# ---------------------------------------------------- contrato con el CRM
+# Este ticket lo firma el CRM en JavaScript (api/_lib/callbot-sso.js, repo del CRM)
+# y el CRM prueba contra la MISMA constante en tests/callbot-sso.test.js. Si esta
+# prueba falla, Callbot y el CRM dejaron de entenderse: nadie puede abrir la pestaña
+# Calidad y el síntoma en producción es un 403 mudo, sin ningún error visible.
+SECRETO_CONTRATO = "contrato-callbot-crm-prueba-0123456789"
+TICKET_DEL_CRM = (
+    "t1.eyJlbWFpbCI6ImFuYUBzYW50YXJvc2EuY29tLnB5IiwiZXhwIjoxODAwMDAwMDYwLCJpYXQiOjE4MDAwMDAwMDAs"
+    "Imp0aSI6IjAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInJvbCI6ImNhbGlkYWQiLCJzdWIiOiIx"
+    "MTExMTExMS0yMjIyLTMzMzMtNDQ0NC01NTU1NTU1NTU1NTUifQ.BbhJSVct7I-x-yHR3qSNEimP1Ipqz5-d3jI_U78QbVc"
+)
+
+
+def test_contrato_callbot_acepta_el_ticket_que_firma_el_crm():
+    p = sso.canjear_ticket(TICKET_DEL_CRM, secreto=SECRETO_CONTRATO, ahora=1_800_000_001)
+    assert p == sso.Principal("ana@santarosa.com.py", "calidad", "crm")
+
+
+def test_contrato_el_ticket_del_crm_se_reproduce_byte_a_byte_desde_python():
+    payload = sso.abrir("t1", TICKET_DEL_CRM, SECRETO_CONTRATO)
+    assert payload == {
+        "email": "ana@santarosa.com.py", "exp": 1_800_000_060, "iat": 1_800_000_000,
+        "jti": "00000000-0000-4000-8000-000000000001", "rol": "calidad",
+        "sub": "11111111-2222-3333-4444-555555555555",
+    }
+    # Firmar acá los mismos datos da el mismo ticket que firmó el CRM.
+    assert sso.firmar("t1", payload, SECRETO_CONTRATO) == TICKET_DEL_CRM
+
+
+def test_contrato_los_roles_de_callbot_son_los_que_el_crm_puede_firmar():
+    # ROLES_CALLBOT (CRM) <-> ROLES_PERMITIDOS (Callbot). Si divergen, un rol
+    # que el CRM deja pasar recibe un 403 acá, o al revés.
+    assert sso.ROLES_PERMITIDOS == {"owner", "admin", "calidad"}
