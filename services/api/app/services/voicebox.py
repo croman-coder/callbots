@@ -114,8 +114,30 @@ def clone_voice(
     return profile
 
 
+def engine_de(profile: dict) -> str:
+    """Con qué motor habla un perfil.
+
+    Una voz preset (Kokoro, Qwen CustomVoice) solo funciona con SU motor y Voicebox
+    rechaza cualquier otro con un 400; una clonada usa el motor de clonación
+    (Qwen por defecto). Sin esto, elegir una voz preset en el panel daba error.
+    """
+    if profile.get("voice_type") == "preset" and profile.get("preset_engine"):
+        return str(profile["preset_engine"])
+    return str(profile.get("default_engine") or settings.voicebox_engine)
+
+
+def _engine_del_perfil(profile_id: str) -> str:
+    try:
+        response = httpx.get(f"{_base()}/profiles/{profile_id}", timeout=QUICK_TIMEOUT)
+        response.raise_for_status()
+        return engine_de(response.json())
+    except httpx.HTTPError as exc:
+        raise _fail("No se pudo leer el perfil", exc) from exc
+
+
 def generate(profile_id: str, text: str, engine: str | None = None) -> bytes:
     """Devuelve el WAV generado. /generate/stream no guarda nada en disco."""
+    engine = engine or _engine_del_perfil(profile_id)
     try:
         response = httpx.post(
             f"{_base()}/generate/stream",
@@ -123,7 +145,7 @@ def generate(profile_id: str, text: str, engine: str | None = None) -> bytes:
                 "profile_id": profile_id,
                 "text": text,
                 "language": "es",
-                "engine": engine or settings.voicebox_engine,
+                "engine": engine,
                 "normalize": True,
             },
             timeout=GENERATE_TIMEOUT,

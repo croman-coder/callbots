@@ -165,13 +165,37 @@ def _write_cache(text: str, pcm: bytes, params: VoiceParams) -> None:
 # ---------------------------------------------------------------------------
 # Motor 1: Voicebox (voz clonada)
 # ---------------------------------------------------------------------------
+_engines: dict[str, str] = {}
+
+
+async def _engine_de(perfil: str) -> str:
+    """Con qué motor habla un perfil: una voz preset solo funciona con el suyo (Kokoro, etc.) y
+    Voicebox rechaza cualquier otro; una clonada usa el de clonación. Se pregunta una vez por perfil."""
+    if perfil in _engines:
+        return _engines[perfil]
+    engine = config.voicebox_engine
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{config.voicebox_url.rstrip('/')}/profiles/{perfil}")
+            r.raise_for_status()
+            datos = r.json()
+        if datos.get("voice_type") == "preset" and datos.get("preset_engine"):
+            engine = str(datos["preset_engine"])
+        else:
+            engine = str(datos.get("default_engine") or engine)
+        _engines[perfil] = engine  # solo si se pudo leer: un fallo pasajero no fija el motor equivocado
+    except (httpx.HTTPError, ValueError) as exc:
+        log.warning("No se pudo leer el perfil %s de Voicebox: %s", perfil[:8], exc)
+    return engine
+
+
 async def _voicebox_synthesize(text: str, timeout: float, perfil: str) -> bytes:
     """POST /generate/stream devuelve el WAV directo, sin pasar por disco."""
     payload = {
         "profile_id": perfil,
         "text": text,
         "language": config.voicebox_language,
-        "engine": config.voicebox_engine,
+        "engine": await _engine_de(perfil),
         "normalize": True,
     }
 
