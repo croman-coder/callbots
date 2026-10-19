@@ -22,7 +22,8 @@
 {% if target_counts %}
 <div class="metrics">
   {% for status, count in target_counts.items() %}
-  <div class="metric">
+  {% set tono = {"completed":"menta","calling":"celeste","pending":"amarillo","scheduled":"amarillo","queued":"amarillo","failed":"durazno","no_answer":"durazno"}.get(status.value, "") %}
+  <div class="metric {{ 't-' ~ tono if tono }}">
     <div class="k">{{ status.value }}</div>
     <div class="v">{{ count }}</div>
   </div>

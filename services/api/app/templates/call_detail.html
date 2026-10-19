@@ -20,7 +20,7 @@
 {% block content %}
 {% set score = call.analysis.satisfaction_score if call.analysis else none %}
 <div class="metrics">
-  <div class="metric hero {% if score is not none and score < satisfactory_min %}is-bad{% endif %}">
+  <div class="metric hero t-celeste {% if score is not none and score < satisfactory_min %}is-bad{% endif %}">
     <div class="k">Satisfacción</div>
     <div class="v">{% if score is not none %}{{ score | round(1) }}<small> /10</small>{% else %}—{% endif %}</div>
     {% if score is not none %}
@@ -33,11 +33,11 @@
       <span class="pill {{ call.outcome.value if call.outcome else 'calling' }}">{{ call.outcome.value if call.outcome else "en curso" }}</span>
     </div>
   </div>
-  <div class="metric">
+  <div class="metric t-amarillo">
     <div class="k">Duración</div>
     <div class="v">{% if call.duration_seconds %}{{ call.duration_seconds // 60 }}:{{ "%02d" | format(call.duration_seconds % 60) }}{% else %}—{% endif %}</div>
   </div>
-  <div class="metric">
+  <div class="metric t-lavanda">
     <div class="k">Respondidas</div>
     <div class="v">{{ call.questions_answered }}<small> /{{ call.questions_asked }}</small></div>
   </div>
