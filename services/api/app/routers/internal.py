@@ -15,6 +15,7 @@ Secuencia de una llamada:
 from __future__ import annotations
 
 import logging
+import re
 import uuid as uuid_mod
 from datetime import datetime, timezone
 
@@ -323,6 +324,21 @@ async def conversational_reply(
     return {"reply": texto}
 
 
+def con_nombre(texto: str, nombre: str | None) -> str:
+    """Lo mismo que hace el voice-agent al decir el guion (`_personalize` en dialog.py): tienen que
+    dar el mismo texto, porque el audio precalentado se busca por el texto exacto."""
+    if "{nombre}" not in texto:
+        return texto
+    if nombre:
+        return texto.replace("{nombre}", nombre)
+    return re.sub(r",?[ ]*\{nombre\}", "", texto).replace("  ", " ")
+
+
+# Cuántos nombres distintos se precalientan por campaña. Cada uno es una síntesis de decenas de
+# segundos en CPU; los que no entren se dicen con Piper la primera vez y quedan cacheados.
+MAX_NOMBRES_PRECALENTADOS = 40
+
+
 @router.get("/prompts")
 def all_prompts(db: Session = Depends(get_db)) -> dict:
     """Todo el texto fijo de las campañas activas, para precalentar el TTS.
@@ -345,6 +361,24 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
     todos: list[str] = []
 
     for campaign in campaigns:
+        # Primeros nombres de quienes van a ser llamados: el saludo lleva el nombre, y una frase
+        # con un nombre que nunca se sintetizó sale con Piper en medio de la voz buena.
+        proximos = db.scalars(
+            select(SurveyTarget.contact_name)
+            .where(
+                SurveyTarget.campaign_id == campaign.id,
+                SurveyTarget.status.in_(
+                    [TargetStatus.PENDING, TargetStatus.SCHEDULED, TargetStatus.QUEUED]
+                ),
+                SurveyTarget.contact_name.is_not(None),
+            )
+            .order_by(SurveyTarget.id)
+            .limit(400)
+        ).all()
+        nombres = list(
+            dict.fromkeys(n.split(" ")[0] for n in proximos if n and n.strip())
+        )[:MAX_NOMBRES_PRECALENTADOS]
+
         textos = [
             campaign.intro_script,
             campaign.outro_script,
@@ -352,7 +386,13 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
             campaign.optout_script,
         ]
         textos += [q.text for q in campaign.questions if q.is_active]
-        limpios = [t.strip() for t in dict.fromkeys(textos) if t and t.strip()]
+        variantes: list[str] = []
+        for t in textos:
+            if t and "{nombre}" in t:
+                variantes += [con_nombre(t, None)] + [con_nombre(t, n) for n in nombres]
+            else:
+                variantes.append(t)
+        limpios = [t.strip() for t in dict.fromkeys(variantes) if t and t.strip()]
         todos += limpios
 
         grupos.append(

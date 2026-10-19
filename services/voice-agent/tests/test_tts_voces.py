@@ -106,3 +106,28 @@ def test_la_cola_no_repite_ni_crece_sin_limite(_aislar):
         tts._tarea.cancel()
 
     asyncio.run(caso())
+
+
+# --- el saludo con y sin nombre: tiene que dar lo mismo que calcula la API al precalentar ---
+CASOS_NOMBRE = [
+    ("¡Hola, {nombre}! Le habla el asistente.", "Juan", "¡Hola, Juan! Le habla el asistente."),
+    ("¡Hola, {nombre}! Le habla el asistente.", None, "¡Hola! Le habla el asistente."),
+    ("Hola {nombre}, le hablamos del taller.", None, "Hola, le hablamos del taller."),
+    ("Hola {nombre}, le hablamos del taller.", "Ana", "Hola Ana, le hablamos del taller."),
+    ("Sin placeholder.", "Ana", "Sin placeholder."),
+]
+
+
+@pytest.mark.parametrize("plantilla,nombre,esperado", CASOS_NOMBRE)
+def test_saludo_con_y_sin_nombre(plantilla, nombre, esperado):
+    from app.guion import personalizar
+
+    assert personalizar(plantilla, nombre) == esperado
+
+
+def test_una_plantilla_sin_reemplazar_no_se_sintetiza(_aislar):
+    async def caso():
+        assert await tts.warm_up(["Hola {nombre}, buenos días"], P(profile_id="perfil-a")) == 0
+        assert _aislar == []
+
+    asyncio.run(caso())

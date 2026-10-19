@@ -22,6 +22,7 @@ from app import stt, tts
 from app.api_client import ApiClient, ApiError, Question, Script
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
+from app.guion import personalizar
 from app.listener import ListenResult, listen
 
 log = logging.getLogger(__name__)
@@ -37,14 +38,7 @@ class Outcome:
     FAILED = "failed"
 
 
-def _personalize(text: str, contact_name: str | None) -> str:
-    """Reemplaza {nombre} en el guion. Sin nombre, deja la frase natural."""
-    if "{nombre}" not in text:
-        return text
-    if contact_name:
-        return text.replace("{nombre}", contact_name)
-    # Sin nombre: saca el placeholder y limpia el espacio doble que queda
-    return text.replace("{nombre}", "").replace("  ", " ").replace(" ,", ",")
+_personalize = personalizar
 
 
 def _save_wav(pcm: bytes, session_uuid: uuid_mod.UUID, position: int) -> str | None:

@@ -393,7 +393,8 @@ async def warm_up(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> int
     """
     pending = [
         t.strip() for t in dict.fromkeys(texts)
-        if t and t.strip() and (t.strip(), params.clave()) not in _memory_cache
+        # Un "{nombre}" sin reemplazar es una plantilla, no algo que se diga: no se sintetiza.
+        if t and t.strip() and "{nombre}" not in t and (t.strip(), params.clave()) not in _memory_cache
     ]
     if not pending:
         return 0

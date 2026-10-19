@@ -54,3 +54,20 @@ def test_una_voz_invalida_se_rechaza_sin_guardar(hacer, malo):
     r = guardar(malo)
     assert r.status_code == 303 and "error=" in r.headers["location"]
     assert campana.voice_profile_id is None and not sesion.confirmado
+
+
+# --- el precalentado y el voice-agent tienen que decir el saludo igual ---
+CASOS_NOMBRE = [
+    ("¡Hola, {nombre}! Le habla el asistente.", "Juan", "¡Hola, Juan! Le habla el asistente."),
+    ("¡Hola, {nombre}! Le habla el asistente.", None, "¡Hola! Le habla el asistente."),
+    ("Hola {nombre}, le hablamos del taller.", None, "Hola, le hablamos del taller."),
+    ("Hola {nombre}, le hablamos del taller.", "Ana", "Hola Ana, le hablamos del taller."),
+    ("Sin placeholder.", "Ana", "Sin placeholder."),
+]
+
+
+@pytest.mark.parametrize("plantilla,nombre,esperado", CASOS_NOMBRE)
+def test_con_nombre_coincide_con_lo_que_dice_el_voice_agent(plantilla, nombre, esperado):
+    from app.routers.internal import con_nombre
+
+    assert con_nombre(plantilla, nombre) == esperado
