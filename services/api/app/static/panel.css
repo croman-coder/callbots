@@ -269,7 +269,7 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
 /* Tiles pastel (Ads): cada medida es un tile con su tinte y un punto del color
    fuerte. El pastel agrupa, no decora: la lectura sigue siendo el número. */
 .metrics {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   gap: var(--s3); margin-bottom: var(--s7);
 }
 .metric {
@@ -294,7 +294,7 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
   font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.035em; line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
-.metric .v small { font-size: var(--t-base); font-weight: 500; color: var(--ink-3); letter-spacing: 0; }
+.metric .v small { font-size: var(--t-base); font-weight: 500; color: var(--ink-3); letter-spacing: 0;  margin-inline: .2em .35em; white-space: pre; }
 .metric .f { font-size: var(--t-xs); color: var(--ink-3); margin-top: var(--s2); }
 .metric.hero { grid-column: span 2; }
 .metric.is-bad { border-color: var(--bad); }
