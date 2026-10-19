@@ -1,4 +1,4 @@
-"""Respuestas conversacionales con Gemini, para cuando el guion no alcanza.
+"""Respuestas conversacionales con Claude Haiku, para cuando el guion no alcanza.
 
 El diálogo del callbot es determinista a propósito: pregunta, escucha,
 interpreta, sigue. Eso mantiene la latencia entre que el cliente termina de
@@ -11,7 +11,7 @@ hasta ahora el bot contestaba con una frase fija. Ahí sí conviene un LLM, y
 ahí el segundo o dos que tarda no molesta porque la alternativa era sonar como
 una máquina.
 
-Si Gemini no está configurado, tarda de más o falla, se devuelve None y el
+Si Claude no está configurado (queda Gemini de respaldo), tarda de más o falla, se devuelve None y el
 que llama usa la frase fija de siempre. Nunca se deja al cliente escuchando
 silencio por esperar a un tercero.
 """
@@ -23,6 +23,7 @@ import logging
 import httpx
 
 from app.config import settings
+from app.services import llm
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ incluís, se queda sin saber qué contestar."""
 
 
 def is_configured() -> bool:
-    return bool(settings.gemini_api_key)
+    return llm.is_configured() or bool(settings.gemini_api_key)
 
 
 def _build_prompt(pregunta: str, dijo: str, intento: int) -> str:
@@ -86,6 +87,11 @@ async def reply(
             "\n\nContexto de esta campaña (respetá igual las reglas de arriba):\n"
             f"{extra_prompt.strip()}"
         )
+
+    if llm.is_configured():
+        # Un máximo de tokens corto de verdad: esto se sintetiza y se dice por teléfono.
+        texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200, temperature=0.4)
+        return _acortar(texto)
 
     payload = {
         "systemInstruction": {"parts": [{"text": instruccion}]},
@@ -131,13 +137,16 @@ async def reply(
         log.warning("Gemini devolvió algo inesperado: %s", str(data)[:200])
         return None
 
+    return _acortar(texto)
+
+
+def _acortar(texto: str | None) -> str | None:
+    """Texto plano y corto: una parrafada por teléfono es peor que la frase fija."""
+    if not texto:
+        return None
     texto = " ".join(texto.split()).strip(' "')
     if not texto:
         return None
-
-    # Cinturón por si el modelo ignora la instrucción: una parrafada al
-    # teléfono es peor que la frase fija.
     if len(texto) > 400:
         texto = texto[:400].rsplit(".", 1)[0] + "."
-
     return texto

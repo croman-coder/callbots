@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Answer, CallAnalysis, CallAttempt, QuestionType
+from app.services import llm
 from app.services.scoring import (
     SATISFACTORY_MIN,
     interpret,
@@ -124,6 +125,28 @@ def build_system_prompt(extra: str | None) -> str:
     )
 
 
+def query_llm(
+    transcript: str, timeout: float = 120.0, extra_prompt: str | None = None
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Analiza la transcripción. Devuelve (resultado, modelo usado).
+
+    Claude Haiku si hay clave; si no, el Ollama local. (None, None) si ninguno contesta.
+    """
+    if llm.is_configured():
+        texto = llm.complete_sync(
+            build_system_prompt(extra_prompt) + "\n\nRespondé SOLO con el objeto JSON, sin texto antes ni después.",
+            f"Transcripción de la encuesta:\n\n{transcript}",
+            max_tokens=500,
+            temperature=0.1,
+        )
+        resultado = llm.parse_json_object(texto)
+        if resultado is not None:
+            return resultado, settings.llm_model
+        log.warning("Claude no devolvió un JSON analizable: se prueba con Ollama")
+    resultado = query_ollama(transcript, timeout=timeout, extra_prompt=extra_prompt)
+    return resultado, (settings.ollama_model if resultado else None)
+
+
 def query_ollama(
     transcript: str, timeout: float = 120.0, extra_prompt: str | None = None
 ) -> dict[str, Any] | None:
@@ -181,10 +204,10 @@ def analyze_call(db: Session, call: CallAttempt) -> CallAnalysis:
     transcript = build_transcript(call)
 
     campaign = call.target.campaign if call.target else None
-    llm_result = (
-        query_ollama(transcript, extra_prompt=getattr(campaign, "analysis_prompt", None))
+    llm_result, modelo = (
+        query_llm(transcript, extra_prompt=getattr(campaign, "analysis_prompt", None))
         if transcript.strip()
-        else None
+        else (None, None)
     )
 
     analysis = call.analysis or CallAnalysis(call_id=call.id)
@@ -209,7 +232,7 @@ def analyze_call(db: Session, call: CallAttempt) -> CallAnalysis:
         analysis.summary = (llm_result.get("summary") or None)
         topics = llm_result.get("topics")
         analysis.topics = topics if isinstance(topics, list) else None
-        analysis.model_used = settings.ollama_model
+        analysis.model_used = modelo
 
         analysis.requires_followup = bool(below) or bool(
             llm_result.get("requires_followup")

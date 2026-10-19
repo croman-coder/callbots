@@ -108,6 +108,18 @@ class Settings(BaseSettings):
     # las encuestas llevan teléfonos de clientes, así que `brand` y `administracion` quedan fuera.
     login_roles: str = Field("super_admin:admin,manager:calidad", validation_alias="LOGIN_ROLES")
 
+    # --- Claude (Anthropic) ---
+    # El mismo modelo y la misma clave que usan Santa Rosa Ads, el asistente de los
+    # tableros y la Agencia IA. Si está puesta, es el LLM de Callbot para la
+    # conversación en llamada y para el análisis posterior; Gemini y Ollama quedan
+    # solo como respaldo si no hay clave.
+    anthropic_api_key: str = Field("", validation_alias="ANTHROPIC_API_KEY")
+    llm_model: str = Field("claude-haiku-5-5", validation_alias="CALLBOT_LLM_MODEL")
+    # En llamada hay alguien escuchando: pasados estos segundos se usa la frase fija.
+    llm_timeout_seconds: float = Field(8.0, validation_alias="CALLBOT_LLM_TIMEOUT")
+    # El análisis corre después de colgar, sin apuro.
+    llm_analysis_timeout_seconds: float = 60.0
+
     # --- Ollama ---
     ollama_url: str = "http://ollama:11434"
     ollama_model: str = "llama3.1:8b"

@@ -1059,6 +1059,21 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
     except Exception as exc:  # noqa: BLE001
         checks.append({"name": "Asterisk (ARI)", "ok": False, "detail": str(exc)[:200]})
 
+    # Claude: no se hace un pedido real (cada uno cuesta), solo se dice si hay clave y qué modelo.
+    from app.services import llm
+
+    checks.append(
+        {
+            "name": "Claude (LLM)",
+            "ok": True,
+            "detail": (
+                f"{settings.llm_model}: conversa en la llamada y analiza después"
+                if llm.is_configured()
+                else "sin clave (ANTHROPIC_API_KEY): conversa Gemini si está configurado y analiza Ollama"
+            ),
+        }
+    )
+
     # Voicebox (voz clonada). Si no está configurado no es una falla: el
     # callbot funciona con Piper, solo que con voz genérica.
     if not voicebox.is_configured():
