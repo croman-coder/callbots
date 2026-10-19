@@ -1,18 +1,12 @@
-/* Callbot · panel de operaciones — paleta del CRM de Santa Rosa, estructura de Santa Rosa Ads.
+/* Callbot · panel de operaciones — estilo de la Agencia IA de Santa Rosa.
  *
- * Colores: los del CRM (#111936, azul de marca #1E3A8A) porque el panel va embebido ahí.
- * Estructura: la de Ads (tarjetas de 20px, tiles pastel, barra de vidrio, títulos en
- * Plus Jakarta Sans, una sola duración y una sola curva).
+ * Lienzo claro #f8f9fc, tarjetas blancas de 20px, controles negros en píldora, etiquetas
+ * pastel y una cápsula de secciones arriba; la banda azul curva a la izquierda es la de
+ * la Agencia. Claro por defecto, oscuro como alternativa de primera clase. Dentro del
+ * CRM (iframe) el tema lo manda el CRM por ?theme= y no hay banda ni cabecera de marca.
+ * Valores tomados de agencia.santarosa.lat (src/app/panel/panel.css).
  *
- * Identidad original:
- *
- * Mismos valores que el CRM (frontend/src/index.css, tokens --bk-*): fondo
- * #111936, azul de marca #1E3A8A, bordes finos en vez de sombras. Comprometido
- * en el azul de marca, contenido en todo lo demás: el color saturado se
- * reserva para la marca y para los estados.
- *
- * Inter va autoalojada (/static/fonts), sin CDN: herramienta interna, una
- * dependencia externa que bloquea el render no compra nada.
+ * Inter, Plus Jakarta Sans y JetBrains Mono van autoalojadas (/static/fonts), sin CDN.
  */
 @font-face { font-family: "Inter"; font-weight: 400; font-style: normal; font-display: swap;
   src: url("/static/fonts/inter-latin-400-normal.woff2") format("woff2"); }
@@ -34,105 +28,113 @@
   --s1:4px; --s2:8px; --s3:12px; --s4:16px;
   --s5:20px; --s6:28px; --s7:40px; --s8:56px;
 
-  --t-xs:11px; --t-sm:12.5px; --t-base:14px;
-  --t-md:16px; --t-lg:19px; --t-xl:23px; --t-3xl:34px;
+  --t-xs:11.5px; --t-sm:13px; --t-base:14.5px;
+  --t-md:16px; --t-lg:19px; --t-xl:24px; --t-3xl:34px; --t-h1:38px;
 
-  --r-sm:10px; --r:12px; --r-lg:16px; --r-card:20px; --r-pastel:14px; --r-pill:999px;
+  --r-sm:12px; --r:12px; --r-lg:16px; --r-card:20px; --r-pastel:20px; --r-pill:999px;
 
-  /* ease-out exponencial: arranca rápido y frena. Sin rebote. */
-  --ease: cubic-bezier(.2, .9, .25, 1);
-  --dur:  200ms;
-  --dur-fast: 200ms;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur:  220ms;
+  --dur-fast: 140ms;
 
-  --font-titulo: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-titulo: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
 
-  --sidebar-w: 252px;
+  --col: 1180px;          /* ancho de la columna de trabajo */
+  --banda-w: 72px;        /* banda azul de la izquierda */
 
-  /* Marca Santa Rosa. --brand-2 es el azul de acción: el CRM usa #3B82F6,
-     pero blanco sobre ese azul da 3.7:1 y no llega a 4.5 en texto chico, así
-     que los rellenos usan #2563EB (5.2:1). */
-  --brand:   #1E3A8A;
-  --brand-2: #2563EB;
-  --active:     #1E3A8A;
-  --active-ink: #FFFFFF;
+  /* Azul Santa Rosa de la Agencia (banda y entrada). */
+  --brand:   #242276;
+  --brand-2: #343094;
 }
 
 /* ─────────────────────────────── oscuro (por defecto, como el CRM) */
-:root, :root[data-theme="dark"] {
+:root[data-theme="dark"] {
   color-scheme: dark;
 
-  --paper:   #111936;                      /* --bk-bg */
-  --panel:   #0d1327;                      /* --bk-bg-alt: barra lateral */
-  /* El CRM usa paneles translúcidos (rgba 58%/68% sobre --bk-bg). Acá van
-     sólidos, con el mismo resultado visual y sin depender de qué haya atrás. */
-  --surface: #1a2240;
-  --raised:  #212947;
+  --paper:   #0f1412;
+  --panel:   #181d1b;
+  --surface: #181d1b;
+  --raised:  #212725;
 
-  --ink:   #F1F5F9;                        /* --bk-text */
-  --ink-2: #c4cce6;
-  --ink-3: #8492c4;                        /* --bk-text-muted, 5.7:1 sobre --paper */
+  --ink:   #f3f4f6;
+  --ink-2: #d1d5db;
+  --ink-3: #b4b8bf;
 
-  --line:   rgba(189, 200, 240, 0.14);     /* --bk-divider */
-  --line-2: rgba(189, 200, 240, 0.26);
+  --line:   #2c3331;
+  --line-2: #3a4340;
+  --campo:  #7e8e86;       /* borde de campos y botones de contorno (3:1) */
 
-  --link:  #60A5FA;
-  --focus: #60A5FA;
-  --active-soft: rgba(189, 200, 240, 0.10);
+  --link:  #93c5fd;
+  --focus: #a78bfa;
+  --active-soft: rgba(243, 244, 246, 0.08);
 
-  --ok:   #34D399;  --ok-bg:   rgba(16, 185, 129, 0.16);
-  --warn: #FBBF24;  --warn-bg: rgba(251, 191, 36, 0.14);
-  --bad:  #F87171;  --bad-bg:  rgba(248, 113, 113, 0.14);
-  --live: #60A5FA;  --live-bg: rgba(59, 130, 246, 0.18);
+  --tinta: #f3f4f6; --tinta-hover: #ffffff; --tinta-texto: #111214;
 
-  --float: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --ok:   #4ade80;  --ok-bg:   #183122;
+  --warn: #fbbf24;  --warn-bg: #352b18;
+  --bad:  #f87171;  --bad-bg:  #351e1d;
+  --live: #93c5fd;  --live-bg: #1e2f42;
 
-  /* Tiles pastel (Ads): en oscuro son tintes sobre la superficie, no colores planos. */
-  --p-celeste: color-mix(in srgb, #60A5FA 16%, #1a2240);  --pf-celeste:  #60A5FA;
-  --p-menta: color-mix(in srgb, #34D399 16%, #1a2240);  --pf-menta:    #34D399;
-  --p-lavanda: color-mix(in srgb, #A78BFA 16%, #1a2240); --pf-lavanda:  #A78BFA;
-  --p-amarillo: color-mix(in srgb, #FBBF24 16%, #1a2240);  --pf-amarillo: #FBBF24;
-  --p-durazno: color-mix(in srgb, #FB923C 16%, #1a2240);  --pf-durazno:  #FB923C;
-  --p-gris:     #1d2547; --pf-gris:     #8492c4;
-  --vidrio: rgba(17, 25, 54, 0.78);
+  --float: 0 12px 32px rgba(0, 0, 0, 0.5);
+
+  /* Tiles pastel: en oscuro son tintes sobre la tarjeta. */
+  --p-celeste:  color-mix(in srgb, #60a5fa 16%, #181d1b);  --pf-celeste:  #60a5fa;
+  --p-menta:    color-mix(in srgb, #34d399 15%, #181d1b);  --pf-menta:    #34d399;
+  --p-lavanda:  color-mix(in srgb, #a78bfa 17%, #181d1b);  --pf-lavanda:  #a78bfa;
+  --p-amarillo: color-mix(in srgb, #fbbf24 14%, #181d1b);  --pf-amarillo: #fbbf24;
+  --p-durazno:  color-mix(in srgb, #fb923c 16%, #181d1b);  --pf-durazno:  #fb923c;
+  --p-gris:     #181d1b;                                   --pf-gris:     #8a9590;
+
+  --vidrio: rgba(15, 20, 18, 0.8);
+  --capsula: #181d1b;
+  --entrada-hero: #1b1a52;
 }
 
-/* ─────────────────────────────────────────────────────────── claro */
-:root[data-theme="light"] {
+/* ─────────────────────────────────────────────────────────── claro (por defecto) */
+:root, :root[data-theme="light"] {
   color-scheme: light;
 
-  --paper:   #F8FAFC;
-  --panel:   #FFFFFF;
-  --surface: #FFFFFF;
-  --raised:  #F1F5F9;
+  --paper:   #f8f9fc;
+  --panel:   #ffffff;
+  --surface: #ffffff;
+  --raised:  #f4f6f5;
 
-  --ink:   #0F172A;
-  --ink-2: #334155;
-  --ink-3: #475569;
+  --ink:   #111214;
+  --ink-2: #3f434a;
+  --ink-3: #4b5563;
 
-  --line:   rgba(15, 23, 42, 0.10);
-  --line-2: rgba(15, 23, 42, 0.20);
+  --line:   #e4e7e5;
+  --line-2: #c3cac6;
+  --campo:  #7b857f;
 
-  --link:  #1E40AF;
-  --focus: #1E3A8A;
-  --active-soft: rgba(15, 23, 42, 0.06);
+  --link:  #1d4ed8;
+  --focus: #5b21b6;
+  --active-soft: rgba(17, 18, 20, 0.06);
 
-  --ok:   #047857;  --ok-bg:   #DCFCE7;
-  --warn: #B45309;  --warn-bg: #FEF3C7;
-  --bad:  #B91C1C;  --bad-bg:  #FEE2E2;
-  --live: #1D4ED8;  --live-bg: #DBEAFE;
+  --tinta: #111214; --tinta-hover: #26282c; --tinta-texto: #ffffff;
 
-  --float: 0 12px 32px rgba(15, 23, 42, 0.14);
+  --ok:   #15803d;  --ok-bg:   #dcfce7;
+  --warn: #92400e;  --warn-bg: #fef3c7;
+  --bad:  #b91c1c;  --bad-bg:  #fee2e2;
+  --live: #1d4ed8;  --live-bg: #d4e6fa;
 
-  --p-celeste:  #D4E6FA;  --pf-celeste:  #2563EB;
-  --p-menta:    #D3F0E2;  --pf-menta:    #059669;
-  --p-lavanda:  #E3E0FB;  --pf-lavanda:  #7C3AED;
-  --p-amarillo: #FBF0C4;  --pf-amarillo: #B45309;
-  --p-durazno:  #FBE6CF;  --pf-durazno:  #EA580C;
-  --p-gris:     #EEF1F3;  --pf-gris:     #475569;
-  --vidrio: rgba(248, 250, 252, 0.8);
+  --float: 0 24px 64px -16px rgba(22, 24, 29, 0.28), 0 4px 12px rgba(22, 24, 29, 0.08);
+
+  --p-celeste:  #d4e6fa;  --pf-celeste:  #1d4ed8;
+  --p-menta:    #d3f0e2;  --pf-menta:    #15803d;
+  --p-lavanda:  #e3e0fb;  --pf-lavanda:  #6d28d9;
+  --p-amarillo: #fbf0c4;  --pf-amarillo: #92400e;
+  --p-durazno:  #fbe6cf;  --pf-durazno:  #9a3412;
+  --p-gris:     #ffffff;  --pf-gris:     #6b7280;
+
+  --vidrio: rgba(248, 249, 252, 0.8);
+  --capsula: #ffffff;
+  --entrada-hero: #242276;
 }
+/* El selector de arriba también matchea el oscuro por especificidad igual: el oscuro va primero
+   en el archivo pero [data-theme="dark"] es más específico que :root solo. */
 
 *,*::before,*::after { box-sizing: border-box; }
 html, body { overflow-x: clip; }
@@ -156,7 +158,7 @@ h1, h2, h3 { text-wrap: balance; font-family: var(--font-titulo); }
 .skip {
   position: absolute; left: var(--s3); top: -48px; z-index: 100;
   padding: var(--s2) var(--s4); border-radius: var(--r-sm);
-  background: var(--brand); color: #fff; font-weight: 600; font-size: var(--t-sm);
+  background: var(--tinta); color: var(--tinta-texto); font-weight: 700; font-size: var(--t-sm);
   transition: top var(--dur-fast) var(--ease);
 }
 .skip:focus { top: var(--s3); }
@@ -169,64 +171,86 @@ main:focus { outline: none; }
 }
 
 /* ═══════════════════════════════════════════════════ estructura */
-.shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr; min-height: 100dvh; }
+.app { min-height: 100dvh; padding-left: var(--banda-w); }
 
-.side {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
-  display: flex; flex-direction: column;
-  position: sticky; top: 0; height: 100dvh;
+/* Banda azul curva de la izquierda (la de la Agencia): decorativa, con tres atajos. */
+.banda {
+  position: fixed; inset: 0 auto 0 0; width: var(--banda-w); z-index: 20;
+  pointer-events: none; color: #fff;
 }
+.banda-fondo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.banda-fondo path { fill: var(--brand); }
+:root[data-theme="dark"] .banda-fondo path { fill: var(--entrada-hero); }
+.banda-iconos {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 56px; display: flex; flex-direction: column; align-items: center; gap: var(--s3);
+  pointer-events: auto;
+}
+.banda-iconos a, .banda-iconos button {
+  width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%;
+  display: grid; place-items: center; border: 1px solid transparent; background: transparent; color: #fff;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.banda-iconos a:hover, .banda-iconos button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
+.banda-iconos .principal { border-color: rgba(255, 255, 255, 0.55); }
+.banda-iconos svg, .cab-der svg, .capsula svg { width: 17px; height: 17px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 
-.mark {
-  display: flex; align-items: center; gap: var(--s3);
-  padding: var(--s5) var(--s4) var(--s4);
-  font-family: var(--font-titulo); font-weight: 700; letter-spacing: -0.02em; font-size: var(--t-lg);
-}
-.marca-svg { flex: none; display: block; }
-.pulse {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
-  box-shadow: 0 0 0 3px var(--ok-bg); flex: none;
-}
+.col { width: 100%; max-width: var(--col); margin-inline: auto; padding-inline: var(--s6); }
 
-.side nav { padding: 0 var(--s2); display: flex; flex-direction: column; gap: 1px; }
-.side nav .group {
-  padding: var(--s4) var(--s2) var(--s1);
-  font-size: var(--t-xs); font-weight: 600; letter-spacing: 0.07em;
-  text-transform: uppercase; color: var(--ink-3);
+.cab {
+  display: grid; grid-template-columns: minmax(max-content, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: var(--s4);
+  max-width: 1480px; margin-inline: auto; padding: var(--s5) var(--s6) var(--s3);
 }
-.side nav a {
-  display: flex; align-items: center; gap: var(--s2);
-  padding: 9px var(--s3); border-radius: var(--r-sm);
-  color: var(--ink-2); font-size: var(--t-sm); font-weight: 500;
+.marca-app { display: flex; align-items: center; gap: var(--s3); font-weight: 800; font-size: var(--t-lg); letter-spacing: -0.025em; justify-self: start; }
+.marca-app .marca-svg { width: 30px; height: 30px; }
+
+.capsula {
+  display: flex; align-items: center; gap: 2px; padding: 4px;
+  background: var(--capsula); border: 1px solid var(--line); border-radius: var(--r-pill);
+  box-shadow: 0 1px 2px rgba(22, 24, 29, 0.05);
+}
+.capsula a {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  padding: 9px 14px; border-radius: var(--r-pill);
+  color: var(--ink-2); font-size: var(--t-sm); font-weight: 600;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.side nav a:hover { background: var(--active-soft); color: var(--ink); }
-/* La selección se marca con contraste, no con una barrita al costado. */
-.side nav a[aria-current="page"] {
-  background: var(--active); color: var(--active-ink); font-weight: 550;
-}
-.side nav a svg { width: 17px; height: 17px; flex: none; opacity: 0.85; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
-.side nav a[aria-current="page"] svg { opacity: 1; }
+.capsula a:hover { background: var(--active-soft); color: var(--ink); }
+/* El lugar actual se marca con la píldora negra, como en la Agencia. */
+.capsula a[aria-current="page"] { background: var(--tinta); color: var(--tinta-texto); }
 
-.side-foot { margin-top: auto; padding: var(--s4); border-top: 1px solid var(--line); }
+.cab-der { display: flex; align-items: center; gap: var(--s3); justify-self: end; }
+.tema {
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-pill);
+  background: var(--capsula); border: 1px solid var(--line);
+}
+.tema button {
+  min-height: 0; padding: 6px 12px; border: 0; border-radius: var(--r-pill); background: transparent;
+  color: var(--ink-3); font-size: var(--t-xs); font-weight: 700; display: inline-flex; align-items: center; gap: 6px;
+}
+.tema button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+:root[data-theme="dark"] .tema button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.tema button:hover:not([aria-pressed="true"]):not(:disabled) { background: var(--active-soft); }
+
+.yo { display: inline-flex; align-items: center; gap: var(--s2); }
+.yo form { margin: 0; }
+.yo .quien { margin: 0; }
+.yo .quien p { font-weight: 700; font-size: var(--t-sm); color: var(--ink); white-space: nowrap; overflow-wrap: normal; }
+.yo .quien p span { margin-top: 1px; }
+.salir { min-height: 0; padding: 6px 12px; font-size: var(--t-xs); }
 
 .content { min-width: 0; display: flex; flex-direction: column; }
 
 .bar {
-  display: flex; align-items: center; gap: var(--s4);
-  padding: var(--s5) var(--s6);
-  border-bottom: 1px solid var(--line);
-  background: var(--vidrio);
-  -webkit-backdrop-filter: saturate(1.4) blur(14px); backdrop-filter: saturate(1.4) blur(14px);
-  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: flex-end; gap: var(--s4);
+  padding: var(--s7) 0 var(--s5);
   flex-wrap: wrap;
 }
-.bar h1 { font-size: var(--t-xl); font-weight: 700; letter-spacing: -0.025em; margin: 0; }
-.bar .lede { color: var(--ink-3); font-size: var(--t-sm); margin: 1px 0 0; }
+.bar h1 { font-size: var(--t-h1); font-weight: 800; letter-spacing: -0.035em; line-height: 1.1; margin: 0; }
+.bar .lede { color: var(--ink-3); font-size: var(--t-base); margin: var(--s2) 0 0; }
 .bar .right { margin-left: auto; display: flex; gap: var(--s2); align-items: center; }
 
-.wrap { padding: var(--s6); max-width: 1360px; width: 100%; }
+.wrap { padding: 0 0 var(--s8); width: 100%; }
 
 /* ═══════════════════════════════════════════════════ tipografía */
 h2 { font-size: var(--t-md); font-weight: 700; letter-spacing: -0.018em; margin: 0; }
@@ -275,7 +299,7 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
 .metric {
   --tile: var(--p-gris); --punto: var(--pf-gris);
   padding: var(--s4) var(--s5) var(--s5); min-width: 0;
-  background: var(--tile); border: 1px solid var(--line); border-radius: var(--r-pastel);
+  background: var(--tile); border: 1px solid color-mix(in srgb, var(--line) 70%, transparent); border-radius: var(--r-pastel);
   transition: transform var(--dur) var(--ease);
 }
 .metric:hover { transform: translateY(-2px); }
@@ -284,14 +308,10 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
 .metric.t-lavanda  { --tile: var(--p-lavanda);  --punto: var(--pf-lavanda); }
 .metric.t-amarillo { --tile: var(--p-amarillo); --punto: var(--pf-amarillo); }
 .metric.t-durazno  { --tile: var(--p-durazno);  --punto: var(--pf-durazno); }
-.metric .k {
-  display: flex; align-items: center; gap: 7px;
-  font-size: var(--t-sm); font-weight: 600; color: var(--ink-2); margin-bottom: var(--s3);
-}
-.metric .k::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--punto); flex: none; }
+.metric .k { font-size: var(--t-sm); font-weight: 500; color: var(--ink-2); margin-bottom: var(--s2); }
 .metric .v {
   font-family: var(--font-titulo);
-  font-size: var(--t-3xl); font-weight: 700; letter-spacing: -0.035em; line-height: 1.05;
+  font-size: var(--t-3xl); font-weight: 800; letter-spacing: -0.035em; line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 .metric .v small { font-size: var(--t-base); font-weight: 500; color: var(--ink-3); letter-spacing: 0;  margin-inline: .2em .35em; white-space: pre; }
@@ -375,10 +395,10 @@ td.name { font-weight: 550; }
 /* ═══════════════════════════════════════════════════ controles */
 button, .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px var(--s4); min-height: 38px;
-  border: 1px solid var(--line-2); border-radius: var(--r-sm);
+  padding: 9px var(--s5); min-height: 40px;
+  border: 1px solid var(--line-2); border-radius: var(--r-pill);
   background: var(--surface); color: var(--ink);
-  font: inherit; font-size: var(--t-sm); font-weight: 550;
+  font: inherit; font-size: var(--t-sm); font-weight: 700;
   cursor: pointer; white-space: nowrap;
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
@@ -390,21 +410,20 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 /* Relleno con degradado de marca, como el CRM. El texto blanco tiene 5.2:1
    contra el extremo claro del degradado. */
 button.primary, .btn.primary {
-  background: linear-gradient(135deg, var(--brand) 0%, var(--brand-2) 100%);
-  border-color: transparent; color: var(--active-ink);
+  background: var(--tinta); border-color: var(--tinta); color: var(--tinta-texto);
 }
-button.primary:hover:not(:disabled), .btn.primary:hover { filter: brightness(1.12); }
+button.primary:hover:not(:disabled), .btn.primary:hover { background: var(--tinta-hover); }
 button.danger { color: var(--bad); }
 button.danger:hover:not(:disabled) { background: var(--bad-bg); border-color: var(--bad); }
-button.mini, .btn.mini { padding: 3px var(--s2); min-height: 0; font-size: var(--t-xs); }
+button.mini, .btn.mini { padding: 5px var(--s3); min-height: 0; font-size: var(--t-xs); }
 .link { color: var(--link); font-weight: 550; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
 .link:hover { text-decoration-color: currentColor; }
 
 label { display: block; font-size: var(--t-sm); font-weight: 600; margin: var(--s4) 0 5px; }
 label .hint, .hint { font-weight: 400; color: var(--ink-3); font-size: var(--t-sm); }
 input[type=text],input[type=email],input[type=number],input[type=time],input[type=password],select,textarea {
-  width: 100%; padding: 8px var(--s3); min-height: 40px;
-  border: 1px solid var(--line-2); border-radius: var(--r);
+  width: 100%; padding: 9px var(--s3); min-height: 42px;
+  border: 1px solid var(--campo); border-radius: var(--r);
   font: inherit; background: var(--surface); color: var(--ink);
   transition: border-color var(--dur-fast) var(--ease);
 }
@@ -483,7 +502,7 @@ input[type=range] { width: 100%; accent-color: var(--brand-2); min-height: 0; pa
 
 input[type=file] {
   width:100%; padding: var(--s2); font: inherit; font-size: var(--t-sm);
-  border: 1px dashed var(--line-2); border-radius: var(--r-sm);
+  border: 1px dashed var(--campo); border-radius: var(--r-sm);
   background: var(--raised); color: var(--ink-2);
 }
 
@@ -510,18 +529,17 @@ input[type=file] {
 .sub { color: var(--ink-3); font-size: var(--t-sm); margin: 2px 0 var(--s5); }
 
 /* ═══════════════════════════════════════════════════ responsive */
-@media (max-width: 900px) {
-  .shell { grid-template-columns: 1fr; }
-  .side {
-    position: static; height: auto; flex-direction: row; align-items: center;
-    gap: var(--s2); border-right: 0; border-bottom: 1px solid var(--line);
-    overflow-x: auto; padding-right: var(--s3);
-  }
-  .mark { padding: var(--s3) var(--s4); }
-  .side nav { flex-direction: row; padding: 0; gap: var(--s1); }
-  .side nav .group, .side-foot { display: none; }
-  .side nav a { white-space: nowrap; }
-  .bar, .wrap { padding-left: var(--s4); padding-right: var(--s4); }
+@media (max-width: 1300px) { .yo .quien p { display: none; } }
+@media (max-width: 1000px) {
+  .cab { grid-template-columns: 1fr auto; }
+  .capsula { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; overflow-x: auto; }
+  .yo .quien { display: none; }
+}
+@media (max-width: 700px) {
+  .app { padding-left: 0; }
+  .banda { display: none; }
+  .cab, .col { padding-inline: var(--s4); }
+  .bar h1 { font-size: 30px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -537,49 +555,50 @@ select option { background: var(--surface); color: var(--ink); }
 .quien p { margin: 0; min-width: 0; font-size: var(--t-sm); color: var(--ink-2); overflow-wrap: anywhere; line-height: 1.3; }
 .quien p span { display: block; font-size: var(--t-xs); color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
 .avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-  background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff;
-  font-family: var(--font-titulo); font-weight: 700; font-size: var(--t-base); }
+  background: var(--brand); color: #fff;
+  font-family: var(--font-titulo); font-weight: 800; font-size: var(--t-base); }
 button.quiet { border-color: transparent; background: transparent; color: var(--ink-3); }
 button.quiet:hover:not(:disabled) { background: var(--active-soft); color: var(--ink); }
 
-/* Botón de tema */
-.theme-toggle { width: 100%; margin-bottom: var(--s2); }
-
 /* ══════════════════════════════════════════ dentro del CRM (iframe)
-   El CRM ya trae su propia barra lateral: repetir la de acá dejaría dos
-   columnas de navegación. Se pasa a pestañas horizontales arriba y se quita
-   lo que sobra (marca, secciones, sincronizar, tema: el tema lo manda el CRM). */
-html[data-embed] .shell { grid-template-columns: 1fr; }
-html[data-embed] .side {
-  position: sticky; top: 0; z-index: 12; height: auto;
-  flex-direction: row; align-items: center; gap: var(--s2);
-  border-right: 0; border-bottom: 1px solid var(--line);
-  overflow-x: auto; padding: 0 var(--s4);
-}
-html[data-embed] .mark, html[data-embed] .side nav .group,
-html[data-embed] .side-foot { display: none; }
-html[data-embed] .side nav { flex-direction: row; padding: var(--s2) 0; gap: var(--s1); }
-html[data-embed] .side nav a { white-space: nowrap; }
-html[data-embed] .bar { position: static; }
-html[data-embed] { scroll-padding-top: 64px; }
-html[data-embed] .section { scroll-margin-top: 64px; }
+   El CRM ya trae su propia barra y su marca: acá queda solo la cápsula de secciones,
+   sin banda azul, sin logo y sin selector de tema (lo manda el CRM por ?theme=). */
+html[data-embed] .app { padding-left: 0; }
+html[data-embed] .banda, html[data-embed] .marca-app, html[data-embed] .tema,
+html[data-embed] .yo { display: none; }
+html[data-embed] .cab { grid-template-columns: 1fr; justify-items: center; padding-top: var(--s4); }
+html[data-embed] .capsula { grid-column: 1; grid-row: 1; max-width: 100%; overflow-x: auto; }
+html[data-embed] .bar { padding-top: var(--s5); }
+html[data-embed] .bar h1 { font-size: 30px; }
 html[data-embed] body { background: var(--paper); }
 
 /* ══════════════════════════════════════════ ingreso */
-.entrada { min-height: 100dvh; display: grid; place-items: center; padding: var(--s5);
-  background:
-    radial-gradient(60rem 30rem at 15% -10%, rgba(37, 99, 235, 0.22), transparent 60%),
-    radial-gradient(50rem 30rem at 100% 110%, rgba(124, 58, 237, 0.14), transparent 60%),
-    var(--paper); }
-:root[data-theme="light"] .entrada { background:
-    radial-gradient(60rem 30rem at 15% -10%, rgba(37, 99, 235, 0.12), transparent 60%), var(--paper); }
-.entrada-caja { width: min(100%, 400px); background: var(--surface); border: 1px solid var(--line);
-  border-radius: var(--r-card); padding: var(--s7) var(--s6) var(--s6); box-shadow: var(--float); }
-.entrada-marca { display: flex; align-items: center; gap: var(--s3); margin-bottom: var(--s6);
-  font-family: var(--font-titulo); font-weight: 700; font-size: var(--t-lg); letter-spacing: -0.02em; }
-.entrada h1 { font-size: var(--t-xl); font-weight: 700; letter-spacing: -0.025em; margin: 0 0 var(--s2); }
+/* Como la entrada de la Agencia: a la izquierda el azul Santa Rosa con el mensaje, a la derecha el formulario. */
+.entrada { min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--paper); }
+.entrada-hero {
+  background-color: var(--entrada-hero); color: #fff; padding: var(--s8) var(--s7);
+  display: flex; flex-direction: column; justify-content: space-between;
+  border-radius: 0 56px 56px 0;
+  background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.entrada-hero .entrada-marca { color: #fff; }
+.entrada-hero h2 { font-size: clamp(28px, 3.4vw, 44px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 var(--s4); max-width: 14ch; }
+.entrada-hero p { margin: 0; color: #d6d6f5; max-width: 38ch; font-size: var(--t-md); }
+.entrada-hero small { color: #c9c8f2; }
+.entrada-caja { align-self: center; justify-self: center; width: min(100%, 400px); padding: var(--s7) var(--s6); }
+.entrada-marca { display: flex; align-items: center; gap: var(--s3); font-weight: 800; font-size: var(--t-lg); letter-spacing: -0.025em; }
+.entrada h1 { font-size: var(--t-xl); font-weight: 800; letter-spacing: -0.03em; margin: 0 0 var(--s2); }
 .entrada-sub { color: var(--ink-3); margin: 0 0 var(--s5); font-size: var(--t-sm); }
 .entrada-form label:first-of-type { margin-top: 0; }
-.entrada-pie { color: var(--ink-3); font-size: var(--t-sm); margin: var(--s5) 0 0; padding-top: var(--s4);
-  border-top: 1px solid var(--line); }
+.entrada-pie { color: var(--ink-3); font-size: var(--t-sm); margin: var(--s5) 0 0; padding-top: var(--s4); border-top: 1px solid var(--line); }
 .entrada .notice { margin-bottom: var(--s4); }
+@media (max-width: 860px) {
+  .entrada { grid-template-columns: 1fr; }
+  .entrada-hero { border-radius: 0 0 36px 36px; padding: var(--s6); gap: var(--s5); }
+  .entrada-hero h2 { max-width: none; }
+  .entrada-caja { padding-block: var(--s6); }
+}
+
+.bar .right .btn { background: var(--tinta); border-color: var(--tinta); color: var(--tinta-texto); }
+.bar .right .btn:hover { background: var(--tinta-hover); }

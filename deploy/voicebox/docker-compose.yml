@@ -1,0 +1,42 @@
+# Voicebox (voz clonada) para Callbot — https://github.com/jamiepine/voicebox (MIT)
+#
+# Va APARTE del compose de Callbot a propósito: la imagen es pesada (PyTorch) y
+# tarda en construirse, y si compilarla fallara no debe tumbar el deploy de
+# Callbot. Callbot lo alcanza por la red de su app en Coolify, como
+# http://voicebox:17493, sin publicar ningún puerto al host.
+#
+# En CPU: el guion de la encuesta es texto fijo, se sintetiza una vez por frase y
+# queda en caché; que una frase tarde un minuto no importa, y así no se compite
+# con Hermes por la GPU del servidor.
+#
+#   cd ~/voicebox-callbot && docker compose up -d --build
+#
+# Versión fijada: no se actualiza sola. Para subir de versión se cambia el tag,
+# se prueba una frase en el panel (pestaña Voz) y recién ahí se confía en ella.
+services:
+  voicebox:
+    build: https://github.com/jamiepine/voicebox.git#v0.5.0
+    container_name: voicebox
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - NUMBA_CACHE_DIR=/tmp/numba_cache
+    volumes:
+      - voicebox-data:/app/data                         # perfiles, base de datos y audios de referencia
+      - huggingface-cache:/home/voicebox/.cache/huggingface  # modelos: no se vuelven a bajar
+    networks:
+      - callbot
+    deploy:
+      resources:
+        limits:
+          cpus: "4"
+          memory: 8G
+
+networks:
+  callbot:
+    external: true
+    name: xg5ucgo36sqanypjxpajzyk5   # red de la app callbot en Coolify
+
+volumes:
+  voicebox-data:
+  huggingface-cache:

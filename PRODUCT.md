@@ -47,18 +47,19 @@ de resultados; sí en diagnóstico, que lo lee alguien técnico.
 - **Panel de admin genérico** — pestañas arriba, tarjetas blancas iguales sobre
   gris, tablas sin jerarquía. Es lo que había y es exactamente lo que no se
   quiere.
-- **Un panel que no parezca del mismo sistema que el CRM.** Quien opera pasa de
-  una pantalla a la otra todo el día; que cambie la identidad entre ambas
-  cuesta atención y hace que Callbot se sienta pegado, no integrado.
+- **Un panel que no parezca del mismo sistema que la Agencia IA y los demás tableros.** Quien
+  opera pasa de una pantalla a la otra todo el día; que cambie la identidad entre ambas
+  cuesta atención.
 
 ## Principios
 
-- **La identidad es la del CRM, no una propia.** Mismos tokens (`#111936` de
-  fondo, azul de marca `#1E3A8A`, Inter, bordes finos en vez de sombras), oscuro
-  por defecto y claro como alternativa de primera clase. Comprometido en el azul
-  de marca; el resto contenido. Fuente de verdad: `frontend/src/index.css` del
-  CRM (el `DESIGN.md` de ese repo desactualizó `#0F172A`; el código dice
-  `#111936`). Si el CRM cambia, esto cambia con él.
+- **La identidad es la de la Agencia IA (19/10/2026, a pedido de Croman).** Lienzo claro
+  `#f8f9fc`, tarjetas blancas de 20 px, controles negros en píldora, etiquetas pastel, cápsula
+  de secciones arriba y la banda azul curva a la izquierda (`#242276`). Claro por defecto y
+  oscuro como alternativa de primera clase. Dentro del CRM (iframe) el tema lo manda el CRM por
+  `?theme=` y quedan solo la cápsula y el contenido. Fuente de verdad:
+  `agencia.santarosa.lat` (`src/app/panel/panel.css` del repo `agencia-ia`). Antes fue la del
+  CRM (navy `#111936`, barra lateral): el panel sigue embebido allá, pero ya no se le parece.
 - **El color saturado se reserva para la marca y los estados.** Verde, ámbar y
   rojo significan algo; no se usan para decorar. Las barras son de trazo fino
   para que la que importa no compita con seis más.

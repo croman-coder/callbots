@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#111936">
+<meta name="theme-color" content="#f8f9fc">
 <meta name="robots" content="noindex">
 <link rel="preload" href="/static/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <script>
 /* Mismo criterio de tema que el panel: se resuelve antes de pintar. */
 (function () {
-  var d = document.documentElement, t = "dark";
-  try { t = localStorage.getItem("callbot-tema") || "dark"; } catch (e) {}
+  var d = document.documentElement, t = "light";
+  try { t = localStorage.getItem("callbot-tema") || "light"; } catch (e) {}
   d.setAttribute("data-theme", t === "light" ? "light" : "dark");
 })();
 </script>
@@ -20,11 +20,15 @@
 <link rel="stylesheet" href="/static/panel.css?v={{ css_v }}">
 </head>
 <body class="entrada">
-<main class="entrada-caja" id="main">
-  <div class="entrada-marca">
-    {% include "_marca.html" %}
-    <span translate="no">Callbot</span>
+<aside class="entrada-hero">
+  <div class="entrada-marca">{% include "_marca.html" %}<span translate="no">Callbot</span></div>
+  <div>
+    <h2>La voz del taller, con las respuestas de cada cliente.</h2>
+    <p>Quién hay que volver a llamar, cómo viene la satisfacción y cómo suena el bot, en un solo lugar.</p>
   </div>
+  <small>Santa Rosa Paraguay S.A.</small>
+</aside>
+<main class="entrada-caja" id="main">
   <h1>Ingresá a Callbot</h1>
   <p class="entrada-sub">Usá la misma cuenta de los dashboards de Santa Rosa.</p>
 
