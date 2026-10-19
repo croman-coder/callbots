@@ -46,6 +46,7 @@ from dataclasses import dataclass
 # Roles del CRM que pueden entrar. "calidad" es el que se agrega para este panel;
 # "owner" y "admin" ya existen y ven todo el CRM, así que también ven esto.
 ROLES_PERMITIDOS = frozenset({"calidad", "admin", "owner"})
+_VIAS_DE_SESION = frozenset({"crm", "dashboards"})
 
 COOKIE = "callbot_session"
 TTL_TICKET = 60          # segundos que puede vivir un ticket, como el del simulador
@@ -62,7 +63,7 @@ class Principal:
 
     usuario: str
     rol: str
-    via: str  # "crm" (ticket/sesión) o "basic" (credencial de operación)
+    via: str  # "crm" (ticket del CRM), "dashboards" (cuenta Supabase) o "basic" (credencial de operación)
 
 
 # ---------------------------------------------------------------- primitivas
@@ -170,6 +171,7 @@ def emitir_sesion(
         {
             "u": principal.usuario,
             "rol": principal.rol,
+            "v": principal.via,
             "iat": int(ahora),
             "exp": int(ahora + TTL_SESION),
         },
@@ -194,4 +196,6 @@ def leer_sesion(
     # sesiones viejas con ese rol dejan de valer sin esperar a que venzan.
     if rol not in ROLES_PERMITIDOS or not usuario:
         return None
-    return Principal(usuario=str(usuario), rol=rol, via="crm")
+    # Las sesiones anteriores a esta versión no traen "v": todas eran del CRM.
+    via = payload.get("v") if payload.get("v") in _VIAS_DE_SESION else "crm"
+    return Principal(usuario=str(usuario), rol=rol, via=via)

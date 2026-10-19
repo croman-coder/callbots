@@ -73,6 +73,10 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN}
       CALLBOT_SSO_SECRET: ${CALLBOT_SSO_SECRET:-}
       FRAME_ANCESTORS: ${FRAME_ANCESTORS:-https://crm.santarosa.lat}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      LOGIN_DOMINIOS: ${LOGIN_DOMINIOS:-santarosa.com.py}
+      LOGIN_ROLES: ${LOGIN_ROLES:-super_admin:admin,manager:calidad}
       RECORDINGS_DIR: /recordings
       LOG_LEVEL: ${LOG_LEVEL}
       TZ: ${TZ}

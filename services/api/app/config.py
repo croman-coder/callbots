@@ -96,6 +96,18 @@ class Settings(BaseSettings):
     # tanto (ver dialog.py).
     gemini_timeout_seconds: float = 8.0
 
+    # --- Login con la cuenta de los dashboards (Supabase) ---
+    # Es la misma cuenta que usan Meta Ads y el tablero comercial: una persona, un
+    # usuario. La clave anónima es pública por diseño (viaja a todo navegador); lo
+    # que protege los datos es el RLS de Supabase, no esconderla.
+    supabase_url: str = Field("", validation_alias="SUPABASE_URL")
+    supabase_anon_key: str = Field("", validation_alias="SUPABASE_ANON_KEY")
+    # Dominios de correo que pueden entrar (coma). Toda la empresa usa santarosa.com.py.
+    login_dominios: str = Field("santarosa.com.py", validation_alias="LOGIN_DOMINIOS")
+    # Qué rol de los dashboards entra a Callbot y con qué rol. Lo que no figura, no entra:
+    # las encuestas llevan teléfonos de clientes, así que `brand` y `administracion` quedan fuera.
+    login_roles: str = Field("super_admin:admin,manager:calidad", validation_alias="LOGIN_ROLES")
+
     # --- Ollama ---
     ollama_url: str = "http://ollama:11434"
     ollama_model: str = "llama3.1:8b"

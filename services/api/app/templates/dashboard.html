@@ -69,7 +69,7 @@
   {#- Sin encuestas todavía, la celda destacada no puede ser una caja del doble
       de ancho con un guión adentro: es lo más grande de la pantalla y no dice
       nada. Ocupa una sola columna y explica qué falta. -#}
-  <div class="metric {{ 'hero' if avg_score is not none }}
+  <div class="metric t-celeste {{ 'hero' if avg_score is not none }}
               {%- if avg_score is not none and avg_score < satisfactory_min %} is-bad{% endif %}">
     <div class="k">Satisfacción</div>
     {% if avg_score is not none %}
@@ -80,7 +80,7 @@
       <div class="f">Aparece con la primera encuesta completada</div>
     {% endif %}
   </div>
-  <div class="metric">
+  <div class="metric t-menta">
     <div class="k">Respuesta</div>
     {% if contacted %}
       <div class="v">{{ response_rate }}<small> %</small></div>
@@ -90,16 +90,16 @@
       <div class="f">Nadie contactado todavía</div>
     {% endif %}
   </div>
-  <div class="metric">
+  <div class="metric t-lavanda">
     <div class="k">Completadas</div>
     <div class="v">{{ counts.get(TargetStatus.COMPLETED, 0) }}</div>
   </div>
-  <div class="metric">
+  <div class="metric t-amarillo">
     <div class="k">Hoy</div>
     <div class="v">{{ calls_today }}</div>
     <div class="f">llamadas</div>
   </div>
-  <div class="metric">
+  <div class="metric t-durazno">
     <div class="k">En cola</div>
     <div class="v">{{ counts.get(TargetStatus.PENDING, 0) + counts.get(TargetStatus.SCHEDULED, 0) }}</div>
   </div>

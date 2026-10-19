@@ -9,10 +9,11 @@ from __future__ import annotations
 import logging
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from app import sso
+from app import cuentas, sso
+from app.plantillas import templates
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +65,12 @@ def canjear(ticket: str = "", next: str = "/") -> Response:  # noqa: A002 - nomb
         )
 
     respuesta = RedirectResponse(destino_seguro(next), status_code=303)
+    _abrir_sesion(respuesta, principal)
+    log.info("SSO: sesión abierta para %s (%s)", principal.usuario, principal.rol)
+    return respuesta
+
+
+def _abrir_sesion(respuesta: Response, principal: sso.Principal) -> None:
     respuesta.set_cookie(
         sso.COOKIE,
         sso.emitir_sesion(principal),
@@ -74,5 +81,58 @@ def canjear(ticket: str = "", next: str = "/") -> Response:  # noqa: A002 - nomb
         path="/",
     )
     respuesta.headers["Cache-Control"] = "no-store"
-    log.info("SSO: sesión abierta para %s (%s)", principal.usuario, principal.rol)
+
+
+def _pagina_login(request: Request, destino: str, *, error: str = "", correo: str = "", status: int = 200) -> Response:
+    return templates.TemplateResponse(
+        request, "login.html",
+        {"next": destino, "error": error, "correo": correo, "con_crm": sso.habilitado()},
+        status_code=status, headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.get("/login", include_in_schema=False)
+def ver_login(request: Request, next: str = "/") -> Response:  # noqa: A002
+    if not cuentas.habilitado() or not sso.habilitado():
+        raise HTTPException(status_code=404)
+    destino = destino_seguro(next)
+    if sso.leer_sesion(request.cookies.get(sso.COOKIE)):
+        return RedirectResponse(destino, status_code=303)
+    return _pagina_login(request, destino)
+
+
+@router.post("/login", include_in_schema=False)
+def hacer_login(
+    request: Request,
+    correo: str = Form(""),
+    clave: str = Form(""),
+    next: str = Form("/"),  # noqa: A002
+) -> Response:
+    if not cuentas.habilitado() or not sso.habilitado():
+        raise HTTPException(status_code=404)
+    # Solo desde esta misma página: un formulario armado en otro sitio no puede
+    # probar claves en nombre de un visitante.
+    if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        raise HTTPException(status_code=403)
+    destino = destino_seguro(next)
+    origen = (request.headers.get("cf-connecting-ip") or (request.client.host if request.client else ""))
+    try:
+        principal = cuentas.iniciar_sesion(correo, clave, origen=origen)
+    except cuentas.LoginRechazado as e:
+        return _pagina_login(
+            request, destino, error=e.motivo, correo=correo.strip(),
+            status=503 if e.transitorio else 401,
+        )
+    respuesta = RedirectResponse(destino, status_code=303)
+    _abrir_sesion(respuesta, principal)
+    return respuesta
+
+
+@router.post("/logout", include_in_schema=False)
+def salir(request: Request) -> Response:
+    if request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none"):
+        raise HTTPException(status_code=403)
+    respuesta = RedirectResponse("/login" if cuentas.habilitado() else "/", status_code=303)
+    respuesta.delete_cookie(sso.COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+    respuesta.headers["Cache-Control"] = "no-store"
     return respuesta

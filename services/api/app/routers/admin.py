@@ -10,16 +10,15 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from pathlib import Path
 from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
+from app.plantillas import templates
 from app.db import get_db
 from app.deps import require_admin
 from app.routers.simulator import emitir_ticket
@@ -42,7 +41,6 @@ from app.models import (
 
 log = logging.getLogger(__name__)
 
-templates = Jinja2Templates(directory=str(Path(__file__).parent.parent / "templates"))
 
 router = APIRouter(tags=["panel"], dependencies=[Depends(require_admin)])
 

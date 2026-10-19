@@ -7,7 +7,7 @@ import secrets
 
 from fastapi import Header, HTTPException, Request, status
 
-from app import sso
+from app import cuentas, sso
 from app.config import settings
 from app.sso import Principal
 
@@ -19,6 +19,23 @@ class SesionRequerida(Exception):
     bloquean los navegadores, así que un 401 con `WWW-Authenticate` solo deja
     una pantalla en blanco. Acá se muestra qué hacer.
     """
+
+
+class IrALogin(Exception):
+    """Un navegador pidió una página sin sesión: se lo lleva al formulario de ingreso."""
+
+    def __init__(self, destino: str) -> None:
+        self.destino = destino
+
+
+def _es_navegacion(request: Request) -> bool:
+    """¿Una persona abriendo una página, y no un script o curl?"""
+    if request.method != "GET":
+        return False
+    dest = request.headers.get("sec-fetch-dest")
+    if dest is not None:
+        return dest == "document"
+    return "text/html" in request.headers.get("accept", "")
 
 
 # Secciones que el rol "calidad" no ve. Diagnóstico expone detalles de
@@ -74,6 +91,9 @@ def require_admin(request: Request) -> Principal:
     if principal is None:
         if request.headers.get("sec-fetch-dest") == "iframe":
             raise SesionRequerida()
+        if cuentas.habilitado() and _es_navegacion(request):
+            q = request.url.query
+            raise IrALogin(request.url.path + (f"?{q}" if q else ""))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales inválidas",

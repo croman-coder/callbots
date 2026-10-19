@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import log_redaction, sso
+from app import cuentas, log_redaction, sso
 from app.config import settings
-from app.deps import SesionRequerida
+from app.deps import IrALogin, SesionRequerida
 from app.routers import acceso, admin, internal, simulator
 from app.seguridad import CabecerasSeguras, frame_ancestors, origenes_descartados
 
@@ -65,6 +66,13 @@ async def sesion_requerida(request: Request, exc: SesionRequerida) -> HTMLRespon
     )
 
 
+@app.exception_handler(IrALogin)
+async def ir_a_login(request: Request, exc: IrALogin) -> RedirectResponse:
+    return RedirectResponse(
+        "/login?" + urlencode({"next": exc.destino}), status_code=303, headers={"Cache-Control": "no-store"}
+    )
+
+
 @app.get("/health", include_in_schema=False)
 def health() -> JSONResponse:
     """Liveness para el healthcheck de Docker. Sin dependencias externas.
@@ -93,5 +101,9 @@ def on_startup() -> None:
         log.info("Acceso desde el CRM activo | frame-ancestors=%s", frame_ancestors())
     elif settings.sso_secret:
         log.warning("CALLBOT_SSO_SECRET tiene menos de 32 caracteres: el acceso desde el CRM queda DESACTIVADO")
+    if cuentas.habilitado() and sso.habilitado():
+        log.info("Login con cuenta de los dashboards activo | roles=%s", settings.login_roles)
+    elif cuentas.habilitado():
+        log.warning("SUPABASE_URL está puesta pero CALLBOT_SSO_SECRET no (>=32): el login queda DESACTIVADO")
     if settings.admin_password in ("admin", "cambiar_esta_password"):
         log.warning("ADMIN_PASSWORD tiene el valor por default: cambialo en producción")

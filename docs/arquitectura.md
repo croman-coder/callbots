@@ -230,12 +230,13 @@ un martes.
 
 ## Quién entra al panel
 
-Dos puertas, cada una para un tipo de persona:
+Tres puertas, cada una para un tipo de persona:
 
 | | Quién | Cómo | Ve |
 |---|---|---|---|
 | **CRM** | Personal de calidad, y owner/admin del CRM | Pestaña "Calidad": el CRM firma un ticket de 60 s y un solo uso, Callbot lo canjea en `/sso` por una cookie de sesión | Todo menos **Diagnóstico** (rol `calidad`) |
-| **Operación** | Quien administra el sistema | HTTP Basic con `ADMIN_USER` / `ADMIN_PASSWORD`, directo a `callbot.santarosa.lat` | Todo |
+| **Cuenta de los dashboards** | Gerencia y quien administra | Formulario `/login` con el mismo correo y clave de Meta Ads y del tablero comercial (Supabase). El rol sale de `profiles`: `super_admin` → admin, `manager` → calidad; `brand` y `administracion` no entran (`LOGIN_ROLES`) | admin: todo; calidad: todo menos **Diagnóstico** |
+| **Operación** | Script o curl | HTTP Basic con `ADMIN_USER` / `ADMIN_PASSWORD`, directo a `callbot.santarosa.lat` | Todo |
 
 ```
 CRM (servidor)                          Callbot
@@ -252,6 +253,8 @@ Lo que conviene no deshacer:
 - **Ticket y sesión no son intercambiables.** Se firman con llaves derivadas distintas del mismo secreto.
 - **Falla cerrado.** Sin `CALLBOT_SSO_SECRET` (o con menos de 32 caracteres) `/sso` responde 404 y ninguna cookie vale.
   Es el estado por defecto. **Matar todas las sesiones = rotar el secreto.**
+- **El login de dashboards falla cerrado**: sin respuesta del padrón, sin fila en `profiles`, con un rol fuera de `LOGIN_ROLES` o con un correo de otro dominio no entra nadie. El rol se lee con el JWT del propio usuario (RLS), sin clave de servicio. 5 fallos en 10 min bloquean al correo y al origen. Habla con `SUPABASE_URL` (hoy `https://bitrix.santarosa.lat/supabase`, el proxy del tablero comercial): si ese tablero cae, el formulario responde 503 y quedan el CRM y Basic.
+- Una sesión abierta con esta puerta **vive hasta 8 h aunque la cuenta se deshabilite** en los dashboards; rotar `CALLBOT_SSO_SECRET` las cierra todas.
 - **Solo el CRM puede enmarcar el panel.** CSP `frame-ancestors` con `FRAME_ANCESTORS` (por defecto `https://crm.santarosa.lat`).
   Lo que no sea un origen exacto se descarta y se avisa en el log de arranque.
 - **Contrato con el CRM**: el ticket de referencia de `tests/test_sso.py` es el mismo que prueba el CRM

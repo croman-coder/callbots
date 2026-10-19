@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#111936">
+<meta name="robots" content="noindex">
+<link rel="preload" href="/static/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+<script>
+/* Mismo criterio de tema que el panel: se resuelve antes de pintar. */
+(function () {
+  var d = document.documentElement, t = "dark";
+  try { t = localStorage.getItem("callbot-tema") || "dark"; } catch (e) {}
+  d.setAttribute("data-theme", t === "light" ? "light" : "dark");
+})();
+</script>
+<title>Ingresar · Callbot</title>
+<link rel="stylesheet" href="/static/panel.css?v={{ css_v }}">
+</head>
+<body class="entrada">
+<main class="entrada-caja" id="main">
+  <div class="entrada-marca">
+    {% include "_marca.html" %}
+    <span translate="no">Callbot</span>
+  </div>
+  <h1>Ingresá a Callbot</h1>
+  <p class="entrada-sub">Usá la misma cuenta de los dashboards de Santa Rosa.</p>
+
+  {% if error %}
+  <div class="notice bad" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/login" class="entrada-form">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label for="correo">Correo</label>
+    <input id="correo" name="correo" type="email" inputmode="email" autocomplete="username"
+           autocapitalize="none" spellcheck="false" required autofocus
+           placeholder="nombre@santarosa.com.py" value="{{ correo }}">
+    <label for="clave">Clave</label>
+    <input id="clave" name="clave" type="password" autocomplete="current-password" required>
+    <div class="actions">
+      <button type="submit" class="primary" style="width:100%">Ingresar</button>
+    </div>
+  </form>
+
+  {% if con_crm %}
+  <p class="entrada-pie">Si sos de Calidad, abrí la pestaña <strong>Calidad</strong> desde el CRM: ahí no hace falta ingresar.</p>
+  {% endif %}
+</main>
+</body>
+</html>
