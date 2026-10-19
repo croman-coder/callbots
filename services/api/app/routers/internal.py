@@ -101,6 +101,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             voice_pitch=campaign.voice_pitch,
             voice_expressiveness=campaign.voice_expressiveness,
             voice_volume=campaign.voice_volume,
+            voice_profile_id=campaign.voice_profile_id,
             questions=[QuestionOut.model_validate(q) for q in _active_questions(campaign)],
         )
 
@@ -131,6 +132,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
         voice_pitch=campaign.voice_pitch,
         voice_expressiveness=campaign.voice_expressiveness,
         voice_volume=campaign.voice_volume,
+        voice_profile_id=campaign.voice_profile_id,
         questions=[QuestionOut.model_validate(q) for q in questions],
     )
 
@@ -360,6 +362,7 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
                     "pitch": campaign.voice_pitch,
                     "expressiveness": campaign.voice_expressiveness,
                     "volume": campaign.voice_volume,
+                    "profile_id": campaign.voice_profile_id or "",
                 },
                 "texts": limpios,
             }

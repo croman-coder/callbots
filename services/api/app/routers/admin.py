@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus, urlencode
@@ -912,9 +913,10 @@ def update_campaign_voice(
     voice_pitch: float = Form(1.0),
     voice_expressiveness: float = Form(0.667),
     voice_volume: float = Form(1.0),
+    voice_profile_id: str = Form(""),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
-    """Guarda solo la modulación, desde la página de Voz.
+    """Guarda la voz y su modulación, desde la página de Voz.
 
     Los mismos controles están en el detalle de la campaña, pero ahí quedan
     abajo del guion y nadie los encuentra: el lugar donde uno busca cómo suena
@@ -928,6 +930,12 @@ def update_campaign_voice(
     campaign.voice_pitch = min(max(voice_pitch, 0.7), 1.4)
     campaign.voice_expressiveness = min(max(voice_expressiveness, 0.0), 1.5)
     campaign.voice_volume = min(max(voice_volume, 0.2), 1.5)
+
+    # "" = la del servidor, "piper" = Piper a propósito, o el id de un perfil de Voicebox.
+    perfil = voice_profile_id.strip()
+    if perfil and perfil != "piper" and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", perfil):
+        return _redirect(f"/voices?error={quote_plus('Voz inválida')}")
+    campaign.voice_profile_id = perfil or None
     db.commit()
 
     return _redirect(f"/voices?ok=Voz+actualizada+en+{quote_plus(campaign.name)}")

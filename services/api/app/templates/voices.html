@@ -34,6 +34,28 @@
       <span class="pill {{ 'completed' if c.is_active else 'no_answer' }}">{{ "activa" if c.is_active else "pausada" }}</span>
     </div>
 
+    {#- Qué voz habla en esta campaña. Vacío = la del servidor. Se aplica en la próxima llamada, pero la
+        primera vez que se elige una voz clonada hay que precalentar sus frases (se hace sola al reiniciar
+        el voice-agent): hasta entonces habla Piper de respaldo. -#}
+    <div class="row">
+      <div>
+        <label for="vp-{{ c.id }}">Voz</label>
+        <select id="vp-{{ c.id }}" name="voice_profile_id">
+          <option value="" {% if not c.voice_profile_id %}selected{% endif %}>
+            Por defecto del servidor{% if active %} ({{ active.name }}){% else %} (Piper){% endif %}
+          </option>
+          <option value="piper" {% if c.voice_profile_id == 'piper' %}selected{% endif %}>Piper (voz genérica)</option>
+          {% for p in profiles %}
+          <option value="{{ p.id }}" {% if c.voice_profile_id == p.id %}selected{% endif %}>{{ p.name }}{% if p.voice_type %} · {{ p.voice_type }}{% endif %}</option>
+          {% endfor %}
+          {% if c.voice_profile_id and c.voice_profile_id != 'piper' and not (profiles | selectattr('id', 'equalto', c.voice_profile_id) | list) %}
+          <option value="{{ c.voice_profile_id }}" selected>{{ c.voice_profile_id }} (no está en Voicebox)</option>
+          {% endif %}
+        </select>
+        <p class="hint">{% if configured %}Perfiles de Voicebox: se clonan abajo.{% else %}Sin Voicebox solo hay Piper.{% endif %}</p>
+      </div>
+    </div>
+
     <div class="row">
       <div class="slider">
         <div class="top">

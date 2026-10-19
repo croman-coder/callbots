@@ -107,6 +107,7 @@ async def prewarm_tts() -> None:
                 pitch=float(v.get("pitch", 1.0)),
                 expressiveness=float(v.get("expressiveness", 0.667)),
                 volume=float(v.get("volume", 1.0)),
+                profile_id=str(v.get("profile_id") or ""),
             )
             generated += await tts.warm_up(grupo.get("texts", []), params)
         log.info("TTS listo: %d frases nuevas, %d ya cacheadas", generated, total - generated)
@@ -129,8 +130,9 @@ async def main() -> None:
 
     addresses = ", ".join(str(s.getsockname()) for s in server.sockets)
     log.info("AudioSocket escuchando en %s", addresses)
-    if config.voicebox_enabled:
-        tts_desc = f"voicebox({config.voicebox_engine}, perfil {config.voicebox_profile_id[:8]}…)"
+    if config.voicebox_url:
+        por_defecto = f"perfil {config.voicebox_profile_id[:8]}…" if config.voicebox_profile_id else "Piper por defecto"
+        tts_desc = f"voicebox({config.voicebox_engine}; {por_defecto}; la voz se elige por campaña)"
     else:
         tts_desc = f"piper({config.piper_voice})"
 

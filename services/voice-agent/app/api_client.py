@@ -50,6 +50,7 @@ class Script:
     voice_pitch: float
     voice_expressiveness: float
     voice_volume: float
+    voice_profile_id: str
     questions: list[Question]
 
     @property
@@ -118,6 +119,7 @@ class ApiClient:
             voice_pitch=float(data.get("voice_pitch", 1.0)),
             voice_expressiveness=float(data.get("voice_expressiveness", 0.667)),
             voice_volume=float(data.get("voice_volume", 1.0)),
+            voice_profile_id=str(data.get("voice_profile_id") or ""),
             campaign_id=data["campaign_id"],
             campaign_name=data["campaign_name"],
             contact_name=data.get("contact_name"),

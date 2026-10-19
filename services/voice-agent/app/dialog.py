@@ -76,6 +76,7 @@ def voz_de(script: Script) -> tts.VoiceParams:
         pitch=script.voice_pitch,
         expressiveness=script.voice_expressiveness,
         volume=script.voice_volume,
+        profile_id=script.voice_profile_id,
     )
 
 

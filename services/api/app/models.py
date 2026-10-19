@@ -112,6 +112,9 @@ class Campaign(Base):
         Float, default=0.667, nullable=False
     )
     voice_volume: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    # Qué voz usa esta campaña. Vacío = la del servidor (VOICEBOX_PROFILE_ID, o Piper si no
+    # hay); "piper" = Piper a propósito; otro valor = el id de un perfil de Voicebox.
+    voice_profile_id: Mapped[str | None] = mapped_column(String(64))
 
     # --- Guion ---
     intro_script: Mapped[str] = mapped_column(

@@ -43,6 +43,7 @@ class SurveyScript(BaseModel):
     voice_pitch: float = 1.0
     voice_expressiveness: float = 0.667
     voice_volume: float = 1.0
+    voice_profile_id: str | None = None
     questions: list[QuestionOut]
 
 

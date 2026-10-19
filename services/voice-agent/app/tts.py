@@ -57,9 +57,19 @@ class VoiceParams:
     pitch: float = 1.0            # 1 = normal, >1 más agudo
     expressiveness: float = 0.667  # noise_scale de Piper
     volume: float = 1.0
+    # Qué voz: "" = la del servidor (VOICEBOX_PROFILE_ID, o Piper si no hay), "piper" = Piper
+    # a propósito, otro valor = el id de un perfil de Voicebox. Es de la campaña.
+    profile_id: str = ""
 
     def clave(self) -> str:
         return f"{self.speed:.3f}/{self.pitch:.3f}/{self.expressiveness:.3f}/{self.volume:.3f}"
+
+
+def perfil_de_voicebox(params: "VoiceParams") -> str | None:
+    """El perfil de Voicebox que habla en esta campaña, o None si habla Piper."""
+    if not config.voicebox_url or params.profile_id == "piper":
+        return None
+    return params.profile_id or config.voicebox_profile_id or None
 
 
 DEFAULT_PARAMS = VoiceParams()
@@ -117,10 +127,9 @@ def _cache_key(text: str, params: VoiceParams) -> str:
     Sin los parámetros acá, subir la velocidad en el panel seguiría
     reproduciendo el audio viejo hasta que alguien borre el caché a mano.
     """
-    seed = (
-        f"{config.tts_engine}|{config.voicebox_profile_id}|{config.piper_voice}"
-        f"|{params.clave()}|{text}"
-    )
+    perfil = perfil_de_voicebox(params)
+    motor = f"voicebox:{perfil}:{config.voicebox_engine}" if perfil else "piper"
+    seed = f"{motor}|{config.piper_voice}|{params.clave()}|{text}"
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
 
 
@@ -156,10 +165,10 @@ def _write_cache(text: str, pcm: bytes, params: VoiceParams) -> None:
 # ---------------------------------------------------------------------------
 # Motor 1: Voicebox (voz clonada)
 # ---------------------------------------------------------------------------
-async def _voicebox_synthesize(text: str, timeout: float) -> bytes:
+async def _voicebox_synthesize(text: str, timeout: float, perfil: str) -> bytes:
     """POST /generate/stream devuelve el WAV directo, sin pasar por disco."""
     payload = {
-        "profile_id": config.voicebox_profile_id,
+        "profile_id": perfil,
         "text": text,
         "language": config.voicebox_language,
         "engine": config.voicebox_engine,
@@ -186,7 +195,7 @@ def load_voice() -> None:
 
     if not os.path.exists(config.piper_model_path):
         message = f"No está el modelo de Piper en {config.piper_model_path}"
-        if config.voicebox_enabled:
+        if config.voicebox_url:
             log.warning("%s. Sin respaldo si voicebox falla.", message)
             return
         raise FileNotFoundError(f"{message}\nDescargalo con: ./scripts/download_models.sh")
@@ -275,10 +284,11 @@ async def synthesize(
         return cached
 
     pcm = b""
-    if config.voicebox_enabled:
+    perfil = perfil_de_voicebox(params)
+    if perfil:
         try:
             pcm = await _voicebox_synthesize(
-                text, timeout or config.voicebox_call_timeout
+                text, timeout or config.voicebox_call_timeout, perfil
             )
         except (httpx.HTTPError, ValueError, wave.Error) as exc:
             log.warning("Voicebox no pudo sintetizar %r: %s", text[:50], exc)
@@ -286,7 +296,7 @@ async def synthesize(
     if not pcm:
         # Piper es sincrónico: a un thread, que el event loop atiende otras llamadas
         pcm = await asyncio.to_thread(_piper_synthesize, text, params)
-        if pcm and config.voicebox_enabled:
+        if pcm and perfil:
             # Respaldo: no se cachea. Si se guardara, la primera vez que voicebox
             # esté caído esa frase quedaría con voz de Piper para siempre.
             _memory_cache[clave_memoria] = pcm
