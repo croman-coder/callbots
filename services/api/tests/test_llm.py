@@ -45,6 +45,7 @@ def test_el_pedido_lleva_la_clave_en_cabecera_y_nunca_en_la_url(monkeypatch):
     assert "sk-ant" not in str(req.url)
     cuerpo = json.loads(req.content)
     assert cuerpo["model"] == "claude-haiku-5-5" and cuerpo["system"] == "Sos un bot."
+    assert "temperature" not in cuerpo  # los modelos Claude 5 la rechazan con 400
     assert cuerpo["max_tokens"] == 50 and cuerpo["messages"] == [{"role": "user", "content": "¿Qué hora es?"}]
 
 

@@ -7,6 +7,9 @@ Habla directo con la API de Messages con httpx, como el resto del proyecto: no
 vale sumar el SDK por dos llamadas. La clave va en cabecera (`x-api-key`); httpx
 loguea la URL completa de cada request y una clave por query terminaría en el log.
 
+Sin `temperature`: los modelos Claude 5 la rechazan con un 400 ("deprecated for this
+model"), y un 400 acá significaba que el bot jamás usara el LLM sin que nada avisara.
+
 Nunca lanza: devuelve None si no hay clave, si tarda de más o si falla, y quien
 llama usa su respaldo (la frase fija en llamada; las reglas en el análisis).
 """
@@ -31,7 +34,7 @@ def is_configured() -> bool:
     return bool(settings.anthropic_api_key.strip())
 
 
-def _request(system: str, user: str, max_tokens: int, temperature: float) -> tuple[dict[str, str], dict[str, Any]]:
+def _request(system: str, user: str, max_tokens: int) -> tuple[dict[str, str], dict[str, Any]]:
     headers = {
         "x-api-key": settings.anthropic_api_key,
         "anthropic-version": VERSION,
@@ -40,7 +43,6 @@ def _request(system: str, user: str, max_tokens: int, temperature: float) -> tup
     body = {
         "model": settings.llm_model,
         "max_tokens": max_tokens,
-        "temperature": temperature,
         "system": system,
         "messages": [{"role": "user", "content": user}],
     }
@@ -58,10 +60,10 @@ def _text(data: Any) -> str | None:
     return texto or None
 
 
-async def complete(system: str, user: str, *, max_tokens: int = 200, temperature: float = 0.4) -> str | None:
+async def complete(system: str, user: str, *, max_tokens: int = 200) -> str | None:
     if not is_configured():
         return None
-    headers, body = _request(system, user, max_tokens, temperature)
+    headers, body = _request(system, user, max_tokens)
     try:
         async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
             r = await client.post(ENDPOINT, headers=headers, json=body)
@@ -77,10 +79,10 @@ async def complete(system: str, user: str, *, max_tokens: int = 200, temperature
     return None
 
 
-def complete_sync(system: str, user: str, *, max_tokens: int = 500, temperature: float = 0.1) -> str | None:
+def complete_sync(system: str, user: str, *, max_tokens: int = 500) -> str | None:
     if not is_configured():
         return None
-    headers, body = _request(system, user, max_tokens, temperature)
+    headers, body = _request(system, user, max_tokens)
     try:
         r = httpx.post(ENDPOINT, headers=headers, json=body, timeout=settings.llm_analysis_timeout_seconds)
         r.raise_for_status()

@@ -90,7 +90,7 @@ async def reply(
 
     if llm.is_configured():
         # Un máximo de tokens corto de verdad: esto se sintetiza y se dice por teléfono.
-        texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200, temperature=0.4)
+        texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200)
         return _acortar(texto)
 
     payload = {
