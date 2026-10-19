@@ -62,7 +62,12 @@ class VoiceParams:
     profile_id: str = ""
 
     def clave(self) -> str:
-        return f"{self.speed:.3f}/{self.pitch:.3f}/{self.expressiveness:.3f}/{self.volume:.3f}"
+        # La voz va en la clave: dos campañas con la misma modulación y distinta voz no pueden
+        # compartir el audio en memoria.
+        return (
+            f"{self.speed:.3f}/{self.pitch:.3f}/{self.expressiveness:.3f}/{self.volume:.3f}"
+            f"/{self.profile_id}"
+        )
 
 
 def perfil_de_voicebox(params: "VoiceParams") -> str | None:
@@ -309,7 +314,12 @@ async def synthesize(
 
     pcm = b""
     perfil = perfil_de_voicebox(params)
-    if perfil:
+    # En llamada (sin timeout explícito) hay un cliente escuchando: una frase que todavía no
+    # está cacheada con la voz de Voicebox no se espera, habla Piper al instante y la voz buena
+    # se genera en segundo plano para la próxima. Esperar acá eran hasta 8 s de silencio por frase.
+    if perfil and timeout is None:
+        _encolar(text, params)
+    elif perfil:
         try:
             pcm = await _voicebox_synthesize(
                 text, timeout or config.voicebox_call_timeout, perfil
@@ -321,9 +331,8 @@ async def synthesize(
         # Piper es sincrónico: a un thread, que el event loop atiende otras llamadas
         pcm = await asyncio.to_thread(_piper_synthesize, text, params)
         if pcm and perfil:
-            # Respaldo: no se cachea. Si se guardara, la primera vez que voicebox
-            # esté caído esa frase quedaría con voz de Piper para siempre.
-            _memory_cache[clave_memoria] = pcm
+            # Respaldo: no se cachea, ni en disco ni en memoria. Si se guardara, esa frase
+            # quedaría con voz de Piper para siempre (y en memoria taparía al precalentado).
             return pcm
 
     if not pcm:
@@ -333,6 +342,46 @@ async def synthesize(
     _memory_cache[clave_memoria] = pcm
     _write_cache(text, pcm, params)
     return pcm
+
+
+# ---------------------------------------------------------------------------
+# Generación en segundo plano
+# ---------------------------------------------------------------------------
+_MAX_EN_COLA = 50
+_en_cola: dict[tuple[str, str], tuple[str, VoiceParams]] = {}
+_tarea: asyncio.Task | None = None
+
+
+def _encolar(text: str, params: VoiceParams) -> None:
+    """Pide generar `text` con la voz de Voicebox sin esperar. Una frase por vez, sin repetidas."""
+    global _tarea
+    clave = (text, params.clave())
+    if clave in _en_cola or len(_en_cola) >= _MAX_EN_COLA:
+        return
+    _en_cola[clave] = (text, params)
+    if _tarea is None or _tarea.done():
+        _tarea = asyncio.create_task(_vaciar_cola())
+
+
+async def _vaciar_cola() -> None:
+    while _en_cola:
+        clave, (text, params) = next(iter(_en_cola.items()))
+        try:
+            await warm_up([text], params)
+        except Exception:  # noqa: BLE001 - el segundo plano nunca baja el servicio
+            log.exception("Falló la generación en segundo plano de %r", text[:50])
+        finally:
+            _en_cola.pop(clave, None)
+
+
+def precalentar_en_segundo_plano(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> None:
+    """Encola lo que falte del guion de una campaña, sin bloquear la llamada que lo pidió."""
+    if not perfil_de_voicebox(params):
+        return
+    for t in dict.fromkeys(texts):
+        t = (t or "").strip()
+        if t and (t, params.clave()) not in _memory_cache and _read_cache(t, params) is None:
+            _encolar(t, params)
 
 
 async def warm_up(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> int:

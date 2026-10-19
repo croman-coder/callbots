@@ -58,10 +58,10 @@ async def handle_connection(
             await socket.hangup()
             return
 
-        # Red de seguridad: si la campaña se editó después del arranque, acá se
-        # sintetiza lo que falte. Con el precalentado de arranque hecho, esto
-        # normalmente es un no-op y no agrega latencia.
-        await tts.warm_up(script.all_prompts, voz_de(script))
+        # Red de seguridad: si la campaña se editó después del arranque, lo que falte se
+        # genera en segundo plano. NO se espera: con voz de Voicebox una frase tarda decenas
+        # de segundos y el cliente ya está en la línea; mientras tanto habla Piper.
+        tts.precalentar_en_segundo_plano(script.all_prompts, voz_de(script))
 
         if not script.demo:
             try:
@@ -83,22 +83,25 @@ async def handle_connection(
         log.info("Conexión cerrada (%d activas)", _active_calls)
 
 
-async def prewarm_tts() -> None:
+async def prewarm_tts(primera_vez: bool = True) -> int:
     """Sintetiza el guion de todas las campañas activas antes de atender llamadas.
 
     Con voz clonada esto puede tardar minutos la primera vez. Corre acá, con el
     servicio recién levantado y nadie en la línea, y queda cacheado en disco:
-    los reinicios siguientes son instantáneos.
+    los reinicios siguientes son instantáneos. Se repite cada pocos minutos (ver
+    `prewarm_loop`) para que elegir otra voz en el panel no obligue a reiniciar.
     """
     api = ApiClient()
     try:
         grupos = await api.get_all_prompts()
         total = sum(len(g.get("texts", [])) for g in grupos)
         if not total:
-            log.info("No hay campañas activas: nada que precalentar")
-            return
+            if primera_vez:
+                log.info("No hay campañas activas: nada que precalentar")
+            return 0
 
-        log.info("Precalentando TTS: %d frases (motor=%s)...", total, config.tts_engine)
+        if primera_vez:
+            log.info("Precalentando TTS: %d frases (motor=%s)...", total, config.tts_engine)
         generated = 0
         for grupo in grupos:
             v = grupo.get("voice") or {}
@@ -110,9 +113,28 @@ async def prewarm_tts() -> None:
                 profile_id=str(v.get("profile_id") or ""),
             )
             generated += await tts.warm_up(grupo.get("texts", []), params)
-        log.info("TTS listo: %d frases nuevas, %d ya cacheadas", generated, total - generated)
+        if primera_vez or generated:
+            log.info("TTS listo: %d frases nuevas, %d ya cacheadas", generated, total - generated)
+        return generated
     finally:
         await api.aclose()
+
+
+PRECALENTADO_CADA_SEGUNDOS = 120
+
+
+async def prewarm_loop() -> None:
+    """Precalienta al arrancar y después cada 2 minutos: lo ya cacheado se saltea sin costo."""
+    primera = True
+    while True:
+        try:
+            await prewarm_tts(primera)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - la API puede estar reiniciándose; se reintenta
+            log.exception("Falló el precalentado del TTS")
+        primera = False
+        await asyncio.sleep(PRECALENTADO_CADA_SEGUNDOS)
 
 
 async def main() -> None:
@@ -122,7 +144,7 @@ async def main() -> None:
 
     # No bloquea el arranque: el servidor acepta llamadas mientras precalienta.
     # Lo que todavía no esté cacheado cae al respaldo de Piper por timeout.
-    prewarm = asyncio.create_task(prewarm_tts())
+    prewarm = asyncio.create_task(prewarm_loop())
 
     server = await asyncio.start_server(
         handle_connection, config.listen_host, config.listen_port

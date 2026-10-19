@@ -123,6 +123,9 @@ test-api: ## Pruebas de la API (acceso desde el CRM, cabeceras). Necesita uv
 	cd services/api && { [ -d .venv ] || uv venv -q .venv --python 3.12; } && uv pip install -q --python .venv/bin/python -r requirements-dev.txt \
 		&& .venv/bin/python -m pytest tests -q
 
+test-agent: ## Pruebas del voice-agent (voz por campaña, caché, segundo plano). Necesita uv
+	cd services/voice-agent && uv run -q --with pytest --with numpy --with soxr --with httpx --with pydantic python -m pytest tests -q
+
 test-call: ## Recordatorio de cómo probar la encuesta
 	@echo "Para probar sin llamar a nadie:"
 	@echo "  1. Registrá Linphone/Zoiper:"
