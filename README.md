@@ -231,17 +231,20 @@ Los audios de referencia van en `./voices/`, que **no se versiona**.
 
 ### Puesta en marcha
 
-**1. Levantar Voicebox** (aparte, con su propio compose):
+**1. Levantar Voicebox** (aparte del compose de Callbot a propósito: la imagen es
+pesada y si fallara no debe tumbar el deploy de Callbot). En el servidor:
 
 ```bash
-git clone https://github.com/jamiepine/voicebox.git && cd voicebox && docker compose up -d
+mkdir -p ~/voicebox-callbot && cp deploy/voicebox/docker-compose.yml ~/voicebox-callbot/
+cd ~/voicebox-callbot && docker compose up -d --build   # versión fijada (v0.5.0), en CPU
+docker exec -u root voicebox chown -R voicebox:voicebox /home/voicebox/.cache   # una sola vez
 ```
 
-Queda escuchando en `127.0.0.1:17600`. En el `.env` del callbot:
-
-```bash
-VOICEBOX_URL=http://host.docker.internal:17600
-```
+Queda en la red de la app de Callbot como `http://voicebox:17493` (sin publicar puertos).
+En Coolify: `VOICEBOX_URL=http://voicebox:17493`. Los modelos se bajan desde Voicebox
+(`POST /models/download` con `qwen-tts-1.7B` para clonar y `kokoro` para las voces
+preset). Corre en **CPU**: el guion es texto fijo, se sintetiza una vez por frase y queda
+en caché, así que que una frase tarde 20-90 s no importa y no se compite con Hermes por la GPU.
 
 **2. Grabar la voz de referencia.** 10 a 30 segundos alcanzan: sin ruido de
 fondo, una sola persona, tono conversacional. El clon copia la actitud, no solo
@@ -282,9 +285,15 @@ make warm-tts
 Seguí el avance con `make logs-agent`. Recién cuando termina, las llamadas usan
 la voz clonada sin latencia.
 
-> El perfil activo se lee del `.env` al arrancar el voice-agent, así que
-> cambiar de voz requiere reiniciar ese servicio. El panel te muestra la línea
-> exacta a pegar en cada perfil.
+> **La voz se elige por campaña, desde el panel** (Voz → "Voz"): la de Voicebox que
+> quieras, "Piper" a propósito, o la del servidor (`VOICEBOX_PROFILE_ID`). No hace falta
+> reiniciar: el voice-agent precalienta las frases nuevas cada 2 minutos. **En llamada
+> nunca se espera a Voicebox**: una frase que todavía no está cacheada con la voz elegida
+> la dice Piper al instante y la buena queda lista para la próxima llamada. Elegí la voz
+> y dejala unos minutos antes de llamar (mirá `make logs-agent`: "Precalentado (n/m)").
+>
+> Las voces preset de Voicebox (Kokoro: `ef_dora` mujer, `em_alex` hombre, ambas en
+> español) no necesitan grabación; las clonadas, sí (paso 2).
 
 ### Qué pasa si Voicebox se cae
 

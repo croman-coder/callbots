@@ -93,7 +93,8 @@ El que habla y escucha. No usa la base de datos: todo lo que necesita lo pide
 por HTTP a la API. Así el estado vive en un solo lugar.
 
 - **STT**: faster-whisper `medium` en GPU (`cuda/float16`).
-- **TTS**: Piper (`es_AR-daniela-high`) por defecto, Voicebox si hay voz clonada.
+- **TTS**: Piper (`es_AR-daniela-high`) por defecto; Voicebox (voz clonada o preset) elegida por campaña desde el panel. En llamada nunca se espera a Voicebox: lo no cacheado habla Piper y la voz buena se genera en segundo plano.
+- **LLM**: Claude Haiku (`claude-haiku-5-5`, la misma clave que Santa Rosa Ads) conversa en la llamada y analiza después; sin clave quedan Gemini y Ollama. Las transcripciones se envían a Anthropic.
   El guion se pre-sintetiza al arrancar y queda cacheado en disco: la calidad de
   voz no cuesta latencia durante la llamada.
 - **VAD**: webrtcvad para saber cuándo el cliente dejó de hablar.
