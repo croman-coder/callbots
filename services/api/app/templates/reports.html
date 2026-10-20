@@ -88,6 +88,78 @@
 
 <section class="section">
   <header>
+    <h2>Contactabilidad</h2>
+    <span class="note">Sobre todas las llamadas filtradas · hora de Asunción</span>
+  </header>
+  <div class="metrics">
+    <div class="metric t-celeste">
+      <div class="k">Llamadas</div>
+      <div class="v">{{ contacto.llamadas }}</div>
+    </div>
+    <div class="metric t-menta">
+      <div class="k">Atendieron</div>
+      <div class="v">{{ contacto.tasa_contacto }}<small> %</small></div>
+      <div class="f">{{ contacto.atendidas }} de {{ contacto.llamadas }}</div>
+    </div>
+    <div class="metric t-lavanda">
+      <div class="k">Completaron la encuesta</div>
+      <div class="v">{{ contacto.tasa_completa }}<small> %</small></div>
+      <div class="f">{{ contacto.completas }} de {{ contacto.atendidas }} que atendieron</div>
+    </div>
+    <div class="metric t-amarillo">
+      <div class="k">Mejor horario</div>
+      {% if contacto.mejor_hora %}
+      <div class="v">{{ "%02d" | format(contacto.mejor_hora.hora) }}<small> h</small></div>
+      <div class="f">atiende el {{ contacto.mejor_hora.tasa }} % ({{ contacto.mejor_hora.llamadas }} llamadas)</div>
+      {% else %}
+      <div class="v pending">Sin datos</div>
+      <div class="f">Hace falta al menos 5 llamadas en una misma hora</div>
+      {% endif %}
+    </div>
+  </div>
+  {% if contacto.horas %}
+  <div class="chart">
+    {% for h in contacto.horas %}
+    <div class="chart-row">
+      <div class="lbl">{{ "%02d" | format(h.hora) }}:00 – {{ "%02d" | format(h.hora + 1) }}:00 <span class="muted">· {{ h.llamadas }} llamada{{ "s" if h.llamadas != 1 }}</span>
+        <div class="track"><span class="fill {{ 'ok' if h.tasa >= 60 else 'warn' if h.tasa >= 30 else 'bad' }}" style="width:{{ h.tasa }}%"></span></div>
+      </div>
+      <div class="val">{{ h.tasa }} %<small>atendieron</small></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<section class="section" id="preguntar">
+  <header>
+    <h2>Preguntale a tus llamadas</h2>
+    <span class="note">Claude lee las encuestas filtradas (hasta 200, sin teléfonos) y responde</span>
+  </header>
+  <form method="post" action="/reportes/preguntar#preguntar" class="panel-form">
+    <input type="hidden" name="desde" value="{{ f.desde }}">
+    <input type="hidden" name="hasta" value="{{ f.hasta }}">
+    <input type="hidden" name="campaign_id" value="{{ f.campaign_id or '' }}">
+    <input type="hidden" name="outcome" value="{{ f.outcome }}">
+    {% if f.solo_alertas %}<input type="hidden" name="solo_alertas" value="true">{% endif %}
+    <label for="pregunta">Tu pregunta</label>
+    <textarea id="pregunta" name="pregunta" rows="2" maxlength="500" required
+              placeholder="¿De qué se quejan más los clientes? ¿Qué pregunta tiene peor puntaje y por qué?…">{{ pregunta or "" }}</textarea>
+    <div class="actions">
+      <button type="submit" class="primary">Preguntar</button>
+      <span class="hint">Tarda unos segundos.</span>
+    </div>
+    {% if respuesta %}
+    <div class="notice" role="status" style="margin:var(--s4) 0 0;white-space:pre-line">
+      <strong>Respuesta</strong>{% if usadas %} <span class="muted">· sobre {{ usadas }} llamada{{ "s" if usadas != 1 }}</span>{% endif %}
+      <br>{{ respuesta }}
+    </div>
+    {% endif %}
+  </form>
+</section>
+
+<section class="section">
+  <header>
     <h2>Llamadas</h2>
     <span class="note">Una fila por intento · el detalle por pregunta está en el Excel</span>
   </header>
@@ -106,6 +178,7 @@
             <th scope="col" class="num">Duración</th>
             <th scope="col" class="num">Resp.</th>
             <th scope="col" class="num">Puntaje</th>
+            <th scope="col" class="num" title="Cómo salió la llamada del lado del bot">Calidad</th>
             <th scope="col">Sentimiento</th>
             <th scope="col"><span class="sr-only">Detalle</span></th>
           </tr>
@@ -135,6 +208,12 @@
               {%- if s is not none -%}
                 <strong {% if s < satisfactory_min %}class="score-bad"{% endif %}>{{ s | round(1) }}</strong>
               {%- else -%}—{%- endif -%}
+            </td>
+            {% set q = calidades.get(c.id) %}
+            <td class="num tnum">
+              {%- if q and q.puntaje is not none -%}
+                <span class="{{ 'score-bad' if q.nivel == 'bad' }}" title="{{ q.motivos | join(' · ') }}">{{ q.puntaje }}</span>
+              {%- else -%}<span class="muted">—</span>{%- endif -%}
             </td>
             <td>
               {%- if a and a.sentiment -%}

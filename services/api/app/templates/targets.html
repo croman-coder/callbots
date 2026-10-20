@@ -21,6 +21,9 @@
   {{ request.query_params.get('dup') }} ya estaban, {{ request.query_params.get('mal') }} sin teléfono válido.
 </div>
 {% endif %}
+{% if request.query_params.get('error') %}
+<div class="notice bad" role="alert"><strong>No se cargó el archivo.</strong> {{ request.query_params.get('error') }}</div>
+{% endif %}
 
 <section class="section">
   <header>
@@ -114,7 +117,37 @@
     <span class="note">Una línea por persona</span>
   </header>
 
+  <form method="post" action="/targets/archivo" enctype="multipart/form-data" class="panel-form" style="margin-bottom:var(--s4)">
+    <div class="form-head"><h3>Desde un Excel o un CSV</h3></div>
+    <div class="row">
+      <div>
+        <label for="a-campaign">Campaña</label>
+        <select id="a-campaign" name="campaign_id" required>
+          {% for c in campaigns %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="a-cuando">Cuándo llamar</label>
+        <select id="a-cuando" name="cuando">
+          <option value="ahora">En el próximo horario permitido</option>
+          <option value="espera">Respetando la demora de la campaña</option>
+        </select>
+      </div>
+    </div>
+    <label for="a-archivo">Archivo</label>
+    <input id="a-archivo" type="file" name="archivo" accept=".xlsx,.csv" required>
+    <p class="hint">
+      Sirve la exportación de cualquier sistema: se buscan solas las columnas de teléfono
+      (<code>Teléfono</code>, <code>Celular</code>…) y de nombre (<code>Nombre</code>, <code>Cliente</code>…).
+      Sin encabezados, va teléfono en la primera columna y nombre en la segunda. Hasta 5.000 filas.
+    </p>
+    <div class="actions"><button type="submit" class="primary">Subir y cargar</button></div>
+  </form>
+
   <form method="post" action="/targets" class="panel-form">
+    <div class="form-head"><h3>O pegando la lista</h3></div>
     <div class="row">
       <div>
         <label for="f-campaign">Campaña</label>

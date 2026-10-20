@@ -9,12 +9,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -25,7 +26,7 @@ from app.deps import require_admin
 from app.routers.simulator import emitir_ticket
 from app.bitrix.client import normalize_phone_py
 from app.scheduling import next_call_slot, parse_days, parse_hhmm
-from app.services import voicebox
+from app.services import calidad, contactabilidad, importar, preguntar, voicebox
 from app.services.export import construir_excel
 from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
@@ -488,6 +489,37 @@ def add_targets(
     Los teléfonos se normalizan a E.164 paraguayo, igual que los que vienen
     del sync, así que `0981 123 456` y `+595981123456` son el mismo número.
     """
+    filas = []
+    for linea in lote.splitlines():
+        linea = linea.strip()
+        if not linea:
+            continue
+        partes = [p.strip() for p in linea.replace(";", ",").split(",")]
+        filas.append((partes[0], partes[1] if len(partes) > 1 and partes[1] else None))
+    return _alta_de_destinatarios(db, campaign_id, filas, cuando, "manual")
+
+
+@router.post("/targets/archivo")
+async def add_targets_archivo(
+    campaign_id: int = Form(...),
+    cuando: str = Form("ahora"),
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Carga destinatarios desde un Excel (.xlsx) o un CSV, con o sin encabezados."""
+    contenido = await archivo.read(5 * 1024 * 1024 + 1)
+    if len(contenido) > 5 * 1024 * 1024:
+        return _redirect(f"/targets?error={quote_plus('El archivo supera los 5 MB')}#cargar")
+    try:
+        filas = importar.leer_filas(contenido, archivo.filename or "")
+    except importar.ArchivoInvalido as exc:
+        return _redirect(f"/targets?error={quote_plus(str(exc))}#cargar")
+    return _alta_de_destinatarios(db, campaign_id, filas, cuando, f"archivo {archivo.filename}")
+
+
+def _alta_de_destinatarios(
+    db: Session, campaign_id: int, filas: list[tuple[str, str | None]], cuando: str, origen: str
+) -> RedirectResponse:
     campaign = db.get(Campaign, campaign_id)
     if campaign is None:
         raise HTTPException(404, "Campaña inexistente")
@@ -514,14 +546,9 @@ def add_targets(
     # que un teléfono repetido dentro del mismo pegado se colaba entero.
     en_este_lote: set[str] = set()
 
-    for linea in lote.splitlines():
-        linea = linea.strip()
-        if not linea:
-            continue
-
-        partes = [p.strip() for p in linea.replace(";", ",").split(",")]
-        telefono = normalize_phone_py(partes[0])
-        nombre = partes[1] if len(partes) > 1 and partes[1] else None
+    for crudo, nombre in filas:
+        telefono = normalize_phone_py(crudo)
+        nombre = (nombre or "").strip()[:160] or None
 
         if not telefono:
             invalidos += 1
@@ -563,8 +590,8 @@ def add_targets(
 
     db.commit()
     log.info(
-        "Alta manual en campaña %s: %d creados, %d duplicados, %d inválidos",
-        campaign_id, creados, duplicados, invalidos,
+        "Alta (%s) en campaña %s: %d creados, %d duplicados, %d inválidos",
+        origen, campaign_id, creados, duplicados, invalidos,
     )
     return _redirect(
         f"/targets?campaign_id={campaign_id}&ok={creados}"
@@ -618,8 +645,41 @@ def call_detail(
             "call": call,
             "QuestionType": QuestionType,
             "satisfactory_min": SATISFACTORY_MIN,
+            "calidad": calidad.calidad_de(call),
+            "con_audio": {a.id for a in call.answers if _audio_de(a) is not None},
         },
     )
+
+
+
+
+def _audio_de(answer: Answer) -> Path | None:
+    """La ruta del WAV de una respuesta, solo si existe y está dentro del directorio de grabaciones.
+
+    La ruta viene de la base (la escribe el voice-agent): se valida igual, porque servir un
+    archivo por una ruta guardada sin chequear es leer cualquier archivo del contenedor.
+    """
+    if not answer.audio_path:
+        return None
+    try:
+        ruta = Path(answer.audio_path).resolve()
+        base = Path(settings.recordings_dir).resolve()
+    except (OSError, RuntimeError):
+        return None
+    if base not in ruta.parents or ruta.suffix.lower() != ".wav" or not ruta.is_file():
+        return None
+    return ruta
+
+
+@router.get("/calls/{call_id}/answers/{answer_id}/audio")
+def answer_audio(call_id: int, answer_id: int, db: Session = Depends(get_db)) -> Response:
+    answer = db.get(Answer, answer_id)
+    if answer is None or answer.call_id != call_id:
+        raise HTTPException(404, "Respuesta inexistente")
+    ruta = _audio_de(answer)
+    if ruta is None:
+        raise HTTPException(404, "Esta respuesta no tiene audio guardado")
+    return FileResponse(ruta, media_type="audio/wav", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.post("/calls/{call_id}/reanalyze")
@@ -722,6 +782,61 @@ def reportes(
     page: int = 1,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
+    return _pagina_reportes(request, db, desde, hasta, campaign_id, outcome, solo_alertas, page)
+
+
+@router.post("/reportes/preguntar", response_class=HTMLResponse)
+def reportes_preguntar(
+    request: Request,
+    pregunta: str = Form(...),
+    desde: str = Form(""),
+    hasta: str = Form(""),
+    campaign_id: str = Form(""),
+    outcome: str = Form(""),
+    solo_alertas: bool = Form(False),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Claude Haiku responde sobre las llamadas que muestran los filtros (las más nuevas, hasta 200)."""
+    pregunta = pregunta.strip()[:500]
+    campaign = _entero(campaign_id)
+    condiciones, _ = _filtros_reporte(db, desde or None, hasta or None, campaign, outcome or None, solo_alertas)
+    llamadas = db.scalars(
+        _con_joins(select(CallAttempt), condiciones)
+        .where(CallAttempt.answered_at.is_not(None))
+        .options(
+            selectinload(CallAttempt.target).selectinload(SurveyTarget.campaign),
+            selectinload(CallAttempt.analysis),
+            selectinload(CallAttempt.answers).selectinload(Answer.question),
+        )
+        .order_by(CallAttempt.started_at.desc())
+        .limit(preguntar.MAX_LLAMADAS)
+    ).all()
+    respuesta, usadas = preguntar.preguntar(pregunta, llamadas) if pregunta else (None, 0)
+    return _pagina_reportes(
+        request, db, desde or None, hasta or None, campaign_id or None, outcome or None, solo_alertas, 1,
+        extra={
+            "query_export": urlencode({k: v for k, v in {
+                "desde": desde, "hasta": hasta, "campaign_id": campaign_id, "outcome": outcome,
+                "solo_alertas": "true" if solo_alertas else "",
+            }.items() if v}),
+            "pregunta": pregunta,
+            "respuesta": respuesta or "No se pudo consultar a Claude en este momento. Probá de nuevo en un rato.",
+            "usadas": usadas,
+        },
+    )
+
+
+def _pagina_reportes(
+    request: Request,
+    db: Session,
+    desde: str | None,
+    hasta: str | None,
+    campaign_id: str | None,
+    outcome: str | None,
+    solo_alertas: bool,
+    page: int,
+    extra: dict | None = None,
+) -> HTMLResponse:
     campaign = _entero(campaign_id)
     condiciones, descripcion = _filtros_reporte(
         db, desde, hasta, campaign, outcome, solo_alertas
@@ -753,16 +868,26 @@ def reportes(
         .options(
             selectinload(CallAttempt.target).selectinload(SurveyTarget.campaign),
             selectinload(CallAttempt.analysis),
+            selectinload(CallAttempt.answers),
         )
         .order_by(CallAttempt.started_at.desc())
         .offset((page - 1) * POR_PAGINA)
         .limit(POR_PAGINA)
     ).all()
 
+    # Embudo y mejor horario sobre TODO lo filtrado, no solo la página que se ve.
+    intentos = db.execute(
+        _con_joins(
+            select(CallAttempt.started_at, CallAttempt.answered_at, CallAttempt.outcome), condiciones
+        ).limit(20_000)
+    ).all()
+
     return templates.TemplateResponse(
         request,
         "reports.html",
         {
+            "contacto": contactabilidad.resumen([tuple(i) for i in intentos], settings.timezone),
+            "calidades": {c.id: calidad.calidad_de(c) for c in calls},
             "calls": calls,
             "total": total,
             "page": page,
@@ -787,6 +912,8 @@ def reportes(
             # Para el paginador: los mismos filtros, listos para agregar &page=N
             "query_page": _query_sin(request.query_params, "page"),
             "satisfactory_min": SATISFACTORY_MIN,
+            # Al preguntar (POST) los filtros llegan por formulario: extra trae su query para el export.
+            **(extra or {}),
         },
     )
 

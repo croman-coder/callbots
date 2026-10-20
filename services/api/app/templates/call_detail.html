@@ -43,6 +43,19 @@
   </div>
 </div>
 
+{% if calidad.puntaje is not none %}
+<section class="section">
+  <header>
+    <h2>Cómo salió la llamada</h2>
+    <span class="note">Del lado del bot: si se le entendió al cliente y si la encuesta llegó al final</span>
+  </header>
+  <p class="statement">
+    <span class="pill {{ {'ok':'completed','warn':'partial','bad':'failed'}[calidad.nivel] }}">{{ calidad.puntaje }}/100</span>
+    {% if calidad.motivos %}{{ calidad.motivos | join(" · ") }}.{% else %}Sin repreguntas ni preguntas sin respuesta.{% endif %}
+  </p>
+</section>
+{% endif %}
+
 <section class="section">
   <header>
     <h2>Respuestas</h2>
@@ -60,6 +73,7 @@
             <th scope="col" style="width:130px">Valor</th>
             <th scope="col" class="num" style="width:80px">ASR</th>
             <th scope="col" class="num" style="width:80px">Repreg.</th>
+            <th scope="col" style="width:220px">Audio</th>
           </tr>
         </thead>
         <tbody>
@@ -84,6 +98,13 @@
               {% else %}<span class="muted">—</span>{% endif %}
             </td>
             <td class="num {{ 'muted' if not a.retries_used }}">{{ a.retries_used }}</td>
+            <td>
+              {% if a.id in con_audio %}
+              {#- preload=none: una llamada tiene hasta 6 audios y no tiene sentido bajarlos todos al abrir la página. -#}
+              <audio controls preload="none" src="/calls/{{ call.id }}/answers/{{ a.id }}/audio" style="width:200px;height:32px"
+                     aria-label="Respuesta a la pregunta {{ a.question.position }}"></audio>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
