@@ -201,3 +201,29 @@ def test_el_audio_solo_se_sirve_desde_el_directorio_de_grabaciones(tmp_path, mon
 def test_la_respuesta_no_muestra_markdown():
     assert preguntar.limpiar("Hubo **7 llamadas**.\n## Detalle\n- una") == "Hubo 7 llamadas.\nDetalle\n- una"
     assert preguntar.limpiar(None) is None
+
+
+# ---------------------------------------------------- cerrar el seguimiento
+def test_marcar_atendido_guarda_quien_y_cuando_y_reabrir_lo_limpia(cliente):
+    cli, sesion = cliente
+    analisis = N(call_id=5, followup_done_at=None, followup_done_by=None, followup_note=None)
+    sesion.scalar = lambda *_a, **_k: analisis
+    r = cli.post("/calls/5/followup", data={"nota": "  Lo llamó Pablo, se resolvió  "}, headers=BASIC)
+    assert r.status_code == 303 and r.headers["location"] == "/calls/5"
+    assert analisis.followup_done_at is not None and analisis.followup_done_by == settings.admin_user
+    assert analisis.followup_note == "Lo llamó Pablo, se resolvió"
+
+    cli.post("/calls/5/followup", data={"accion": "reabrir"}, headers=BASIC)
+    assert (analisis.followup_done_at, analisis.followup_done_by, analisis.followup_note) == (None, None, None)
+
+
+def test_desde_el_tablero_vuelve_al_tablero_y_nunca_a_una_url_ajena(cliente):
+    cli, sesion = cliente
+    sesion.scalar = lambda *_a, **_k: N(call_id=5, followup_done_at=None, followup_done_by=None, followup_note=None)
+    assert cli.post("/calls/5/followup", data={"volver": "inicio"}, headers=BASIC).headers["location"] == "/"
+    assert cli.post("/calls/5/followup", data={"volver": "https://malo.example"}, headers=BASIC).headers["location"] == "/calls/5"
+
+
+def test_una_llamada_sin_analisis_da_404(cliente):
+    cli, _ = cliente
+    assert cli.post("/calls/9/followup", headers=BASIC).status_code == 404

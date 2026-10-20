@@ -146,10 +146,18 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     needs_followup = db.scalars(
         select(CallAnalysis)
         .options(selectinload(CallAnalysis.call).selectinload(CallAttempt.target))
-        .where(CallAnalysis.requires_followup.is_(True))
+        .where(CallAnalysis.requires_followup.is_(True), CallAnalysis.followup_done_at.is_(None))
         .order_by(CallAnalysis.created_at.desc())
         .limit(10)
     ).all()
+    pendientes_total = db.scalar(
+        select(func.count(CallAnalysis.id)).where(
+            CallAnalysis.requires_followup.is_(True), CallAnalysis.followup_done_at.is_(None)
+        )
+    ) or 0
+    atendidos_total = db.scalar(
+        select(func.count(CallAnalysis.id)).where(CallAnalysis.followup_done_at.is_not(None))
+    ) or 0
 
     return templates.TemplateResponse(
         request,
@@ -169,6 +177,8 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
             "per_question": per_question,
             "recent_calls": recent_calls,
             "needs_followup": needs_followup,
+            "pendientes_total": pendientes_total,
+            "atendidos_total": atendidos_total,
             "TargetStatus": TargetStatus,
             "satisfactory_min": SATISFACTORY_MIN,
         },
@@ -643,6 +653,7 @@ def call_detail(
         "call_detail.html",
         {
             "call": call,
+            "settings_tz": settings.timezone,
             "QuestionType": QuestionType,
             "satisfactory_min": SATISFACTORY_MIN,
             "calidad": calidad.calidad_de(call),
@@ -680,6 +691,36 @@ def answer_audio(call_id: int, answer_id: int, db: Session = Depends(get_db)) ->
     if ruta is None:
         raise HTTPException(404, "Esta respuesta no tiene audio guardado")
     return FileResponse(ruta, media_type="audio/wav", headers={"Cache-Control": "private, max-age=3600"})
+
+
+@router.post("/calls/{call_id}/followup")
+def cerrar_seguimiento(
+    call_id: int,
+    request: Request,
+    accion: str = Form("atendido"),
+    nota: str = Form(""),
+    volver: str = Form(""),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Marca que alguien ya le devolvió la llamada al cliente (o lo reabre)."""
+    analisis = db.scalar(select(CallAnalysis).where(CallAnalysis.call_id == call_id))
+    if analisis is None:
+        raise HTTPException(404, "Esa llamada no tiene análisis")
+
+    if accion == "reabrir":
+        analisis.followup_done_at = None
+        analisis.followup_done_by = None
+        analisis.followup_note = None
+    else:
+        principal = getattr(request.state, "principal", None)
+        analisis.followup_done_at = datetime.now(timezone.utc)
+        analisis.followup_done_by = (principal.usuario if principal else "")[:160] or None
+        analisis.followup_note = nota.strip()[:1000] or None
+    db.commit()
+
+    # Solo se vuelve a una pantalla de este mismo sitio (nunca a una URL que venga del formulario).
+    destino = f"/calls/{call_id}" if volver != "inicio" else "/"
+    return _redirect(destino)
 
 
 @router.post("/calls/{call_id}/reanalyze")

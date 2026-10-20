@@ -118,7 +118,7 @@ def _hoja_llamadas(wb: Workbook, calls: list[CallAttempt], tz: ZoneInfo) -> None
         "Fecha", "Cliente", "Teléfono", "Campaña",
         "Resultado", "Intento", "Duración (seg)",
         "Puntaje /10", "Conforme", "Sentimiento",
-        "Requiere seguimiento", "Motivo", "Resumen",
+        "Requiere seguimiento", "Motivo", "Seguimiento atendido", "Atendido por", "Resumen",
         "Registro Bitrix", "Ingreso al taller",
     ]
     encabezados += [f"P{q.position}. {q.text[:60]}" for q in ordenadas]
@@ -145,6 +145,8 @@ def _hoja_llamadas(wb: Workbook, calls: list[CallAttempt], tz: ZoneInfo) -> None
             analisis.sentiment if analisis else None,
             ("Sí" if analisis.requires_followup else "No") if analisis else None,
             analisis.followup_reason if analisis else None,
+            _local(analisis.followup_done_at, tz) if analisis and analisis.followup_done_at else None,
+            analisis.followup_done_by if analisis else None,
             analisis.summary if analisis else None,
             f"{target.bitrix_entity_type_id}#{target.bitrix_entity_id}" if target else None,
             _local(target.trigger_at, tz) if target else None,

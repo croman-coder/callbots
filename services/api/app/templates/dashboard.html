@@ -31,8 +31,8 @@
 {% if needs_followup %}
 <section class="urgent">
   <header>
-    <h2>{{ needs_followup | length }} cliente{{ "s" if needs_followup | length != 1 }} para volver a llamar</h2>
-    <span class="note">Puntuaron por debajo de {{ satisfactory_min | round(0) | int }}</span>
+    <h2>{{ pendientes_total }} cliente{{ "s" if pendientes_total != 1 }} para volver a llamar</h2>
+    <span class="note">Puntuaron por debajo de {{ satisfactory_min | round(0) | int }}{% if atendidos_total %} · {{ atendidos_total }} ya atendido{{ "s" if atendidos_total != 1 }}{% endif %}{% if pendientes_total > needs_followup | length %} · se muestran los {{ needs_followup | length }} más nuevos{% endif %}</span>
   </header>
   <div class="tablewrap">
     <div class="scroll">
@@ -55,7 +55,13 @@
                 <span class="score-bad">{{ a.satisfaction_score | round(1) }}</span>
               {% else %}<span class="muted">—</span>{% endif %}
             </td>
-            <td class="num"><a class="link" href="/calls/{{ a.call_id }}">Ver llamada</a></td>
+            <td class="num nowrap">
+              <a class="link" href="/calls/{{ a.call_id }}">Ver llamada</a>
+              <form method="post" action="/calls/{{ a.call_id }}/followup" class="inline" style="margin-left:var(--s2)">
+                <input type="hidden" name="volver" value="inicio">
+                <button type="submit" class="mini" title="Ya le devolvieron la llamada a este cliente">Atendido</button>
+              </form>
+            </td>
           </tr>
           {% endfor %}
         </tbody>

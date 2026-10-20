@@ -137,8 +137,24 @@
           {% endif %}
           <tr><th scope="row">Requiere seguimiento</th>
               <td>{% if call.analysis.requires_followup %}
-                    <span class="pill negativo">sí</span>
+                    {% if call.analysis.followup_done_at %}
+                    <span class="pill positivo">atendido</span>
+                    <span class="sub-line">
+                      {{ call.analysis.followup_done_at.astimezone(settings_tz).strftime("%d/%m/%y %H:%M") }}{% if call.analysis.followup_done_by %} · {{ call.analysis.followup_done_by }}{% endif %}
+                      {% if call.analysis.followup_note %} — {{ call.analysis.followup_note }}{% endif %}
+                    </span>
+                    <form method="post" action="/calls/{{ call.id }}/followup" class="inline">
+                      <input type="hidden" name="accion" value="reabrir">
+                      <button type="submit" class="mini">Reabrir</button>
+                    </form>
+                    {% else %}
+                    <span class="pill negativo">pendiente</span>
                     {% if call.analysis.followup_reason %}<span class="sub-line">{{ call.analysis.followup_reason }}</span>{% endif %}
+                    <form method="post" action="/calls/{{ call.id }}/followup" class="actions" style="margin-top:var(--s2)">
+                      <input type="text" name="nota" maxlength="1000" placeholder="Nota (opcional): qué se le dijo al cliente" aria-label="Nota del seguimiento" style="max-width:340px" autocomplete="off">
+                      <button type="submit" class="primary mini">Marcar atendido</button>
+                    </form>
+                    {% endif %}
                   {% else %}<span class="muted">no</span>{% endif %}</td></tr>
           <tr><th scope="row">Modelo usado</th>
               <td>{% if call.analysis.model_used %}<span class="mono">{{ call.analysis.model_used }}</span>

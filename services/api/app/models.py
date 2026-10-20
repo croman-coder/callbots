@@ -352,6 +352,11 @@ class CallAnalysis(Base):
     topics: Mapped[list | None] = mapped_column(JSON)
     requires_followup: Mapped[bool] = mapped_column(Boolean, default=False)
     followup_reason: Mapped[str | None] = mapped_column(Text)
+    # Quién le devolvió la llamada al cliente. Mientras esté vacío, el cliente sigue en la lista
+    # de "para volver a llamar" del tablero.
+    followup_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    followup_done_by: Mapped[str | None] = mapped_column(String(160))
+    followup_note: Mapped[str | None] = mapped_column(Text)
 
     model_used: Mapped[str | None] = mapped_column(String(80))
     synced_to_bitrix: Mapped[bool] = mapped_column(Boolean, default=False)
