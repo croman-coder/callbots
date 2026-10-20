@@ -227,3 +227,35 @@ def test_desde_el_tablero_vuelve_al_tablero_y_nunca_a_una_url_ajena(cliente):
 def test_una_llamada_sin_analisis_da_404(cliente):
     cli, _ = cliente
     assert cli.post("/calls/9/followup", headers=BASIC).status_code == 404
+
+
+# ------------------------------------------------------------ endurecimiento
+def test_un_post_desde_otro_sitio_con_la_credencial_guardada_se_rechaza(cliente):
+    cli, _ = cliente
+    for sitio in ("cross-site", "same-site"):
+        r = cli.post("/sync-now", headers={**BASIC, "sec-fetch-site": sitio})
+        assert r.status_code == 403, sitio
+    # desde la propia pantalla, o sin la cabecera (curl), pasa
+    assert cli.post("/targets/archivo", data={"campaign_id": "1"}, files={"archivo": ("a.csv", b"")},
+                    headers={**BASIC, "sec-fetch-site": "same-origin"}).status_code != 403
+
+
+def test_un_get_desde_otro_sitio_no_se_bloquea(cliente):
+    cli, _ = cliente
+    # Leer una pantalla no cambia nada; el bloqueo es solo para lo que modifica.
+    assert cli.get("/health", headers={"sec-fetch-site": "cross-site"}).status_code == 200
+
+
+def test_excel_con_zip_bomb_se_rechaza_sin_abrirlo(monkeypatch):
+    monkeypatch.setattr(importar, "MAX_DESCOMPRIMIDO", 1000)
+    datos = _xlsx([["Telefono"]] + [["0981123456"]] * 200)
+    with pytest.raises(importar.ArchivoInvalido, match="demasiado grande"):
+        importar.leer_filas(datos, "bomba.xlsx")
+
+
+def test_limite_de_preguntas_por_hora(monkeypatch):
+    monkeypatch.setattr(preguntar, "_hechas", {})
+    assert all(preguntar.permitir("ana", ahora=100.0 + i) for i in range(preguntar.MAX_PREGUNTAS_POR_HORA))
+    assert not preguntar.permitir("ana", ahora=200.0)         # la 21ª en la hora
+    assert preguntar.permitir("pablo", ahora=200.0)           # otra persona, no se ve afectada
+    assert preguntar.permitir("ana", ahora=100.0 + 3601)      # pasada la hora, vuelve

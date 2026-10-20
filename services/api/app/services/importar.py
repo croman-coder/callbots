@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import unicodedata
+import zipfile
 
 MAX_FILAS = 5000
 
@@ -49,9 +50,25 @@ def _filas_csv(contenido: bytes) -> list[list[str]]:
     return [[_celda(c) for c in fila] for fila in csv.reader(io.StringIO(texto), dialecto)]
 
 
+MAX_DESCOMPRIMIDO = 60 * 1024 * 1024
+MAX_ENTRADAS = 300
+
+
+def _verificar_zip(contenido: bytes) -> None:
+    """Un .xlsx es un zip: uno de 5 MB puede esconder gigas (zip bomb) que se expanden en memoria."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(contenido)) as z:
+            infos = z.infolist()
+    except zipfile.BadZipFile as exc:
+        raise ArchivoInvalido("No se pudo abrir el Excel. ¿Es un .xlsx?") from exc
+    if len(infos) > MAX_ENTRADAS or sum(i.file_size for i in infos) > MAX_DESCOMPRIMIDO:
+        raise ArchivoInvalido("El Excel es demasiado grande por dentro. Guardalo de nuevo o usá un CSV.")
+
+
 def _filas_excel(contenido: bytes) -> list[list[str]]:
     from openpyxl import load_workbook
 
+    _verificar_zip(contenido)
     try:
         libro = load_workbook(io.BytesIO(contenido), read_only=True, data_only=True)
     except Exception as exc:  # noqa: BLE001 - openpyxl lanza de todo con un archivo roto

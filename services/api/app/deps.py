@@ -88,6 +88,18 @@ def require_admin(request: Request) -> Principal:
     """
     principal = sso.leer_sesion(request.cookies.get(sso.COOKIE)) or _credencial_basic(request)
 
+    # Anti-CSRF: una acción que cambia algo solo vale si la pide una pantalla de este mismo sitio.
+    # Sin esto, otra página podría mandar un POST a /targets/6/call-now (o a /sync-now) y el
+    # navegador le adjuntaría la credencial Basic ya guardada. `Sec-Fetch-Site` lo manda todo
+    # navegador actual y un script de otra página no puede cambiarlo; curl y los scripts no lo
+    # mandan y pasan igual (ya tienen que traer la credencial).
+    if (
+        principal is not None
+        and request.method not in ("GET", "HEAD", "OPTIONS")
+        and request.headers.get("sec-fetch-site", "same-origin") not in ("same-origin", "none")
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Pedido de otro sitio")
+
     if principal is None:
         if request.headers.get("sec-fetch-dest") == "iframe":
             raise SesionRequerida()

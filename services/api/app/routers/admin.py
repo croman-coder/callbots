@@ -852,6 +852,13 @@ def reportes_preguntar(
         .order_by(CallAttempt.started_at.desc())
         .limit(preguntar.MAX_LLAMADAS)
     ).all()
+    quien = getattr(getattr(request.state, "principal", None), "usuario", "") or "?"
+    if pregunta and not preguntar.permitir(quien):
+        respuesta, usadas = "Hiciste muchas preguntas seguidas. Probá de nuevo en un rato.", 0
+        return _pagina_reportes(
+            request, db, desde or None, hasta or None, campaign_id or None, outcome or None, solo_alertas, 1,
+            extra={"pregunta": pregunta, "respuesta": respuesta, "usadas": usadas},
+        )
     respuesta, usadas = preguntar.preguntar(pregunta, llamadas) if pregunta else (None, 0)
     return _pagina_reportes(
         request, db, desde or None, hasta or None, campaign_id or None, outcome or None, solo_alertas, 1,

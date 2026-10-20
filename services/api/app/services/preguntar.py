@@ -12,6 +12,23 @@ import re
 from app.services import llm
 
 MAX_CARACTERES = 60_000
+# Cada pregunta cuesta una llamada a Claude con hasta 60.000 caracteres de contexto.
+MAX_PREGUNTAS_POR_HORA = 20
+_hechas: dict[str, list[float]] = {}
+
+
+def permitir(usuario: str, ahora: float | None = None) -> bool:
+    """False si esta persona ya hizo MAX_PREGUNTAS_POR_HORA en la última hora."""
+    import time
+
+    ahora = time.monotonic() if ahora is None else ahora
+    recientes = [t for t in _hechas.get(usuario, []) if ahora - t < 3600]
+    if len(recientes) >= MAX_PREGUNTAS_POR_HORA:
+        _hechas[usuario] = recientes
+        return False
+    recientes.append(ahora)
+    _hechas[usuario] = recientes
+    return True
 MAX_LLAMADAS = 200
 
 SISTEMA = """Sos analista de calidad de la posventa de Santa Rosa Paraguay (concesionaria \
