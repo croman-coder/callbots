@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% set nav = clave %}
+{% block title %}{{ titulo }} · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>{{ titulo }}</h1>
+    <p class="lede">{{ lede }}</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% for sec in secciones %}
+<section class="section">
+  <header>
+    <h2>{{ sec.titulo }}</h2>
+    {% if sec.nota %}<span class="note">{{ sec.nota }}</span>{% endif %}
+  </header>
+  <div class="tablewrap">
+    <div class="scroll">
+      <table class="clave-valor">
+        <tbody>
+          {% for etiqueta, valor, estado in sec.filas %}
+          <tr>
+            <th scope="row">{{ etiqueta }}</th>
+            <td>{{ valor }}</td>
+            <td class="num">{% if estado %}<span class="pill {{ estado.clase }}">{{ estado.texto }}</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endfor %}
+{% if pie %}<p class="hint nota-pie">{{ pie }}</p>{% endif %}
+{% endblock %}

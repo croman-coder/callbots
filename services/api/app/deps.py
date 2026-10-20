@@ -41,7 +41,7 @@ def _es_navegacion(request: Request) -> bool:
 # Secciones que el rol "calidad" no ve. Diagnóstico expone detalles de
 # infraestructura (versiones, endpoints, estado de cada dependencia) que quien
 # lee resultados de encuestas no necesita y un atacante sí querría.
-RUTAS_SOLO_OPERACION = ("/health-detail",)
+RUTAS_SOLO_OPERACION = ("/health-detail", "/numeros", "/troncales")
 
 
 def require_internal_token(x_callbot_token: str = Header(default="")) -> None:

@@ -42,7 +42,7 @@
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, monospace;
 
   --col: 1180px;          /* ancho de la columna de trabajo */
-  --banda-w: 72px;        /* banda azul de la izquierda */
+  --banda-w: 276px;       /* menú lateral (la banda azul de la Agencia) */
 
   /* Azul Santa Rosa de la Agencia (banda y entrada). */
   --brand:   #242276;
@@ -173,27 +173,7 @@ main:focus { outline: none; }
 /* ═══════════════════════════════════════════════════ estructura */
 .app { min-height: 100dvh; padding-left: var(--banda-w); }
 
-/* Banda azul curva de la izquierda (la de la Agencia): decorativa, con tres atajos. */
-.banda {
-  position: fixed; inset: 0 auto 0 0; width: var(--banda-w); z-index: 20;
-  pointer-events: none; color: #fff;
-}
-.banda-fondo { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.banda-fondo path { fill: var(--brand); }
-:root[data-theme="dark"] .banda-fondo path { fill: var(--entrada-hero); }
-.banda-iconos {
-  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 56px; display: flex; flex-direction: column; align-items: center; gap: var(--s3);
-  pointer-events: auto;
-}
-.banda-iconos a, .banda-iconos button {
-  width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%;
-  display: grid; place-items: center; border: 1px solid transparent; background: transparent; color: #fff;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-.banda-iconos a:hover, .banda-iconos button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); }
-.banda-iconos .principal { border-color: rgba(255, 255, 255, 0.55); }
-.banda-iconos svg, .cab-der svg, .capsula svg { width: 17px; height: 17px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.cab-der svg, .capsula svg { width: 17px; height: 17px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 
 .col { width: 100%; max-width: var(--col); margin-inline: auto; padding-inline: var(--s6); }
 
@@ -535,9 +515,12 @@ input[type=file] {
   .capsula { grid-column: 1 / -1; grid-row: 2; justify-self: stretch; overflow-x: auto; }
   .yo .quien { display: none; }
 }
-@media (max-width: 700px) {
+@media (max-width: 1000px) {
   .app { padding-left: 0; }
-  .banda { display: none; }
+  .menu { display: none; }
+  .cab { display: grid; }
+}
+@media (max-width: 700px) {
   .cab, .col { padding-inline: var(--s4); }
   .bar h1 { font-size: 30px; }
 }
@@ -564,7 +547,7 @@ button.quiet:hover:not(:disabled) { background: var(--active-soft); color: var(-
    El CRM ya trae su propia barra y su marca: acá queda solo la cápsula de secciones,
    sin banda azul, sin logo y sin selector de tema (lo manda el CRM por ?theme=). */
 html[data-embed] .app { padding-left: 0; }
-html[data-embed] .banda, html[data-embed] .marca-app, html[data-embed] .tema,
+html[data-embed] .menu, html[data-embed] .marca-app, html[data-embed] .tema,
 html[data-embed] .yo { display: none; }
 html[data-embed] .cab { grid-template-columns: 1fr; justify-items: center; padding-top: var(--s4); }
 html[data-embed] .capsula { grid-column: 1; grid-row: 1; max-width: 100%; overflow-x: auto; }
@@ -602,3 +585,154 @@ html[data-embed] body { background: var(--paper); }
 
 .bar .right .btn { background: var(--tinta); border-color: var(--tinta); color: var(--tinta-texto); }
 .bar .right .btn:hover { background: var(--tinta-hover); }
+
+/* ═══════════════════════════════════════════════════ menú lateral
+   Es la banda azul de la Agencia IA hecha menú: marca, espacio de trabajo, secciones agrupadas
+   (<details>: abren sin JavaScript) y, abajo, atajos, tema y quién es. Dentro del CRM no se ve:
+   ahí navega la cápsula de arriba, que vuelve también en pantallas angostas. */
+.menu {
+  position: fixed; inset: 0 auto 0 0; width: var(--banda-w); z-index: 20;
+  display: flex; flex-direction: column; gap: var(--s4);
+  padding: var(--s5) var(--s4) var(--s4);
+  background: var(--brand); color: #fff;
+  border-radius: 0 var(--r-card) var(--r-card) 0;
+  overflow-y: auto; overscroll-behavior: contain;
+}
+:root[data-theme="dark"] .menu { background: var(--entrada-hero); }
+.menu svg { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.menu a, .menu summary { color: inherit; text-decoration: none; }
+.menu-marca { display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s2); font-weight: 800; font-size: var(--t-lg); letter-spacing: -0.025em; }
+.menu-marca .marca-svg { width: 30px; height: 30px; }
+.menu-rotulo { display: block; font-size: var(--t-xs); color: rgba(255,255,255,0.7); padding: 0 var(--s2) var(--s1); }
+.espacio {
+  display: flex; align-items: center; gap: var(--s2); padding: 10px var(--s3);
+  border-radius: var(--r-sm); background: rgba(255,255,255,0.12); font-size: var(--t-sm); font-weight: 600;
+}
+.menu-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.menu .it {
+  display: flex; align-items: center; gap: var(--s3); min-height: 40px; padding: 8px var(--s3);
+  border-radius: var(--r-sm); font-size: var(--t-sm); font-weight: 600; cursor: pointer; list-style: none;
+  color: rgba(255,255,255,0.88);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.menu summary.it::-webkit-details-marker { display: none; }
+.menu .it:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.menu .it[aria-current="page"] { background: #fff; color: var(--brand); }
+:root[data-theme="dark"] .menu .it[aria-current="page"] { color: var(--entrada-hero); }
+.menu .it.off { opacity: 0.6; cursor: default; }
+.menu .it.off:hover { background: transparent; color: rgba(255,255,255,0.88); }
+.menu .chev { margin-left: auto; width: 16px; height: 16px; transition: transform var(--dur-fast) var(--ease); }
+.menu details[open] > summary .chev { transform: rotate(180deg); }
+.chip {
+  margin-left: auto; padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--t-xs); font-weight: 700;
+  background: rgba(255,255,255,0.18); color: #fff; letter-spacing: 0.02em;
+}
+.menu .sub { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 var(--s2) 22px; padding-left: var(--s3); border-left: 1px solid rgba(255,255,255,0.28); }
+.menu .sub a {
+  display: block; padding: 8px var(--s3); border-radius: var(--r-sm); font-size: var(--t-sm); font-weight: 550;
+  color: rgba(255,255,255,0.82);
+}
+.menu .sub a:hover { background: rgba(255,255,255,0.12); color: #fff; }
+.menu .sub a[aria-current="page"] { background: rgba(255,255,255,0.2); color: #fff; font-weight: 700; }
+
+.menu-pie { display: flex; flex-direction: column; gap: var(--s3); padding-top: var(--s3); border-top: 1px solid rgba(255,255,255,0.2); }
+.menu-acciones { display: flex; flex-direction: column; gap: var(--s2); }
+.menu-acciones form { margin: 0; }
+.menu-acciones a, .menu-acciones button {
+  width: 100%; min-height: 38px; padding: 8px var(--s3); border-radius: var(--r-sm); display: flex; align-items: center; gap: var(--s2);
+  font-size: var(--t-sm); font-weight: 600; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.3);
+}
+.menu-acciones .principal { background: #fff; color: var(--brand); border-color: #fff; }
+:root[data-theme="dark"] .menu-acciones .principal { color: var(--entrada-hero); }
+.menu-acciones a:hover:not(.principal), .menu-acciones button:hover { background: rgba(255,255,255,0.12); }
+.menu .tema { align-self: stretch; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+.menu .tema button { flex: 1; justify-content: center; color: rgba(255,255,255,0.8); }
+.menu .tema button[aria-pressed="true"] { background: #fff; color: var(--brand); }
+:root[data-theme="dark"] .menu .tema button[aria-pressed="true"] { color: var(--entrada-hero); }
+.menu-yo { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.menu-yo form { margin: 0; }
+.menu-yo .quien { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin: 0; }
+.menu-yo .quien p { margin: 0; font-weight: 700; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+.menu-yo .quien p span { display: block; font-weight: 500; font-size: var(--t-xs); color: rgba(255,255,255,0.7); }
+.menu-yo .salir { color: #fff; border-color: rgba(255,255,255,0.3); background: transparent; }
+.menu-yo .salir:hover { background: rgba(255,255,255,0.12); }
+/* Con el menú, la cabecera de arriba sobra: solo queda donde el menú no está (CRM y pantallas angostas). */
+@media (min-width: 1001px) { html:not([data-embed]) .cab { display: none; } }
+
+/* ═══════════════════════════════════════════════════ agentes: herramientas y asistente «Nuevo agente» */
+.herramientas { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s3); margin: 0 0 var(--s4); }
+.herramientas svg, .asistente svg { width: 17px; height: 17px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.buscar { position: relative; flex: 1 1 260px; max-width: 420px; display: block; }
+.buscar svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
+.buscar input { width: 100%; padding-left: 38px; }
+.periodo { display: inline-flex; align-items: center; gap: var(--s2); color: var(--ink-3); font-size: var(--t-sm); font-weight: 600; }
+.icono { width: 40px; height: 40px; display: inline-grid; place-items: center; border: 1px solid var(--line-2); border-radius: var(--r-sm); color: var(--ink-2); }
+.icono:hover { background: var(--active-soft); }
+.herramientas .btn.primary { margin-left: auto; display: inline-flex; align-items: center; gap: var(--s2); }
+th[title] { cursor: help; }
+.clave-valor th[scope="row"] { text-align: left; font-weight: 600; width: 34%; color: var(--ink-2); }
+.nota-pie { margin-top: var(--s4); max-width: 70ch; }
+
+dialog.asistente {
+  width: min(960px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto;
+  padding: var(--s7); border: 1px solid var(--line); border-radius: var(--r-card);
+  background: var(--surface); color: var(--ink); box-shadow: 0 24px 60px rgba(10, 12, 30, 0.35);
+}
+dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
+.pasos { display: flex; justify-content: center; gap: var(--s4); list-style: none; margin: 0 0 var(--s6); padding: 0; counter-reset: p; }
+.pasos li { flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--s2); position: relative; color: var(--ink-3); font-size: var(--t-sm); font-weight: 600; text-align: center; }
+.pasos li + li::before { content: ""; position: absolute; top: 17px; right: 50%; width: calc(100% - 34px); margin-right: 22px; border-top: 2px solid var(--line-2); }
+.pasos li.hecho + li::before, .pasos li.actual::before { border-top-color: var(--brand-2); }
+.pasos .num { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line-2); font-weight: 800; position: relative; z-index: 1; }
+.pasos .actual { color: var(--ink); }
+.pasos .actual .num { background: var(--brand); border-color: var(--brand); color: #fff; }
+.pasos .hecho .num { background: var(--brand-2); border-color: var(--brand-2); color: #fff; }
+.pasos .num svg { width: 16px; height: 16px; stroke-width: 2.5; }
+.asistente h3 { margin: 0; font-size: var(--t-lg); letter-spacing: -0.02em; }
+.asistente .pregunta { margin: 0 0 var(--s3); font-size: var(--t-base); }
+.req { color: var(--bad); }
+.plantillas { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--s3); margin-bottom: var(--s5); border-radius: var(--r-lg); }
+.plantillas.falta { outline: 2px solid var(--bad); outline-offset: 4px; }
+.plantilla { position: relative; display: block; cursor: pointer; }
+.plantilla input { position: absolute; opacity: 0; inset: 0; }
+.plantilla .tarjeta {
+  position: relative; height: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--s2); text-align: center;
+  padding: var(--s5) var(--s4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--paper);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.plantilla:hover .tarjeta { border-color: var(--line-2); }
+.plantilla input:checked + .tarjeta { border-color: var(--brand-2); background: var(--active-soft); box-shadow: 0 0 0 1px var(--brand-2); }
+.plantilla input:focus-visible + .tarjeta { outline: 2px solid var(--focus); outline-offset: 2px; }
+.plantilla.off { cursor: not-allowed; }
+.plantilla.off .tarjeta { opacity: 0.55; }
+.avatar-p { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: #fff; }
+.avatar-p svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.plantilla .desc { font-size: var(--t-sm); color: var(--ink-3); }
+.plantilla .chip { position: absolute; top: var(--s3); right: var(--s3); margin: 0; background: var(--warn-bg); color: var(--warn); }
+.etiqueta { display: block; margin: var(--s4) 0 var(--s2); font-size: var(--t-sm); font-weight: 700; }
+.asistente select, .asistente input[type="text"], .asistente textarea { width: 100%; }
+.asistente .hint { margin: var(--s1) 0 0; font-size: var(--t-xs); color: var(--ink-3); }
+.dos-col { display: grid; grid-template-columns: minmax(200px, 1fr) 2fr; gap: var(--s7); align-items: start; }
+.intro-paso .hola { margin: 0 0 var(--s2); font-weight: 800; font-size: var(--t-lg); }
+.intro-paso h3 { margin-bottom: var(--s3); }
+.intro-paso p { color: var(--ink-2); line-height: 1.6; }
+.campos > .etiqueta:first-child { margin-top: 0; }
+.fila-url { display: flex; gap: var(--s2); }
+.fila-url input { flex: 1; }
+.fila-url .btn { display: inline-flex; align-items: center; gap: var(--s2); white-space: nowrap; }
+.acciones { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s6); }
+.acciones .resto { flex: 1; }
+.listo .siguientes { display: flex; flex-wrap: wrap; gap: var(--s3); list-style: none; margin: var(--s5) 0 0; padding: 0; }
+.listo p { color: var(--ink-2); line-height: 1.6; max-width: 60ch; }
+@media (max-width: 700px) {
+  .dos-col { grid-template-columns: 1fr; gap: var(--s4); }
+  .pasos .tit { display: none; }
+  dialog.asistente { padding: var(--s5); }
+}
+
+/* El atributo hidden tiene que ganarle a los display de arriba (botones, filas, tarjetas). */
+[hidden] { display: none !important; }
+/* El menú compacto y la cápsula: lo último del archivo para que ganen a las reglas de arriba. */
+.menu .it { min-height: 36px; }
+.menu-nav { gap: 1px; }
+@media (max-width: 1000px) { .menu { display: none; } }

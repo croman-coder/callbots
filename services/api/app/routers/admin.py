@@ -15,10 +15,11 @@ from zoneinfo import ZoneInfo
 from urllib.parse import quote_plus, urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app import agentes
 from app.config import settings
 from app.plantillas import templates
 from app.db import get_db
@@ -188,58 +189,152 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 # ---------------------------------------------------------------------------
 # Campañas
 # ---------------------------------------------------------------------------
+PERIODOS = {"7": 7, "30": 30, "90": 90, "todo": None}
+
+
+def _metricas_agentes(db: Session, desde: datetime | None) -> dict[int, dict]:
+    """Por agente (campaña): contactos, contactados, llamadas, metas logradas y calidad media.
+
+    «Meta lograda» = encuesta completada. Los contactos cuentan los destinatarios cargados en el
+    período; lo demás, las llamadas hechas en el período.
+    """
+    con_destinatarios = select(SurveyTarget.campaign_id, func.count(SurveyTarget.id))
+    if desde:
+        con_destinatarios = con_destinatarios.where(SurveyTarget.created_at >= desde)
+    metricas: dict[int, dict] = {
+        campaign_id: {"contactos": n, "contactados": 0, "llamadas": 0, "metas": 0, "calidad": None}
+        for campaign_id, n in db.execute(con_destinatarios.group_by(SurveyTarget.campaign_id)).all()
+    }
+
+    en_periodo = [CallAttempt.started_at >= desde] if desde else []
+    for campaign_id, llamadas, contactados, metas in db.execute(
+        select(
+            SurveyTarget.campaign_id,
+            func.count(CallAttempt.id),
+            func.count(distinct(SurveyTarget.id)).filter(CallAttempt.answered_at.is_not(None)),
+            func.count(distinct(SurveyTarget.id)).filter(CallAttempt.outcome == CallOutcome.COMPLETED),
+        )
+        .join(SurveyTarget, SurveyTarget.id == CallAttempt.target_id)
+        .where(*en_periodo)
+        .group_by(SurveyTarget.campaign_id)
+    ).all():
+        m = metricas.setdefault(
+            campaign_id, {"contactos": 0, "contactados": 0, "llamadas": 0, "metas": 0, "calidad": None}
+        )
+        m.update(llamadas=llamadas, contactados=contactados, metas=metas)
+
+    # La calidad se calcula llamada por llamada (ver services/calidad.py): se promedia lo atendido.
+    atendidas = db.scalars(
+        select(CallAttempt)
+        .join(SurveyTarget, SurveyTarget.id == CallAttempt.target_id)
+        .where(*en_periodo, CallAttempt.answered_at.is_not(None))
+        .options(selectinload(CallAttempt.answers), selectinload(CallAttempt.target))
+        .order_by(CallAttempt.started_at.desc())
+        .limit(5000)
+    ).all()
+    puntajes: dict[int, list[int]] = {}
+    for c in atendidas:
+        q = calidad.calidad_de(c)
+        if q.puntaje is not None:
+            puntajes.setdefault(c.target.campaign_id, []).append(q.puntaje)
+    for campaign_id, lista in puntajes.items():
+        if campaign_id in metricas:
+            metricas[campaign_id]["calidad"] = round(sum(lista) / len(lista))
+    return metricas
+
+
 @router.get("/campaigns", response_class=HTMLResponse)
-def list_campaigns(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+def list_campaigns(
+    request: Request, dias: str = "30", probar: int | None = None, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    dias = dias if dias in PERIODOS else "30"
+    desde = datetime.now(timezone.utc) - timedelta(days=PERIODOS[dias]) if PERIODOS[dias] else None
     campaigns = db.scalars(
         select(Campaign).options(selectinload(Campaign.questions)).order_by(Campaign.id)
     ).all()
-
-    stats = {
-        campaign_id: {"targets": targets, "completed": completed}
-        for campaign_id, targets, completed in db.execute(
-            select(
-                SurveyTarget.campaign_id,
-                func.count(distinct(SurveyTarget.id)),
-                func.count(distinct(SurveyTarget.id)).filter(
-                    SurveyTarget.status == TargetStatus.COMPLETED
-                ),
-            ).group_by(SurveyTarget.campaign_id)
-        ).all()
-    }
+    recien_creado = db.get(Campaign, probar) if probar else None
 
     return templates.TemplateResponse(
         request,
         "campaigns.html",
-        {"campaigns": campaigns, "stats": stats, "default_entity": settings.bitrix_entity_type_id},
+        {
+            "campaigns": campaigns,
+            "metricas": _metricas_agentes(db, desde),
+            "dias": dias,
+            "periodos": {"7": "Últimos 7 días", "30": "Últimos 30 días", "90": "Últimos 90 días", "todo": "Todo"},
+            "plantillas": list(agentes.PLANTILLAS.values()),
+            "propositos": agentes.PROPOSITOS,
+            "recien_creado": recien_creado,
+            "empresa_por_defecto": "Santa Rosa Paraguay",
+        },
     )
 
 
 @router.post("/campaigns")
 def create_campaign(
+    plantilla: str = Form("personalizado"),
     name: str = Form(...),
-    bitrix_entity_type_id: int = Form(...),
-    trigger_field: str = Form(...),
-    delay_hours: int = Form(48),
-    description: str = Form(""),
+    proposito: str = Form(""),
+    instrucciones: str = Form(""),
+    empresa: str = Form(""),
+    empresa_descripcion: str = Form(""),
     db: Session = Depends(get_db),
 ) -> RedirectResponse:
+    base = agentes.PLANTILLAS.get(plantilla)
+    if base is None or not base.disponible:
+        raise HTTPException(400, "Plantilla inexistente")
+    name = name.strip()
+    if not name:
+        raise HTTPException(400, "Falta el nombre del agente")
+    proposito = proposito if proposito in agentes.PROPOSITOS else base.proposito
+
     campaign = Campaign(
-        name=name.strip(),
-        description=description.strip() or None,
-        bitrix_entity_type_id=bitrix_entity_type_id,
-        trigger_field=trigger_field.strip(),
-        delay_hours=delay_hours,
+        name=name[:160],
+        description=proposito,
+        # Una campaña cargada por Excel no usa el disparador de Bitrix, pero la columna lo exige:
+        # queda el de posventa, que se cambia desde la ficha del agente.
+        bitrix_entity_type_id=settings.bitrix_entity_type_id,
+        trigger_field=settings.bitrix_field_workshop_entry,
+        delay_hours=48,
         call_window_start=settings.call_window_start.strftime("%H:%M"),
         call_window_end=settings.call_window_end.strftime("%H:%M"),
         call_window_days=settings.call_window_days,
         max_attempts=settings.max_call_attempts,
         retry_interval_minutes=settings.retry_interval_minutes,
+        conversation_prompt=agentes.armar_contexto(empresa[:160], empresa_descripcion[:2000], instrucciones[:2000]),
         is_active=False,  # se activa a mano recién cuando tiene preguntas
     )
+    if base.intro:
+        campaign.intro_script = base.intro
+    if base.outro:
+        campaign.outro_script = base.outro
+    for posicion, q in enumerate(base.preguntas, start=1):
+        campaign.questions.append(
+            Question(
+                position=posicion,
+                text=q.texto,
+                qtype=q.tipo,
+                counts_for_score=q.puntua,
+                max_answer_seconds=q.segundos,
+            )
+        )
     db.add(campaign)
     db.commit()
-    log.info("Campaña creada: %s (id=%s)", campaign.name, campaign.id)
-    return _redirect(f"/campaigns/{campaign.id}")
+    log.info("Agente creado: %s (id=%s, plantilla=%s)", campaign.name, campaign.id, plantilla)
+    # El último paso del asistente («Prueba tu agente») se muestra en la lista, ya con el agente creado.
+    return _redirect(f"/campaigns?probar={campaign.id}")
+
+
+@router.post("/agentes/contexto-empresa")
+async def contexto_empresa(request: Request, url: str = Form("")) -> JSONResponse:
+    """«Generar contexto»: Claude lee el sitio web de la empresa y devuelve una descripción."""
+    usuario = request.state.principal.usuario if getattr(request.state, "principal", None) else "?"
+    if not agentes.permitir(usuario):
+        return JSONResponse({"error": "Ya generaste varios contextos en la última hora. Probá más tarde."}, 429)
+    try:
+        return JSONResponse({"descripcion": await agentes.contexto_desde_sitio(url)})
+    except agentes.SitioInvalido as exc:
+        return JSONResponse({"error": str(exc)}, 400)
 
 
 @router.get("/campaigns/{campaign_id}", response_class=HTMLResponse)
@@ -824,6 +919,128 @@ def reportes(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     return _pagina_reportes(request, db, desde, hasta, campaign_id, outcome, solo_alertas, page)
+
+
+@router.get("/historial", response_class=HTMLResponse)
+def historial(
+    request: Request,
+    desde: str | None = None,
+    hasta: str | None = None,
+    campaign_id: str | None = None,
+    outcome: str | None = None,
+    solo_alertas: bool = False,
+    page: int = 1,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Todas las llamadas, de todos los agentes. Es la lista de Reportes sin el resumen ni la IA."""
+    return _pagina_reportes(
+        request, db, desde, hasta, campaign_id, outcome, solo_alertas, page, extra={"vista": "historial"}
+    )
+
+
+def _info(request: Request, clave: str, titulo: str, lede: str, secciones: list[dict], pie: str = "") -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "agentes_voz_info.html",
+        {"clave": clave, "titulo": titulo, "lede": lede, "secciones": secciones, "pie": pie},
+    )
+
+
+_OK = {"clase": "completed", "texto": "Activo"}
+_PRONTO = {"clase": "pending", "texto": "Pronto"}
+
+
+@router.get("/numeros", response_class=HTMLResponse)
+def numeros(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+    """Con qué número se llama. Hoy es uno solo, el de la troncal; acá se ve cómo está configurado."""
+    total, ultima = db.execute(select(func.count(CallAttempt.id), func.max(CallAttempt.started_at))).one()
+    zona = settings.timezone
+    return _info(
+        request,
+        "numeros",
+        "Números telefónicos",
+        "Los números desde los que llaman los agentes.",
+        [
+            {
+                "titulo": "Línea de salida",
+                "nota": "Solo lectura",
+                "filas": [
+                    ("Identificador de llamada", settings.asterisk_callerid, None),
+                    ("Cómo se marca", settings.asterisk_dial_template, None),
+                    ("Llamadas hechas", str(total), None),
+                    ("Última llamada", ultima.astimezone(zona).strftime("%d/%m/%Y %H:%M") if ultima else "Todavía ninguna", None),
+                ],
+            }
+        ],
+        "El número que ve el cliente lo asigna el proveedor de la troncal. Asignar un número distinto a cada "
+        "agente se agrega en una próxima etapa.",
+    )
+
+
+@router.get("/troncales", response_class=HTMLResponse)
+def troncales(request: Request) -> HTMLResponse:
+    """Estado de la central telefónica y de sus troncales SIP, leído de Asterisk."""
+    from app.services.asterisk_ari import AriClient, AriError
+
+    central: list[tuple] = []
+    troncales_sip: list[tuple] = []
+    try:
+        with AriClient(timeout=5.0) as ari:
+            info = ari.ping()
+            central.append(("Asterisk", info.get("system", {}).get("version", "?"), _OK))
+            endpoints = ari.endpoints()
+    except AriError as exc:
+        log.warning("Troncales: %s", exc)
+        central.append(("Asterisk", "No se pudo contactar la central telefónica", {"clase": "failed", "texto": "Sin conexión"}))
+        endpoints = None
+    for e in endpoints or []:
+        if e.get("technology") != "PJSIP":
+            continue
+        estado = e.get("state", "unknown")
+        troncales_sip.append(
+            (
+                e.get("resource", "?"),
+                f"{len(e.get('channel_ids', []))} llamada(s) en curso",
+                {"clase": "completed" if estado == "online" else "pending", "texto": estado},
+            )
+        )
+    return _info(
+        request,
+        "troncales",
+        "Troncales SIP",
+        "Las conexiones de la central telefónica con el proveedor que lleva las llamadas.",
+        [
+            {"titulo": "Central telefónica", "filas": central},
+            {
+                "titulo": "Troncales y extensiones",
+                "nota": "Leído de Asterisk",
+                "filas": troncales_sip
+                or [("Sin datos" if endpoints is None else "Sin troncales", "Asterisk no informa ninguna", None)],
+            },
+        ],
+        "El detalle del registro con el proveedor está en Diagnóstico. Agregar o cambiar troncales desde el "
+        "panel se agrega en una próxima etapa.",
+    )
+
+
+@router.get("/canales", response_class=HTMLResponse)
+def canales(request: Request) -> HTMLResponse:
+    return _info(
+        request,
+        "canales",
+        "Canales",
+        "Por dónde habla con los clientes cada agente.",
+        [
+            {
+                "titulo": "Canales",
+                "filas": [
+                    ("Teléfono · llamadas salientes", "El agente llama por la troncal SIP", _OK),
+                    ("Teléfono · llamadas entrantes", "Que el cliente pueda devolver la llamada al agente", _PRONTO),
+                    ("WhatsApp", "Aviso si el cliente no atiende y agentes de texto", _PRONTO),
+                ],
+            }
+        ],
+    )
 
 
 @router.post("/reportes/preguntar", response_class=HTMLResponse)

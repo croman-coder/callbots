@@ -57,6 +57,10 @@ class AriClient:
         """Verifica que Asterisk esté vivo y las credenciales ARI sean válidas."""
         return self._request("GET", "/asterisk/info").json()
 
+    def endpoints(self) -> list[dict[str, Any]]:
+        """Extensiones y troncales que Asterisk conoce, con su estado (online / unknown / offline)."""
+        return self._request("GET", "/endpoints").json()
+
     def build_endpoint(self, phone: str) -> str:
         """Arma el endpoint a marcar a partir de la plantilla configurada."""
         number = phone.lstrip("+")

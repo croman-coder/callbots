@@ -60,6 +60,14 @@ de resultados; sí en diagnóstico, que lo lee alguien técnico.
   `?theme=` y quedan solo la cápsula y el contenido. Fuente de verdad:
   `agencia.santarosa.lat` (`src/app/panel/panel.css` del repo `agencia-ia`). Antes fue la del
   CRM (navy `#111936`, barra lateral): el panel sigue embebido allá, pero ya no se le parece.
+- **Navegación: menú lateral con grupos (20/10/2026, a pedido de Croman, tomando el orden de Dapta).**
+  Es la banda azul hecha menú: Inicio, Asistente IA, **Agentes de voz** (Agentes, Historial, Números
+  telefónicos, Troncales SIP, Canales), Agentes de texto y Secuencias (marcados «Pronto»), Destinatarios,
+  Reportes, Voces, Simulador y Centro de ayuda. Dentro del CRM y en pantallas angostas queda la cápsula de
+  arriba. **Agentes** es la lista de campañas con sus métricas (contactos, contactados, llamadas, metas
+  logradas, costo, calidad) y el asistente «Nuevo agente» de cuatro pasos. Costo y costo por resultado
+  esperan a que se cargue la tarifa. Números y Troncales exponen la telefonía: igual que Diagnóstico, no
+  los ve el rol `calidad`.
 - **El color saturado se reserva para la marca y los estados.** Verde, ámbar y
   rojo significan algo; no se usan para decorar. Las barras son de trazo fino
   para que la que importa no compita con seis más.

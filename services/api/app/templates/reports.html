@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% set nav = "reportes" %}
-{% block title %}Reportes · Callbot{% endblock %}
+{% set vista = vista|default("reportes") %}
+{% set nav = vista %}
+{% block title %}{{ "Historial" if vista == "historial" else "Reportes" }} · Callbot{% endblock %}
 
 {% block topbar %}
 <div class="bar">
   <div>
-    <h1>Reportes</h1>
+    <h1>{{ "Historial de llamadas" if vista == "historial" else "Reportes" }}</h1>
     <p class="lede">
       {{ total }} llamada{{ "s" if total != 1 }}
       {%- if descripcion %} · {{ descripcion }}{% endif %}
@@ -30,7 +31,7 @@
     <span class="note">Se aplican también a la exportación</span>
   </header>
 
-  <form method="get" action="/reportes" class="filters">
+  <form method="get" action="/{{ vista }}" class="filters">
     <label>
       <span class="sr-only">Desde</span>
       <input type="date" name="desde" value="{{ f.desde }}" aria-label="Desde">
@@ -60,10 +61,11 @@
     </label>
 
     <button type="submit">Aplicar</button>
-    {% if descripcion %}<a class="btn" href="/reportes">Limpiar</a>{% endif %}
+    {% if descripcion %}<a class="btn" href="/{{ vista }}">Limpiar</a>{% endif %}
   </form>
 </section>
 
+{% if vista != "historial" %}
 <div class="metrics">
   <div class="metric t-celeste {% if promedio is not none and promedio < satisfactory_min %}is-bad{% endif %}">
     <div class="k">Satisfacción promedio</div>
@@ -157,6 +159,7 @@
     {% endif %}
   </form>
 </section>
+{% endif %}
 
 <section class="section">
   <header>
@@ -232,7 +235,7 @@
       {#- La query la arma el servidor omitiendo las claves vacías. Concatenarla
           acá a mano metía `campaign_id=` cuando no había filtro de campaña, y
           eso es un 422, no un "sin filtro". -#}
-      {% set base = "/reportes?" ~ query_page ~ ("&" if query_page else "") %}
+      {% set base = "/" ~ vista ~ "?" ~ query_page ~ ("&" if query_page else "") %}
       {% if page > 1 %}<a class="btn" href="{{ base }}page={{ page - 1 }}">← Anterior</a>{% endif %}
       <span class="muted tnum">{{ page }} / {{ pages }}</span>
       {% if page < pages %}<a class="btn" href="{{ base }}page={{ page + 1 }}">Siguiente →</a>{% endif %}
@@ -242,7 +245,7 @@
     {% else %}
     <p class="empty">
       {%- if descripcion -%}
-        No hay llamadas con estos filtros. <a class="link" href="/reportes">Ver todas</a>.
+        No hay llamadas con estos filtros. <a class="link" href="/{{ vista }}">Ver todas</a>.
       {%- else -%}
         Todavía no se registraron llamadas.
       {%- endif -%}
@@ -251,6 +254,7 @@
   </div>
 </section>
 
+{% if vista != "historial" %}
 <section class="section">
   <header><h2>Qué trae el Excel</h2></header>
   <div class="howto">
@@ -270,5 +274,6 @@
     </p>
   </div>
 </section>
+{% endif %}
 
 {% endblock %}

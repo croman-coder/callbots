@@ -1,104 +1,293 @@
 {% extends "base.html" %}
 {% set nav = "campaigns" %}
-{% block title %}Campañas · Callbot{% endblock %}
+{% block title %}Agentes de voz · Callbot{% endblock %}
+
+{% macro pasos(actual) %}
+<ol class="pasos" aria-label="Pasos para crear el agente">
+  {% for n, titulo in [(1, "Selecciona el agente"), (2, "Contexto del agente"), (3, "Contexto de la empresa"), (4, "Prueba tu agente")] %}
+  <li data-paso="{{ n }}" class="{{ 'actual' if n == actual else 'hecho' if n < actual }}" {% if n == actual %}aria-current="step"{% endif %}>
+    <span class="num">{% if n < actual %}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>{% else %}{{ n }}{% endif %}</span>
+    <span class="tit">{{ titulo }}</span>
+  </li>
+  {% endfor %}
+</ol>
+{% endmacro %}
 
 {% block topbar %}
 <div class="bar">
   <div>
-    <h1>Campañas</h1>
-    <p class="lede">De dónde salen los destinatarios y qué se les pregunta</p>
-  </div>
-  <div class="right">
-    <a class="btn" href="#nueva">Nueva campaña</a>
+    <h1>Agentes de voz</h1>
+    <p class="lede">Asistentes de voz con inteligencia artificial que llaman a tus clientes: encuestas, consultas y seguimiento.</p>
   </div>
 </div>
 {% endblock %}
 
 {% block content %}
 <section class="section">
+  <form class="herramientas" method="get" action="/campaigns" role="search">
+    <label class="buscar">
+      <span class="sr-only">Buscar agentes</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="buscar-agentes" type="search" placeholder="Búsqueda de agentes" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="periodo">Período
+      <select name="dias" onchange="this.form.submit()">
+        {% for clave, texto in periodos.items() %}<option value="{{ clave }}" {% if clave == dias %}selected{% endif %}>{{ texto }}</option>{% endfor %}
+      </select>
+    </label>
+    <a class="icono" href="/campaigns?dias={{ dias }}" title="Actualizar" aria-label="Actualizar"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/></svg></a>
+    <button type="button" class="btn primary" data-abrir-asistente>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>Nuevo agente
+    </button>
+  </form>
+
   <div class="tablewrap">
-    {% if campaigns %}
     <div class="scroll">
-      <table>
+      <table id="tabla-agentes">
         <thead>
           <tr>
-            <th scope="col">Campaña</th>
-            <th scope="col">Disparador</th>
-            <th scope="col" class="num">Demora</th>
-            <th scope="col" class="num">Preguntas</th>
-            <th scope="col" class="num">Destinatarios</th>
-            <th scope="col" class="num">Completadas</th>
-            <th scope="col">Estado</th>
-            <th scope="col"><span class="sr-only">Acción</span></th>
+            <th scope="col" title="El agente: su guion, preguntas, horarios y voz">Nombre</th>
+            <th scope="col" class="num" title="Destinatarios cargados en el período">Contactos</th>
+            <th scope="col" class="num" title="Destinatarios que atendieron al menos una llamada">Contactados</th>
+            <th scope="col" class="num" title="Llamadas hechas en el período">Llamadas</th>
+            <th scope="col" class="num" title="Encuestas completadas hasta la última pregunta">Metas logradas</th>
+            <th scope="col" class="num" title="Costo de telefonía e IA: se calcula cuando se cargue la tarifa">Costo</th>
+            <th scope="col" class="num" title="Costo dividido por metas logradas">Costo / resultado</th>
+            <th scope="col" class="num" title="Cómo salió la llamada del lado del bot (0 a 100)">Calidad</th>
           </tr>
         </thead>
         <tbody>
           {% for c in campaigns %}
-          <tr>
+          {% set m = metricas.get(c.id, {}) %}
+          <tr data-nombre="{{ c.name | lower }}">
             <td class="name">
-              {{ c.name }}
+              <a class="link" href="/campaigns/{{ c.id }}">{{ c.name }}</a>
+              <span class="pill {{ 'completed' if c.is_active else 'no_answer' }}">{{ "activo" if c.is_active else "pausado" }}</span>
               {% if c.description %}<span class="sub-line">{{ c.description }}</span>{% endif %}
             </td>
-            <td>
-              <span class="mono">{{ c.trigger_field }}</span>
-              <span class="sub-line mono">entidad {{ c.bitrix_entity_type_id }}</span>
+            <td class="num tnum">{{ m.get("contactos", 0) }}</td>
+            <td class="num tnum">{{ m.get("contactados", 0) }}</td>
+            <td class="num tnum">{{ m.get("llamadas", 0) }}</td>
+            <td class="num tnum">{{ m.get("metas", 0) }}</td>
+            <td class="num"><span class="muted">—</span></td>
+            <td class="num"><span class="muted">—</span></td>
+            <td class="num tnum">
+              {%- if m.get("calidad") is not none -%}
+                <span class="{{ 'score-bad' if m.calidad < 50 }}">{{ m.calidad }}</span>
+              {%- else -%}<span class="muted">—</span>{%- endif -%}
             </td>
-            <td class="num">{{ c.delay_hours }} h</td>
-            <td class="num">{{ c.questions | selectattr("is_active") | list | length }}</td>
-            <td class="num">{{ stats.get(c.id, {}).get("targets", 0) }}</td>
-            <td class="num">{{ stats.get(c.id, {}).get("completed", 0) }}</td>
-            <td><span class="pill {{ 'completed' if c.is_active else 'no_answer' }}">{{ "activa" if c.is_active else "pausada" }}</span></td>
-            <td class="num"><a class="link" href="/campaigns/{{ c.id }}">Editar</a></td>
           </tr>
           {% endfor %}
+          <tr class="vacio" {% if campaigns %}hidden{% endif %}>
+            <td colspan="8"><p class="empty"><strong>{{ "Ningún agente coincide con la búsqueda" if campaigns else "Aún no hay agentes de voz" }}</strong>
+              Un agente define a quién se llama, cuándo y qué se le pregunta. Creá el primero con «Nuevo agente».</p></td>
+          </tr>
         </tbody>
       </table>
     </div>
-    {% else %}
-      <p class="empty">
-        <strong>Todavía no hay campañas</strong>
-        Una campaña define a quién se llama, cuándo y qué se le pregunta. Creá la primera abajo.
-      </p>
-    {% endif %}
   </div>
 </section>
 
-<section class="section" id="nueva">
-  <header>
-    <h2>Nueva campaña</h2>
-    <span class="note">Se crea pausada: agregale preguntas antes de activarla</span>
-  </header>
+{#- ───────── Asistente «Nuevo agente»: cuatro pasos en una sola ventana ───────── -#}
+<dialog id="asistente" class="asistente" aria-labelledby="asistente-titulo">
+  <h2 id="asistente-titulo" class="sr-only">Nuevo agente</h2>
+  <form method="post" action="/campaigns" id="form-agente" autocomplete="off">
+    {{ pasos(1) }}
 
-  <form method="post" action="/campaigns" class="panel-form">
-    <label for="c-name">Nombre</label>
-    <input id="c-name" type="text" name="name" required placeholder="Satisfacción post-taller…" autocomplete="off">
-
-    <label for="c-desc">Descripción <span class="hint">opcional</span></label>
-    <input id="c-desc" type="text" name="description" placeholder="Encuesta 48hs después del ingreso al taller…" autocomplete="off">
-
-    <div class="row">
-      <div>
-        <label for="c-entity">entityTypeId de Bitrix</label>
-        <input id="c-entity" type="number" name="bitrix_entity_type_id" value="{{ default_entity }}" required autocomplete="off" spellcheck="false">
+    <section data-paso="1">
+      <h3 class="pregunta">Escoge una plantilla <span class="req" aria-hidden="true">*</span></h3>
+      <div class="plantillas" role="radiogroup" aria-label="Plantilla">
+        {% for p in plantillas %}
+        <label class="plantilla {{ 'off' if not p.disponible }}">
+          <input type="radio" name="plantilla" value="{{ p.clave }}" data-proposito="{{ p.proposito }}" data-nombre="{{ p.titulo if p.clave != 'personalizado' }}" {% if not p.disponible %}disabled{% endif %}>
+          <span class="tarjeta">
+            <span class="avatar-p" aria-hidden="true">
+              {% if p.clave == "personalizado" %}<svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
+              {% elif p.clave == "posventa" %}<svg viewBox="0 0 24 24" focusable="false"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L3.5 17.2a2 2 0 0 0 2.8 2.8l5.8-5.8a4 4 0 0 0 5.1-5.4l-2.4 2.4-2.1-.5-.5-2.1z"/></svg>
+              {% elif p.clave == "entrega" %}<svg viewBox="0 0 24 24" focusable="false"><path d="M3 15v-3l2-5h14l2 5v3M3 15h18M3 15v3h3v-3M18 15v3h3v-3M7 12h.01M17 12h.01"/></svg>
+              {% else %}<svg viewBox="0 0 24 24" focusable="false"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 5.2a3 3 0 0 1 0 5.6M18 14.4c1.8.8 3 2.6 3 5.6"/></svg>{% endif %}
+            </span>
+            <strong>{{ p.titulo }}</strong>
+            <span class="desc">{{ p.descripcion }}</span>
+            {% if not p.disponible %}<span class="chip">Pronto</span>{% endif %}
+          </span>
+        </label>
+        {% endfor %}
       </div>
-      <div>
-        <label for="c-trigger">Campo disparador (T0)</label>
-        <input id="c-trigger" type="text" name="trigger_field" required placeholder="ufCrm5_1639669411830…" autocomplete="off" spellcheck="false">
-      </div>
-      <div>
-        <label for="c-delay">Demora en horas</label>
-        <input id="c-delay" type="number" name="delay_hours" value="48" required autocomplete="off">
-      </div>
-    </div>
-    <p class="hint">
-      Si no sabés el <code>entityTypeId</code> ni el código del campo, corré
-      <code>docker compose exec api python scripts/bitrix_discover.py</code> y te
-      los lista contra el portal.
-    </p>
+      <label for="a-idioma" class="etiqueta">Idioma <span class="req" aria-hidden="true">*</span></label>
+      <select id="a-idioma" disabled><option>Español - Latinoamérica</option></select>
+      <p class="hint">Por ahora los agentes hablan español.</p>
+    </section>
 
-    <div class="actions">
-      <button type="submit" class="primary">Crear campaña</button>
-    </div>
+    <section data-paso="2" hidden>
+      <div class="dos-col">
+        <div class="intro-paso">
+          <p class="hola">¡Hola!</p>
+          <h3>Estás a punto de crear tu agente.</h3>
+          <p>Dale un nombre, contá para qué lo vas a usar y qué tiene que tener en cuenta. Estos pasos le dan identidad y propósito desde el principio.</p>
+        </div>
+        <div class="campos">
+          <label for="a-nombre" class="etiqueta">Nombre del agente <span class="req" aria-hidden="true">*</span></label>
+          <input id="a-nombre" type="text" name="name" required maxlength="160" placeholder="Ej.: Posventa Asunción">
+
+          <label for="a-proposito" class="etiqueta">Propósito <span class="req" aria-hidden="true">*</span></label>
+          <select id="a-proposito" name="proposito" required>
+            <option value="">Seleccionar</option>
+            {% for p in propositos %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select>
+
+          <label for="a-zona" class="etiqueta">Zona horaria</label>
+          <select id="a-zona" disabled><option>América/Asunción (predeterminada)</option></select>
+          <p class="hint">Los horarios de llamada usan la hora de Paraguay.</p>
+
+          <label for="a-instrucciones" class="etiqueta">Instrucciones importantes</label>
+          <textarea id="a-instrucciones" name="instrucciones" rows="4" maxlength="2000" placeholder="Explicá los detalles del agente, sus tareas y cómo debe comportarse. Ayuda a la IA que conversa con el cliente."></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section data-paso="3" hidden>
+      <div class="dos-col">
+        <div class="intro-paso">
+          <p class="hola">¡Hola!</p>
+          <h3>Cuéntanos sobre tu empresa</h3>
+          <p>Enseñale al agente todo lo relacionado con la empresa. Si escribís el sitio web, la IA lo lee y arma una descripción que podés corregir.</p>
+        </div>
+        <div class="campos">
+          <label for="a-empresa" class="etiqueta">Nombre de la empresa <span class="req" aria-hidden="true">*</span></label>
+          <input id="a-empresa" type="text" name="empresa" required maxlength="160" value="{{ empresa_por_defecto }}">
+
+          <label for="a-url" class="etiqueta">URL del sitio web</label>
+          <div class="fila-url">
+            <input id="a-url" type="text" inputmode="url" placeholder="https://santarosa.com.py" spellcheck="false">
+            <button type="button" class="btn" id="generar-contexto">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>Generar contexto
+            </button>
+          </div>
+          <p id="estado-contexto" class="hint" role="status" aria-live="polite"></p>
+
+          <label for="a-descripcion" class="etiqueta">Descripción de la empresa <span class="req" aria-hidden="true">*</span></label>
+          <textarea id="a-descripcion" name="empresa_descripcion" rows="6" maxlength="2000" required placeholder="Describí tu empresa acá">Concesionaria multimarca de vehículos en Paraguay, con taller y servicio posventa.</textarea>
+        </div>
+      </div>
+    </section>
+
+    <footer class="acciones">
+      <button type="button" class="btn" data-atras hidden>Atrás</button>
+      <span class="resto"></span>
+      <button type="button" class="btn quiet" data-cerrar>Cancelar</button>
+      <button type="button" class="btn primary" data-siguiente>Continuar</button>
+      <button type="submit" class="btn primary" data-guardar hidden>Guardar y continuar</button>
+    </footer>
   </form>
-</section>
+</dialog>
+
+{% if recien_creado %}
+<dialog id="agente-listo" class="asistente" aria-labelledby="listo-titulo" data-abrir="1">
+  {{ pasos(4) }}
+  <section class="listo">
+    <h3 id="listo-titulo">¡{{ recien_creado.name }} está creado!</h3>
+    <p>Quedó <strong>pausado</strong>: todavía no llama a nadie. Probalo en el simulador, completá el guion y las preguntas, cargá los destinatarios y recién ahí activalo.</p>
+    <ul class="siguientes">
+      <li><a class="btn primary" href="/simulador">Probar en el simulador</a></li>
+      <li><a class="btn" href="/campaigns/{{ recien_creado.id }}">Completar guion y preguntas</a></li>
+      <li><a class="btn" href="/targets#cargar">Cargar destinatarios</a></li>
+    </ul>
+  </section>
+  <footer class="acciones"><span class="resto"></span><button type="button" class="btn quiet" data-cerrar>Cerrar</button></footer>
+</dialog>
+{% endif %}
+
+<script>
+(function () {
+  /* Búsqueda de agentes: filtra las filas ya cargadas, sin recargar la página. */
+  var q = document.getElementById("buscar-agentes");
+  var filas = [].slice.call(document.querySelectorAll("#tabla-agentes tbody tr[data-nombre]"));
+  var vacio = document.querySelector("#tabla-agentes .vacio");
+  if (q) q.addEventListener("input", function () {
+    var t = q.value.trim().toLowerCase(), visibles = 0;
+    filas.forEach(function (f) { var ok = !t || f.dataset.nombre.indexOf(t) !== -1; f.hidden = !ok; if (ok) visibles++; });
+    if (vacio && filas.length) vacio.hidden = visibles > 0;
+  });
+
+  /* Asistente «Nuevo agente». <dialog> trae el foco, el Esc y el fondo; los pasos son secciones que se muestran de a una. */
+  var dlg = document.getElementById("asistente");
+  var form = document.getElementById("form-agente");
+  if (!dlg || !form || typeof dlg.showModal !== "function") return;
+  var atras = form.querySelector("[data-atras]"), sig = form.querySelector("[data-siguiente]"), guardar = form.querySelector("[data-guardar]");
+  var paso = 1;
+
+  function ir(n) {
+    paso = n;
+    [].forEach.call(form.querySelectorAll("section[data-paso]"), function (s) { s.hidden = Number(s.dataset.paso) !== n; });
+    [].forEach.call(form.querySelectorAll(".pasos li"), function (li) {
+      var k = Number(li.dataset.paso);
+      li.classList.toggle("actual", k === n); li.classList.toggle("hecho", k < n);
+      if (k === n) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+      var num = li.querySelector(".num");
+      num.innerHTML = k < n ? '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : String(k);
+    });
+    atras.hidden = n === 1; sig.hidden = n >= 3; guardar.hidden = n !== 3;
+    var primero = form.querySelector('section[data-paso="' + n + '"] input:not([type=radio]):not(:disabled), section[data-paso="' + n + '"] select:not(:disabled), section[data-paso="' + n + '"] textarea');
+    if (primero && n > 1) primero.focus();
+  }
+
+  function valido() {
+    if (paso === 1 && !form.querySelector('input[name=plantilla]:checked')) {
+      var tarjetas = form.querySelector(".plantillas");
+      tarjetas.classList.add("falta");
+      tarjetas.scrollIntoView({ block: "nearest" });
+      return false;
+    }
+    var campos = [].slice.call(form.querySelectorAll('section[data-paso="' + paso + '"] [required]'));
+    for (var i = 0; i < campos.length; i++) { if (!campos[i].checkValidity()) { campos[i].reportValidity(); return false; } }
+    return true;
+  }
+
+  function siguiente() { if (valido() && paso < 3) ir(paso + 1); }
+
+  [].forEach.call(document.querySelectorAll("[data-abrir-asistente]"), function (b) {
+    b.addEventListener("click", function () { form.reset(); ir(1); form.querySelector(".plantillas").classList.remove("falta"); dlg.showModal(); });
+  });
+  [].forEach.call(document.querySelectorAll("[data-cerrar]"), function (b) { b.addEventListener("click", function () { b.closest("dialog").close(); }); });
+  atras.addEventListener("click", function () { if (paso > 1) ir(paso - 1); });
+  sig.addEventListener("click", siguiente);
+  form.addEventListener("submit", function (e) { if (paso !== 3 || !valido()) { e.preventDefault(); if (paso < 3) siguiente(); } });
+  /* Al elegir una plantilla se adelanta lo que ya se sabe: el propósito y un nombre para empezar. */
+  form.addEventListener("change", function (e) {
+    if (e.target.name !== "plantilla") return;
+    form.querySelector(".plantillas").classList.remove("falta");
+    var sel = form.querySelector("#a-proposito"), nom = form.querySelector("#a-nombre");
+    sel.value = e.target.dataset.proposito || "";
+    if (!nom.value || nom.dataset.auto) { nom.value = e.target.dataset.nombre || ""; nom.dataset.auto = "1"; }
+  });
+  form.querySelector("#a-nombre").addEventListener("input", function (e) { delete e.target.dataset.auto; });
+
+  /* «Generar contexto»: el servidor lee el sitio y Claude resume. Nada se guarda hasta «Guardar y continuar». */
+  var gen = document.getElementById("generar-contexto"), estado = document.getElementById("estado-contexto");
+  gen.addEventListener("click", function () {
+    var url = document.getElementById("a-url").value.trim();
+    if (!url) { estado.textContent = "Escribí la dirección del sitio web."; document.getElementById("a-url").focus(); return; }
+    gen.disabled = true; estado.textContent = "Leyendo el sitio web de tu empresa…";
+    var datos = new URLSearchParams(); datos.set("url", url);
+    fetch("/agentes/contexto-empresa", { method: "POST", body: datos, credentials: "same-origin" })
+      .then(function (r) { return r.json().catch(function () { return { error: "No pude generar el contexto." }; }); })
+      .then(function (j) {
+        if (j.descripcion) { document.getElementById("a-descripcion").value = j.descripcion; estado.textContent = "Listo. Revisá el texto y corregilo si hace falta."; }
+        else estado.textContent = j.error || "No pude generar el contexto.";
+      })
+      .catch(function () { estado.textContent = "No pude generar el contexto. Probá de nuevo."; })
+      .then(function () { gen.disabled = false; });
+  });
+})();
+
+(function () {
+  var listo = document.getElementById("agente-listo");
+  if (listo && typeof listo.showModal === "function") {
+    listo.showModal();
+    /* La URL queda limpia: recargar no vuelve a abrir el mensaje. */
+    try { history.replaceState(null, "", "/campaigns"); } catch (e) {}
+  }
+})();
+</script>
 {% endblock %}
