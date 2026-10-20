@@ -1,0 +1,21 @@
+# Asterisk de Callbot en un VPS con IP pública (Hetzner).
+#
+# Por qué existe: en la oficina el FortiGate descarta el audio que Personal devuelve al bot
+# (ver docs/diagnostico-audio-2026-10-20.md). Con la central en un servidor con IP pública no
+# hay NAT en el medio. Solo se muda Asterisk; la API, el voice-agent y la base siguen en el
+# servidor de siempre y se hablan con el VPS por Tailscale.
+#
+# network_mode: host a propósito: sin el NAT de Docker en el medio, el audio entra directo al
+# puerto que Asterisk anunció. El acceso lo cierra el firewall de Hetzner + ufw (ver provision.sh):
+# SIP solo desde Personal, ARI (8088) solo por Tailscale.
+services:
+  asterisk:
+    build:
+      context: ../../docker/asterisk
+      dockerfile: Dockerfile
+    container_name: callbot-asterisk
+    restart: unless-stopped
+    network_mode: host
+    env_file: .env
+    environment:
+      TZ: America/Asuncion

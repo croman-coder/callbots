@@ -99,7 +99,7 @@ services:
       BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES}
       MAX_CONCURRENT_CALLS: ${MAX_CONCURRENT_CALLS}
       CALL_ANSWER_TIMEOUT_SECONDS: ${CALL_ANSWER_TIMEOUT_SECONDS}
-      ARI_URL: http://asterisk:8088
+      ARI_URL: ${ARI_URL:-http://asterisk:8088}
       ARI_USER: ${ARI_USER}
       ARI_PASSWORD: ${ARI_PASSWORD}
       ARI_APP: ${ARI_APP}
@@ -182,7 +182,7 @@ services:
       BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES}
       MAX_CONCURRENT_CALLS: ${MAX_CONCURRENT_CALLS}
       CALL_ANSWER_TIMEOUT_SECONDS: ${CALL_ANSWER_TIMEOUT_SECONDS}
-      ARI_URL: http://asterisk:8088
+      ARI_URL: ${ARI_URL:-http://asterisk:8088}
       ARI_USER: ${ARI_USER}
       ARI_PASSWORD: ${ARI_PASSWORD}
       ARI_APP: ${ARI_APP}
@@ -245,7 +245,7 @@ services:
       BITRIX_POLL_INTERVAL_MINUTES: ${BITRIX_POLL_INTERVAL_MINUTES}
       MAX_CONCURRENT_CALLS: ${MAX_CONCURRENT_CALLS}
       CALL_ANSWER_TIMEOUT_SECONDS: ${CALL_ANSWER_TIMEOUT_SECONDS}
-      ARI_URL: http://asterisk:8088
+      ARI_URL: ${ARI_URL:-http://asterisk:8088}
       ARI_USER: ${ARI_USER}
       ARI_PASSWORD: ${ARI_PASSWORD}
       ARI_APP: ${ARI_APP}
@@ -331,6 +331,11 @@ services:
       SAVE_AUDIO: ${SAVE_AUDIO}
       LOG_LEVEL: ${LOG_LEVEL}
       TZ: ${TZ}
+    # AudioSocket para un Asterisk que corre en otro servidor (el VPS de Hetzner, por Tailscale).
+    # Por defecto solo en loopback: no se expone a la red. En producción con el VPS:
+    # AUDIOSOCKET_BIND=<IP de Tailscale de este servidor>.
+    ports:
+      - "${AUDIOSOCKET_BIND:-127.0.0.1}:8090:8090"
     volumes:
       - models:/models
       - recordings:/recordings
