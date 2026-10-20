@@ -30,6 +30,9 @@ log = logging.getLogger(__name__)
 # Pausa después de una pregunta, antes de empezar a escuchar. Sin esto el VAD
 # capta el final de la propia voz del bot como si fuera el cliente.
 PAUSE_AFTER_PROMPT_MS = 300
+# Un respiro entre la respuesta del cliente y la pregunta que sigue: sin esto el bot arranca
+# la próxima pregunta pisando el final de la respuesta y todo suena atropellado.
+PAUSE_BEFORE_QUESTION_MS = 450
 
 
 class Outcome:
@@ -151,6 +154,9 @@ class SurveyDialog:
         # Lo que el LLM contestó al intento anterior. Se dice antes de volver
         # a preguntar, en lugar de la frase fija.
         respuesta_libre: str | None = None
+
+        if self.questions_asked > 0:
+            await self.socket.play_silence(PAUSE_BEFORE_QUESTION_MS)
 
         while True:
             if retries_used == 0:

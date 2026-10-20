@@ -28,6 +28,7 @@ import numpy as np
 import soxr
 
 from app.config import SAMPLE_RATE, config
+from app.guion import partir_frases
 
 log = logging.getLogger(__name__)
 
@@ -293,12 +294,41 @@ def _piper_synthesize(text: str, params: VoiceParams = DEFAULT_PARAMS) -> bytes:
 # ---------------------------------------------------------------------------
 # Interfaz pública
 # ---------------------------------------------------------------------------
+PAUSA_ENTRE_FRASES_MS = 450
+
+
+def _silencio(ms: int) -> bytes:
+    """PCM 8 kHz mono int16 en silencio."""
+    return b"\x00" * (SAMPLE_RATE * 2 * ms // 1000)
+
+
 async def synthesize(
     text: str,
     timeout: float | None = None,
     params: VoiceParams = DEFAULT_PARAMS,
 ) -> bytes:
-    """PCM 8 kHz listo para AudioSocket. Nunca levanta excepción: peor caso, b''."""
+    """PCM 8 kHz listo para AudioSocket. Nunca levanta excepción: peor caso, b''.
+
+    Un texto con varias frases se sintetiza frase por frase y se une con una pausa: dicho de
+    corrido suena a locutor sin respirar. Cada frase se cachea por separado, así el saludo
+    comparte audio con otros textos y `warm_up` solo genera lo que falta.
+    """
+    frases = partir_frases(text)
+    if len(frases) <= 1:
+        return await _sintetizar_frase(frases[0] if frases else "", timeout, params)
+    partes = []
+    for frase in frases:
+        pcm = await _sintetizar_frase(frase, timeout, params)
+        if pcm:
+            partes.append(pcm)
+    return _silencio(PAUSA_ENTRE_FRASES_MS).join(partes)
+
+
+async def _sintetizar_frase(
+    text: str,
+    timeout: float | None,
+    params: VoiceParams,
+) -> bytes:
     text = (text or "").strip()
     if not text:
         return b""
@@ -378,9 +408,8 @@ def precalentar_en_segundo_plano(texts: list[str], params: VoiceParams = DEFAULT
     """Encola lo que falte del guion de una campaña, sin bloquear la llamada que lo pidió."""
     if not perfil_de_voicebox(params):
         return
-    for t in dict.fromkeys(texts):
-        t = (t or "").strip()
-        if t and (t, params.clave()) not in _memory_cache and _read_cache(t, params) is None:
+    for t in dict.fromkeys(f for texto in texts for f in partir_frases(texto)):
+        if (t, params.clave()) not in _memory_cache and _read_cache(t, params) is None:
             _encolar(t, params)
 
 
@@ -392,9 +421,9 @@ async def warm_up(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> int
     escuchando silencio.
     """
     pending = [
-        t.strip() for t in dict.fromkeys(texts)
+        t for t in dict.fromkeys(f for texto in texts for f in partir_frases(texto))
         # Un "{nombre}" sin reemplazar es una plantilla, no algo que se diga: no se sintetiza.
-        if t and t.strip() and "{nombre}" not in t and (t.strip(), params.clave()) not in _memory_cache
+        if "{nombre}" not in t and (t, params.clave()) not in _memory_cache
     ]
     if not pending:
         return 0
@@ -404,7 +433,7 @@ async def warm_up(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> int
         if _read_cache(text, params) is not None:
             continue
 
-        await synthesize(text, timeout=config.voicebox_warmup_timeout, params=params)
+        await _sintetizar_frase(text, config.voicebox_warmup_timeout, params)
 
         # Solo cuenta si quedó en disco. Si respondió Piper de respaldo no se
         # cachea a propósito, y decir "precalentado" ahí sería mentirle al log.
