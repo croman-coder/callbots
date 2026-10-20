@@ -196,3 +196,8 @@ def test_el_audio_solo_se_sirve_desde_el_directorio_de_grabaciones(tmp_path, mon
     assert admin._audio_de(N(audio_path=str(bueno))) == bueno.resolve()
     for malo in (str(afuera), str(tmp_path / ".." / "secreto.wav"), "/etc/passwd", str(tmp_path / "no-existe.wav"), None):
         assert admin._audio_de(N(audio_path=malo)) is None
+
+
+def test_la_respuesta_no_muestra_markdown():
+    assert preguntar.limpiar("Hubo **7 llamadas**.\n## Detalle\n- una") == "Hubo 7 llamadas.\nDetalle\n- una"
+    assert preguntar.limpiar(None) is None

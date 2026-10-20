@@ -264,6 +264,21 @@ Lo que conviene no deshacer:
 
 `make test-api` corre las pruebas de este acceso (89).
 
+## Panel: lo que se sumó tomando ideas de Dapta (20/10/2026)
+
+- **Destinatarios desde Excel o CSV** (`/targets/archivo`, `services/importar.py`): detecta las columnas de teléfono y nombre.
+- **Contactabilidad** en Reportes: embudo llamadas → atendieron → completaron, y mejor horario (`services/contactabilidad.py`).
+- **Audio de cada respuesta** en el detalle de la llamada (`/calls/{id}/answers/{id}/audio`, solo dentro de `RECORDINGS_DIR`).
+- **Calidad de la llamada** del lado del bot, 0-100 con motivos (`services/calidad.py`).
+- **Preguntale a tus llamadas**: Claude Haiku sobre las encuestas filtradas, sin teléfonos (`services/preguntar.py`).
+
+Quedaron afuera, a propósito:
+- **WhatsApp si no atiende**: Calidad ya manda el NPS 48 hs por WhatsApp a la misma gente y en el
+  mismo momento (Broadcast manual de YCloud desde la planilla, sin API). Sumarlo en Callbot
+  duplicaría la encuesta. Primero hay que decidir con Calidad quién encuesta a quién.
+- **Pasar a una persona y detectar el contestador**: se arman cuando el audio entrante funcione,
+  para poder probarlos con llamadas reales (ver `diagnostico-audio-2026-10-20.md`).
+
 ## Lo que falta
 
 1. **De dónde salen los destinatarios de forma automática.** Hoy se cargan a

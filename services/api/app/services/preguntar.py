@@ -7,6 +7,8 @@ calidad y así no salen del sistema. Solo el primer nombre, para poder citar cas
 
 from __future__ import annotations
 
+import re
+
 from app.services import llm
 
 MAX_CARACTERES = 60_000
@@ -77,4 +79,13 @@ def preguntar(pregunta: str, calls) -> tuple[str | None, int]:
         f"LLAMADAS ({usadas}):\n\n{texto}\n\nPREGUNTA: {pregunta.strip()}",
         max_tokens=900,
     )
-    return respuesta, usadas
+    return limpiar(respuesta), usadas
+
+
+def limpiar(texto: str | None) -> str | None:
+    """El modelo a veces marca negritas o títulos con markdown aunque se le pida que no: en la
+    página se verían los asteriscos. Se quitan las marcas y queda el texto."""
+    if not texto:
+        return texto
+    lineas = [re.sub(r"^#{1,6}\s*", "", l) for l in texto.replace("**", "").replace("__", "").splitlines()]
+    return "\n".join(lineas).strip()
