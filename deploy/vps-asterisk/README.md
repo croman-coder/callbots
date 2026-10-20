@@ -50,7 +50,7 @@ pagar: `./destruir.sh`.
 - El ARI (8088, con contraseña) **no** está abierto a internet: solo se llega por Tailscale.
 - Las credenciales del trunk viajan del servidor de la app al VPS sin pasar por esta pantalla y
   quedan en `/opt/callbot-asterisk/.env` (permisos 600).
-- En Callbot: `ARI_URL` apunta al VPS y `AUDIOSOCKET_BIND` publica el 8090 del voice-agent **solo
+- En Callbot: `ARI_URL` apunta al VPS y `AUDIOSOCKET_BIND` publica el 18090 del voice-agent **solo
   en la IP de Tailscale** del servidor.
 
 ## Latencia

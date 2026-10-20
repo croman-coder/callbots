@@ -334,8 +334,9 @@ services:
     # AudioSocket para un Asterisk que corre en otro servidor (el VPS de Hetzner, por Tailscale).
     # Por defecto solo en loopback: no se expone a la red. En producción con el VPS:
     # AUDIOSOCKET_BIND=<IP de Tailscale de este servidor>.
+    # (El 8090 del host es el de Coolify: se publica el 18090.)
     ports:
-      - "${AUDIOSOCKET_BIND:-127.0.0.1}:8090:8090"
+      - "${AUDIOSOCKET_BIND:-127.0.0.1}:18090:8090"
     volumes:
       - models:/models
       - recordings:/recordings

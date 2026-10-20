@@ -80,7 +80,7 @@ ssh "$SERVIDOR_APP" "curl -s -H \"Authorization: Bearer \$(cat ~/.coolify-token)
   | jq -r --arg ip "$IP" '
       def g($k): (map(select(.key==$k and (.is_preview|not)))[0].real_value // "");
       "ARI_USER=\(g("ARI_USER"))","ARI_PASSWORD=\(g("ARI_PASSWORD"))",
-      "AUDIOSOCKET_HOST=100.112.44.111","AUDIOSOCKET_PORT=8090",
+      "AUDIOSOCKET_HOST=100.112.44.111","AUDIOSOCKET_PORT=18090",
       "RTP_START=10000","RTP_END=10050","SOFTPHONE_PASSWORD=\(g("SOFTPHONE_PASSWORD"))",
       "SIP_EXTERNAL_ADDRESS=\($ip)",
       "TRUNK_HOST=\(g("TRUNK_HOST"))","TRUNK_USER=\(g("TRUNK_USER"))","TRUNK_PASSWORD=\(g("TRUNK_PASSWORD"))"' \
