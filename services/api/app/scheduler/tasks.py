@@ -287,6 +287,14 @@ def _schedule_retry_or_finish(target: SurveyTarget, final_status: TargetStatus) 
 # ---------------------------------------------------------------------------
 # 4. Cierre y análisis
 # ---------------------------------------------------------------------------
+def respuestas_reales(call: CallAttempt) -> list:
+    """Las respuestas que tienen algo: una transcripción o un valor interpretado."""
+    return [
+        a for a in call.answers
+        if (a.transcript or "").strip() or a.value_numeric is not None
+    ]
+
+
 @shared_task(name="callbot.finalize_call")
 def finalize_call(call_id: int) -> dict:
     """Analiza la llamada terminada y publica el resultado en Bitrix."""
@@ -297,7 +305,11 @@ def finalize_call(call_id: int) -> dict:
 
         target = call.target
 
-        if call.outcome is CallOutcome.COMPLETED and call.answers:
+        # `call.answers` trae una fila por pregunta que se hizo, conteste o no: una llamada donde
+        # el cliente atendió y no dijo nada tiene filas vacías. Solo cuentan las que tienen algo.
+        respondidas = respuestas_reales(call)
+
+        if call.outcome is CallOutcome.COMPLETED and respondidas:
             analyze_call(db, call)
             db.flush()
             push_result_to_bitrix(db, call)
@@ -308,7 +320,7 @@ def finalize_call(call_id: int) -> dict:
                 call.analysis.satisfaction_score if call.analysis else None,
             )
 
-        elif call.outcome is CallOutcome.PARTIAL and call.answers:
+        elif call.outcome is CallOutcome.PARTIAL and respondidas:
             # Contestó algunas preguntas: guardamos lo que hay y no reintentamos
             analyze_call(db, call)
             db.flush()
