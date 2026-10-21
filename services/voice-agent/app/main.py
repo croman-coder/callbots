@@ -59,7 +59,8 @@ async def handle_connection(
         # Antes de precalentar o decir nada: de esto depende cómo suenan las marcas y las siglas.
         tts.set_pronunciaciones(script.pronunciaciones)
 
-        if not script.questions:
+        # Un agente de recepción no tiene preguntas: conversa (ver dialog._atender_recepcion).
+        if not script.questions and not script.es_recepcion:
             log.error("La campaña %s no tiene preguntas activas", script.campaign_id)
             await socket.hangup()
             return
@@ -69,7 +70,7 @@ async def handle_connection(
         # de segundos y el cliente ya está en la línea; mientras tanto habla Piper.
         tts.precalentar_en_segundo_plano(script.all_prompts, voz_de(script))
 
-        if not script.demo:
+        if not script.demo and not script.es_recepcion:
             try:
                 await api.session_started(session_uuid)
             except ApiError as exc:
