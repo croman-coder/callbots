@@ -41,6 +41,9 @@ VACIAS = {
     "hay", "tienen", "tenes", "tiene", "busco", "quiero", "necesito", "repuesto", "repuestos", "pieza", "piezas",
     "precio", "cuanto", "cuesta", "sale", "stock", "auto", "vehiculo", "camioneta", "original", "originales", "y", "o",
 }
+# Cómo dice la marca el cliente (o Claude) → cómo está en el inventario.
+MARCAS = {"gwm": "GREATWALL", "great wall": "GREATWALL", "greatwall": "GREATWALL", "haval": "GREATWALL",
+          "poer": "GREATWALL", "tank": "GREATWALL"}
 DISPONIBILIDAD = {
     "disponible": "disponible (había stock al cotizar)",
     "sobre_pedido": "se encarga (sobre pedido)",
@@ -225,31 +228,43 @@ def _guaranies(valor: float) -> str:
     return "Gs. " + f"{round(valor):,}".replace(",", ".")
 
 
-def stock(con: Connection, texto: str, *, precios: bool = False) -> str:
+def marca_del_inventario(marca: str | None) -> str | None:
+    plano = _plano(marca or "")
+    return MARCAS.get(plano, plano.upper().replace(" ", "")) if plano else None
+
+
+def stock(con: Connection, texto: str, *, marca: str | None = None, precios: bool = False) -> str:
+    """Lo más parecido a `texto` en el inventario, agrupado por código (el mismo repuesto puede estar en dos depósitos)
+    y, si se sabe, solo de la marca del vehículo. El inventario no dice para qué modelo es cada repuesto."""
     palabras = palabras_de_busqueda(texto)
     if not palabras:
-        return "No entendí qué repuesto buscar: pedile al cliente el nombre del repuesto y el modelo del vehículo."
-    pajar = ("translate(lower(coalesce(description, '') || ' ' || coalesce(brand, '') || ' ' || coalesce(code, '')), "
-             "'áéíóúü', 'aeiouu')")
+        return "No entendí qué repuesto buscar: pedile al cliente el nombre del repuesto y la marca y modelo del vehículo."
+    marca = marca_del_inventario(marca)
+    pajar = ("translate(lower(coalesce(description, '') || ' ' || coalesce(code, '')), 'áéíóúü', 'aeiouu')")
     puntaje = " + ".join(f"(CASE WHEN {pajar} LIKE :p{i} THEN 1 ELSE 0 END)" for i in range(len(palabras)))
-    # Con varias palabras alcanza con que coincidan todas menos una: el modelo del vehículo no siempre está en la
+    # Con varias palabras alcanza con que coincidan todas menos una: el modelo del vehículo casi nunca está en la
     # descripción del repuesto.
     minimo = max(1, len(palabras) - 1)
     filas = con.execute(text(
-        f"SELECT description, brand, code, stock, price, location, updated_at, ({puntaje}) AS puntaje "
-        f"FROM inventory WHERE ({puntaje}) >= :minimo ORDER BY puntaje DESC, stock DESC NULLS LAST LIMIT :max"),
-        {**{f"p{i}": f"%{p}%" for i, p in enumerate(palabras)}, "minimo": minimo, "max": MAX_RESULTADOS_STOCK}).all()
+        f"SELECT code, max(description) AS description, max(brand) AS brand, sum(coalesce(stock, 0)) AS stock, "
+        f"max(price) AS price, max(updated_at) AS updated_at, max({puntaje}) AS puntaje "
+        f"FROM inventory WHERE ({puntaje}) >= :minimo AND (CAST(:marca AS text) IS NULL OR upper(brand) = CAST(:marca AS text)) "
+        f"GROUP BY code ORDER BY puntaje DESC, stock DESC LIMIT :max"),
+        {**{f"p{i}": f"%{p}%" for i, p in enumerate(palabras)}, "minimo": minimo, "marca": marca,
+         "max": MAX_RESULTADOS_STOCK}).all()
+    buscado = " ".join(palabras) + (f" de {marca.title()}" if marca else "")
     if not filas:
-        return f"No hay nada parecido a «{' '.join(palabras)}» en el inventario del Cotizador."
+        return f"No hay nada parecido a «{buscado}» en el inventario del Cotizador."
     al_dia = max((f.updated_at for f in filas if f.updated_at), default=None)
-    lineas = [f"Inventario del Cotizador (cargado el {_fecha(al_dia)}), lo más parecido a «{' '.join(palabras)}»:"]
+    lineas = [f"Inventario del Cotizador (cargado el {_fecha(al_dia)}), lo más parecido a «{buscado}»:"]
     for f in filas:
         cuanto = f"{f.stock} en stock" if (f.stock or 0) > 0 else "sin stock"
         dato = f"  - {f.description} (código {f.code}{', ' + f.brand if f.brand else ''}): {cuanto}"
         if precios and f.price and (f.stock or 0) > 0:
             dato += f", precio de lista {_guaranies(f.price)}"
         lineas.append(dato)
-    lineas.append("Que esté en el inventario no lo reserva: para apartarlo lo tiene que confirmar el área de repuestos.")
+    lineas.append("El inventario no dice para qué modelo es cada repuesto: que sea el de su vehículo lo confirma el "
+                  "área de repuestos, y que esté en stock no lo reserva.")
     return "\n".join(lineas)
 
 
@@ -261,7 +276,7 @@ def consultar(pedido: dict, *, telefono_llamada: str | None = None, precios: boo
     try:
         with _engine().connect() as con:
             if que == "stock":
-                return stock(con, str(pedido.get("texto") or ""), precios=precios)
+                return stock(con, str(pedido.get("texto") or ""), marca=pedido.get("marca"), precios=precios)
             if que == "pedidos":
                 documento = documento_normal(str(pedido.get("documento") or ""))
                 telefono = telefono_normal(str(pedido.get("telefono") or "")) or telefono_normal(telefono_llamada)

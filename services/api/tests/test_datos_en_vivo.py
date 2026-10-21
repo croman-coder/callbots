@@ -118,3 +118,10 @@ def test_el_cliente_simulado_no_ve_lo_que_devolvio_el_sistema(monkeypatch):
     recepcion.decir(caso, "sistema", "Cliente encontrado: Ramón, CI 1234567")
     asyncio.run(recepcion.cliente_simulado(caso, "Quiere su espejo"))
     assert "1234567" not in vistos[0]
+
+
+def test_marca_como_la_dice_el_cliente():
+    assert cotizador.marca_del_inventario("GWM") == "GREATWALL"
+    assert cotizador.marca_del_inventario("Great Wall") == "GREATWALL"
+    assert cotizador.marca_del_inventario("Renault") == "RENAULT"
+    assert cotizador.marca_del_inventario(None) is None

@@ -341,7 +341,9 @@ CONSULTAS_REPUESTOS = """
 Podés consultar en vivo el sistema de repuestos (el Cotizador):
 - «pedidos»: las solicitudes y cotizaciones de repuestos del cliente, línea por línea, con su disponibilidad y en \
 cuántos días llega lo que se encarga. Hace falta su número de cédula o RUC, o el teléfono con que lo registraron{tel}.
-- «stock»: si hay un repuesto en el inventario. Pasá el nombre del repuesto y el modelo del vehículo.
+- «stock»: si hay un repuesto en el inventario. Pasá el nombre del repuesto y la marca del vehículo (Renault, \
+Jetour, GWM, JAC, Mitsubishi…). El inventario no dice para qué modelo es cada repuesto: si hay, decí que hay de esa \
+marca y que Repuestos confirma que sea el de su modelo.
 Para consultar, completá «consultar» y en «decir» poné solo una frase corta para que espere («{espera}»). Después \
 vas a ver el resultado como «Sistema» en la conversación y le contestás con eso.
 Con lo que diga el sistema: las fechas de llegada son estimaciones, decilas como «aproximadamente»; si no hay plazo \
@@ -350,7 +352,7 @@ ni teléfonos. {precios}
 """
 CAMPO_CONSULTAR = (
     ',\n "consultar": null, o {"que": "pedidos", "documento": "...", "telefono": "..."}, '
-    'o {"que": "stock", "texto": "repuesto y modelo"}'
+    'o {"que": "stock", "texto": "nombre del repuesto", "marca": "marca del vehículo"}'
 )
 
 PERSONA_CON_TRANSFERENCIA = (
@@ -472,7 +474,7 @@ def _consulta_valida(pedido: object) -> dict | None:
     if not isinstance(pedido, dict) or pedido.get("que") not in ("pedidos", "stock"):
         return None
     limpio = {"que": pedido["que"]}
-    for campo in ("documento", "telefono", "texto"):
+    for campo in ("documento", "telefono", "texto", "marca"):
         valor = _limpio(pedido.get(campo), 120)
         if valor and valor.lower() not in ("null", "none", "..."):
             limpio[campo] = valor
