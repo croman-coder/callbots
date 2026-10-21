@@ -122,6 +122,10 @@ services:
     volumes:
       - voices:/voices
       - recordings:/recordings
+    # Solo la API habla con el Cotizador (ver `networks:` al final). Coolify le suma además la red propia de la app;
+    # fuera de Coolify habría que agregar `default` a esta lista.
+    networks:
+      - callbot-cotizador
     # Acceso a servicios del host. Se apunta a la IP de docker0
     # y NO a `host-gateway`: tras el `systemctl reload docker` con el que se
     # registró el runtime nvidia, el daemon dejó de resolverlo y los
@@ -384,9 +388,9 @@ services:
 networks:
   # Red interna con la base del Cotizador de repuestos (`srpy-postgres`), para los datos en vivo del agente de
   # recepción (docs/datos-en-vivo.md). Se creó a mano en el servidor: `docker network create --internal
-  # callbot-cotizador` y `docker network connect callbot-cotizador srpy-postgres`. Coolify conecta toda red de acá a
-  # todos los servicios, además de la propia de la app. NO se usa la red `coolify`: ahí el nombre `postgres` también
-  # es la base de Coolify y la de srpy-infra, y Callbot podría conectarse a la equivocada.
+  # callbot-cotizador` y `docker network connect callbot-cotizador srpy-postgres`. Solo la usa la API. NO se usa la
+  # red `coolify`: ahí el nombre `postgres` también es la base de Coolify y la de srpy-infra, y Callbot podría
+  # conectarse a la equivocada.
   callbot-cotizador:
     external: true
 
