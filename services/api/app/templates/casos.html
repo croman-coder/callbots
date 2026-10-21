@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% set nav = "casos" %}
+{% block title %}Casos · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Casos</h1>
+    <p class="lede">Lo que entra por los agentes de recepción: qué pide el cliente, a qué área va, quién responde y para cuándo</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="metrics">
+  <div class="metric t-celeste">
+    <div class="k">Esperan respuesta</div>
+    <div class="v">{{ resumen.abiertos }}</div>
+    <div class="f">derivados a un área</div>
+  </div>
+  <div class="metric t-durazno {% if resumen.vencidos %}is-bad{% endif %}">
+    <div class="k">Vencidos</div>
+    <div class="v">{{ resumen.vencidos }}</div>
+    <div class="f">pasaron el plazo de su área</div>
+  </div>
+  <div class="metric t-menta">
+    <div class="k">Respondidos en plazo</div>
+    {% if resumen.en_plazo is not none %}<div class="v">{{ resumen.en_plazo }}<small>%</small></div>
+    <div class="f">{{ resumen.respondidos }} respondido{{ "s" if resumen.respondidos != 1 }} en 30 días</div>
+    {% else %}<div class="v pending">Sin datos</div>{% endif %}
+  </div>
+  <div class="metric t-lavanda">
+    <div class="k">Resueltos por el agente</div>
+    <div class="v">{{ resumen.resueltos }}</div>
+    <div class="f">de {{ resumen.entraron }} que entraron en 30 días</div>
+  </div>
+</div>
+
+<section class="section">
+  <nav class="filtros-seg" aria-label="Qué casos ver" style="margin-bottom:var(--s3)">
+    {% for clave, titulo in filtros.items() %}
+    <a href="{{ request.url.include_query_params(filtro=clave) }}" {% if filtro == clave %}aria-current="page"{% endif %}>{{ titulo }}</a>
+    {% endfor %}
+  </nav>
+  <form method="get" action="/casos" class="filters">
+    <input type="hidden" name="filtro" value="{{ filtro }}">
+    <select name="area" aria-label="Área">
+      <option value="">Todas las áreas</option>
+      {% for clave, nombre in areas.items() %}<option value="{{ clave }}" {% if area == clave %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+      <option value="-" {% if area == "-" %}selected{% endif %}>Sin área asignada</option>
+    </select>
+    {% if agentes_recepcion | length > 1 %}
+    <select name="agente" aria-label="Agente">
+      <option value="">Todos los agentes</option>
+      {% for c in agentes_recepcion %}<option value="{{ c.id }}" {% if agente == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <label class="check"><input type="checkbox" name="pruebas" value="1" {% if pruebas %}checked{% endif %}> Incluir pruebas y simulaciones</label>
+    <button type="submit">Aplicar</button>
+  </form>
+</section>
+
+<div class="tablewrap">
+  {% if casos %}
+  <div class="scroll">
+    <table class="casos">
+      <thead>
+        <tr>
+          <th scope="col" class="col-caso">Caso</th>
+          <th scope="col">Motivo</th>
+          <th scope="col">Área</th>
+          <th scope="col">Plazo</th>
+          <th scope="col">Estado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in casos %}
+        {% set resta = plazo_restante(c, ahora) %}
+        <tr>
+          <td>
+            <a class="link strong" href="/casos/{{ c.id }}">{{ c.nombre or c.telefono or "Sin nombre" }}</a>
+            {% if c.urgente %}<span class="pill failed">urgente</span>{% endif %}
+            {% if c.origen != "telefono" %}<span class="chip-dato">{{ origenes.get(c.origen, c.origen) }}</span>{% endif %}
+            <span class="sub-line">{{ c.resumen or "Sin resumen todavía" }}</span>
+            <span class="sub-line tnum">#{{ c.id }} · {{ c.created_at | fecha("%d/%m %H:%M") }}</span>
+          </td>
+          <td>{{ motivos.get(c.motivo, "Sin clasificar") if c.motivo else "Sin clasificar" }}</td>
+          <td>
+            {% if c.area_nombre %}{{ c.area_nombre }}{% else %}<span class="muted">sin área</span>{% endif %}
+            {% if c.responsable %}<span class="sub-line">{{ c.responsable }}</span>{% endif %}
+          </td>
+          <td class="tnum">
+            {% if resta %}<span class="pill {{ {'ok':'completed','warn':'partial','bad':'failed'}[resta[1]] }}">{{ resta[0] }}</span>
+            {% elif c.respondido_at %}<span class="muted">respondido {{ c.respondido_at | fecha("%d/%m %H:%M") }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td><span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed','cerrado':'neutral'}.get(c.estado, 'neutral') }}">{{ estados.get(c.estado, c.estado) }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">
+    {% if not agentes_recepcion %}
+    <strong>Todavía no hay agentes de recepción</strong>
+    Creá uno en <a class="link" href="/campaigns">Agentes</a> con la plantilla «Recepción de posventa»: atiende cuando el cliente llama y cada consulta queda acá, con su área y su plazo.
+    {% else %}
+    <strong>No hay casos {{ filtros[filtro] | lower if filtro != "todos" else "" }}</strong>
+    {% if not pruebas %}Las pruebas y simulaciones no se muestran: marcá «Incluir pruebas y simulaciones» para verlas.{% else %}Cuando alguien llame, el caso aparece acá.{% endif %}
+    {% endif %}
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

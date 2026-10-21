@@ -22,6 +22,7 @@ from app import buzon, stt, tts
 from app.api_client import (
     FRASE_LLAMAR_DESPUES,
     FRASE_TRANSFERENCIA_FALLIDA,
+    MULETILLA,
     ApiClient,
     ApiError,
     Question,
@@ -86,9 +87,14 @@ def voz_de(script: Script) -> tts.VoiceParams:
     )
 
 
-# Se dice mientras se espera al LLM. Corta y neutra: se sintetiza una sola vez
-# y queda cacheada, así que no agrega latencia propia.
-MULETILLA = "Déjeme ver."
+# Recepción: el cliente llama y cuenta su problema de corrido, así que cada turno escucha más que una respuesta de
+# encuesta. Con tope de duración: una llamada que no termina ocupa la línea.
+RECEPCION_MAX_SEGUNDOS = 8 * 60
+RECEPCION_TURNO_SEGUNDOS = 40
+RECEPCION_ESPERA_VOZ = 6
+# Si Claude tarda más que esto en contestar, se dice la muletilla («Déjeme ver.») para no dejar un silencio. Una
+# respuesta rápida sale sin muletilla: decirla en cada turno suena a robot.
+ESPERA_ANTES_DE_MULETILLA = 0.9
 
 
 async def _say(
@@ -142,14 +148,20 @@ class SurveyDialog:
         )
 
         try:
+            if self.script.es_recepcion:
+                # Llamó el cliente: no hay contestador que detectar ni encuesta que reportar; todo queda en el caso.
+                await self._atender_recepcion()
+                return
             if self._detecta_buzon and await self._es_buzon():
                 await self._atender_buzon()
             else:
                 await self._conducir_encuesta()
 
         except AudioSocketClosed as exc:
-            self.hangup_cause = str(exc)
+            self.hangup_cause = self.hangup_cause or str(exc)
             log.info("[%s] El cliente cortó: %s", self.session_uuid, exc)
+            if self.script.es_recepcion:
+                return
 
         await self._report()
 
@@ -171,6 +183,79 @@ class SurveyDialog:
             # Recorrió todas las preguntas sin cortes
             self.outcome = Outcome.COMPLETED
             await _say(self.socket, self.script.outro_script, self._voz)
+
+    # ------------------------------------------------------------------
+    # Recepción: el cliente llamó
+    # ------------------------------------------------------------------
+    async def _atender_recepcion(self) -> None:
+        """Saluda, escucha y conversa turno a turno: la API (Claude) decide qué decir y si deriva o termina.
+
+        El caso se abre antes de saludar y se cierra siempre, también si el cliente corta a la mitad: lo que llegó a
+        contar queda derivado para que alguien lo llame.
+        """
+        caso = await self.api.recepcion_inicio(self.session_uuid)
+        frases = self.script.frases
+        inicio = asyncio.get_running_loop().time()
+        try:
+            await _say(self.socket, self.script.intro_script, self._voz)
+            silencios = 0
+            while True:
+                if asyncio.get_running_loop().time() - inicio > RECEPCION_MAX_SEGUNDOS:
+                    self.hangup_cause = "tiempo_maximo"
+                    await _say(self.socket, frases.get("tiempo", ""), self._voz)
+                    return
+                await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
+                grabacion = await listen(
+                    self.socket, max_seconds=RECEPCION_TURNO_SEGUNDOS, no_speech_timeout=RECEPCION_ESPERA_VOZ
+                )
+                if grabacion.result is ListenResult.HANGUP:
+                    raise AudioSocketClosed("cortó")
+                texto = ""
+                if grabacion.has_audio:
+                    texto = (await stt.transcribe(grabacion.pcm, self.script.vocabulario)).text.strip()
+                if not texto:
+                    silencios += 1
+                    if silencios >= 2:
+                        self.hangup_cause = "sin_respuesta"
+                        await _say(self.socket, frases.get("sin_respuesta", ""), self._voz)
+                        return
+                    await _say(self.socket, frases.get("sigue_ahi", ""), self._voz)
+                    continue
+
+                silencios = 0
+                await self.socket.send_event("cliente", texto)
+                log.info("[%s] Recepción <- %r", self.session_uuid, texto[:80])
+                respuesta = await self._esperar_con_muletilla(self.api.recepcion_turno(caso, texto))
+                accion = respuesta.get("accion")
+                await _say(self.socket, respuesta.get("decir") or frases.get("registrado", ""), self._voz)
+
+                if accion == "transferir" and self.script.transfer_enabled:
+                    if await self._transferir():
+                        return
+                    self.hangup_cause = "transferencia_fallida"
+                    await _say(self.socket, frases.get("registrado", ""), self._voz)
+                    return
+                if accion == "terminar":
+                    self.outcome = Outcome.COMPLETED
+                    self.hangup_cause = self.hangup_cause or "se_despidio"
+                    return
+        except AudioSocketClosed as exc:
+            self.hangup_cause = self.hangup_cause or f"cortó el cliente ({exc})"
+            raise
+        finally:
+            await asyncio.shield(self.api.recepcion_fin(caso, self.hangup_cause))
+
+    async def _esperar_con_muletilla(self, pedido_api) -> dict:  # noqa: ANN001 - corrutina del ApiClient
+        """Espera la respuesta de la API; si tarda, dice la muletilla mientras tanto (no después)."""
+        pedido = asyncio.ensure_future(pedido_api)
+        try:
+            listos, _ = await asyncio.wait({pedido}, timeout=ESPERA_ANTES_DE_MULETILLA)
+            if not listos:
+                await _say(self.socket, MULETILLA, self._voz)
+            return await pedido
+        except BaseException:
+            pedido.cancel()
+            raise
 
     # ------------------------------------------------------------------
     # Buzón de voz

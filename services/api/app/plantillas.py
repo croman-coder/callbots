@@ -8,6 +8,8 @@ pide el archivo nuevo en vez de mostrar el viejo.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import hashlib
 from pathlib import Path
 
@@ -38,12 +40,18 @@ templates.env.globals["usuarios_js_v"] = _version("usuarios.js")
 templates.env.globals["entrada_js_v"] = _version("entrada.js")
 templates.env.globals["motion_v"] = _version("vendor/motion.min.js")
 templates.env.globals["conocimiento_js_v"] = _version("conocimiento.js")
+templates.env.globals["recepcion_js_v"] = _version("recepcion.js")
 
 
 def fecha(valor, formato: str = "%d/%m/%Y %H:%M") -> str:
     """Fecha en hora de Paraguay. La base guarda en UTC: sin esto, todo se ve tres horas adelantado."""
     if not valor:
         return "—"
+    if isinstance(valor, str):  # los JSON (recorrido de un caso) guardan la fecha en ISO
+        try:
+            valor = datetime.fromisoformat(valor)
+        except ValueError:
+            return valor
     if getattr(valor, "tzinfo", None) is not None:
         valor = valor.astimezone(settings.timezone)
     return valor.strftime(formato)

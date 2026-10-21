@@ -29,6 +29,8 @@ FRASE_TRANSFERENCIA_FALLIDA = (
     "Disculpe, ahora no puedo comunicarlo con un asesor. Tomo nota para que lo llamen. "
     "Si le parece, sigamos con la encuesta."
 )
+# Se dice mientras se espera a Claude. Corta y neutra: se sintetiza una sola vez y queda cacheada.
+MULETILLA = "Déjeme ver."
 # La dice el agente si al saludar el cliente contesta que no puede ahora. Igual en la API (routers/internal.py), que
 # la precalienta.
 FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga un buen día."
@@ -72,6 +74,14 @@ class Script:
     pronunciaciones: list[dict] = field(default_factory=list)
     # Palabras que Whisper tiene que reconocer (marcas, modelos, sucursales): ver stt.prompt_para.
     vocabulario: list[str] = field(default_factory=list)
+    # «encuesta» (lee preguntas) o «recepcion» (atiende y conversa turno a turno; ver dialog._atender_recepcion).
+    modo: str = "encuesta"
+    # Frases fijas de la recepción, por clave: repetir, registrado, sigue_ahi, sin_respuesta, tiempo.
+    frases: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def es_recepcion(self) -> bool:
+        return self.modo == "recepcion"
 
     @property
     def all_prompts(self) -> list[str]:
@@ -81,6 +91,8 @@ class Script:
             extra.append(self.voicemail_script)
         if self.transfer_enabled:
             extra += [t for t in (self.transfer_script, FRASE_TRANSFERENCIA_FALLIDA) if t]
+        if self.es_recepcion:
+            return [self.intro_script, MULETILLA, *self.frases.values(), *extra]
         return [
             self.intro_script,
             FRASE_LLAMAR_DESPUES,
@@ -162,6 +174,8 @@ class ApiClient:
             transfer_script=str(data.get("transfer_script") or ""),
             pronunciaciones=list(data.get("pronunciaciones") or []),
             vocabulario=[str(p) for p in (data.get("vocabulario") or []) if p],
+            modo=str(data.get("modo") or "encuesta"),
+            frases={str(k): str(v) for k, v in (data.get("frases") or {}).items() if v},
             questions=[Question(**q) for q in data["questions"]],
         )
 
@@ -206,6 +220,36 @@ class ApiClient:
         except httpx.HTTPError as exc:
             log.warning("No se pudo pedir la respuesta conversacional: %s", exc)
             return None
+
+    # --- Recepción -------------------------------------------------------
+    async def recepcion_inicio(self, session_uuid: uuid_mod.UUID, telefono: str | None = None) -> int | None:
+        """Abre el caso de esta llamada. None si la API no responde: el agente igual atiende, sin registrar."""
+        try:
+            return int((await self._post(f"/internal/sessions/{session_uuid}/recepcion", {"telefono": telefono}))["caso_id"])
+        except (ApiError, KeyError, TypeError, ValueError) as exc:
+            log.error("[%s] No se pudo abrir el caso: %s", session_uuid, exc)
+            return None
+
+    async def recepcion_turno(self, caso_id: int | None, texto: str) -> dict:
+        """{"decir", "accion"}. Ante una falla, la frase de «ya registré su consulta» y se termina: del otro lado
+        hay alguien esperando y es mejor cerrar amable que quedarse callado."""
+        if caso_id is None:
+            return {"decir": "", "accion": "terminar"}
+        try:
+            datos = await self._post(f"/internal/casos/{caso_id}/turno", {"texto": texto})
+            if isinstance(datos, dict) and datos.get("decir"):
+                return datos
+        except ApiError as exc:
+            log.error("Caso %s: el turno falló: %s", caso_id, exc)
+        return {"decir": "", "accion": "terminar"}
+
+    async def recepcion_fin(self, caso_id: int | None, causa: str | None) -> None:
+        if caso_id is None:
+            return
+        try:
+            await self._post(f"/internal/casos/{caso_id}/fin", {"causa": causa})
+        except ApiError as exc:
+            log.error("Caso %s: no se pudo cerrar (queda en «En la llamada»): %s", caso_id, exc)
 
     async def get_all_prompts(self) -> list[dict]:
         """Texto fijo de las campañas activas, agrupado con su modulación de voz."""

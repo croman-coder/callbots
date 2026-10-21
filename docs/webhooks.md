@@ -44,3 +44,10 @@ Cuerpo (resumido):
 Se manda en segundo plano cuando termina el análisis de la llamada, para todos los resultados (también no atendió,
 buzón, etc.). Un cliente que pidió la baja no se manda. El secreto se puede regenerar desde la misma pantalla.
 Código: `services/api/app/webhooks.py`.
+
+## Casos de recepción (`caso_derivado`)
+
+Los agentes de recepción (`recepcion.md`) mandan a los mismos webhooks un evento `caso_derivado` cada vez que un
+caso entra a un área: cliente (nombre, teléfono, datos), qué pide (motivo, resumen, urgente), área con responsable,
+correo y plazo, cuándo vence y la conversación. Sirve para avisarle al responsable desde n8n o Make. Las pruebas,
+el chat y las simulaciones no se mandan.

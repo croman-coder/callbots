@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import conocimiento, datos_cliente, pronunciaciones, vocabulario
+from app import conocimiento, datos_cliente, pronunciaciones, recepcion, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -32,6 +32,7 @@ from app.models import (
     CallAttempt,
     CallOutcome,
     Campaign,
+    Caso,
     Question,
     SurveyTarget,
     TargetStatus,
@@ -41,6 +42,9 @@ from app.schemas import (
     AnswerResult,
     GreetingIn,
     QuestionOut,
+    RecepcionFin,
+    RecepcionInicio,
+    RecepcionTurno,
     ReplyRequest,
     SessionFinished,
     SessionStarted,
@@ -170,6 +174,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             **_textos_del_guion(campaign, _active_questions(campaign), datos),
             pronunciaciones=pronunciaciones.lista(db),
             vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
+            **_modo(campaign),
         )
 
     # --- llamada real ---
@@ -178,7 +183,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
     campaign = target.campaign
 
     questions = _active_questions(campaign)
-    if not questions:
+    if not questions and not recepcion.es_recepcion(campaign):
         raise HTTPException(409, f"La campaña {campaign.id} no tiene preguntas activas")
 
     # Primer nombre solamente: "Buenos días Juan" suena mejor que el nombre completo
@@ -200,7 +205,23 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
         **_textos_del_guion(campaign, questions, datos),
         pronunciaciones=pronunciaciones.lista(db),
         vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
+        **_modo(campaign),
     )
+
+
+def _modo(campaign: Campaign) -> dict:
+    if not recepcion.es_recepcion(campaign):
+        return {"modo": "encuesta"}
+    return {
+        "modo": "recepcion",
+        "frases": {
+            "repetir": recepcion.FRASE_REPETIR,
+            "registrado": recepcion.FRASE_REGISTRADO,
+            "sigue_ahi": recepcion.FRASE_SIGUE_AHI,
+            "sin_respuesta": recepcion.FRASE_SIN_RESPUESTA,
+            "tiempo": recepcion.FRASE_TIEMPO,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +594,8 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
         ]
         textos += [q.text for q in campaign.questions if q.is_active]
         textos.append(FRASE_LLAMAR_DESPUES)
+        if recepcion.es_recepcion(campaign):
+            textos += list(recepcion.FRASES_FIJAS)
         # Lo que se dice si atiende un contestador o si el cliente pide un asesor: tiene que salir con
         # la voz buena y sin espera, igual que el resto del guion.
         if campaign.voicemail_action == "mensaje":
@@ -610,6 +633,85 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
     unique = [t for t in dict.fromkeys(todos)]
 
     return {"campaigns": len(campaigns), "texts": unique, "grupos": grupos, "pronunciaciones": pronunciaciones.lista(db)}
+
+
+# ---------------------------------------------------------------------------
+# Recepción: el agente atiende y conversa turno a turno (app/recepcion.py)
+def _campaign_de_sesion(db: Session, session_uuid: uuid_mod.UUID) -> Campaign:
+    if es_demo(session_uuid):
+        campaign = (db.get(Campaign, session_uuid.int) if session_uuid.int else None) or db.scalar(
+            select(Campaign).where(Campaign.is_active.is_(True)).order_by(Campaign.id)
+        )
+    else:
+        target = _load_call(db, session_uuid).target
+        campaign = target.campaign if target else None
+    if campaign is None:
+        raise HTTPException(404, "No hay agente para esta sesión")
+    return campaign
+
+
+def _caso(db: Session, caso_id: int) -> Caso:
+    caso = db.get(Caso, caso_id)
+    if caso is None:
+        raise HTTPException(404, f"No existe el caso {caso_id}")
+    return caso
+
+
+def conocimiento_del_caso(db: Session, caso: Caso, dijo: str) -> str:
+    return conocimiento.para_respuesta(db, caso.campaign, f"{caso.resumen or ''} {dijo}".strip())
+
+
+@router.post("/sessions/{session_uuid}/recepcion")
+def recepcion_inicio(session_uuid: uuid_mod.UUID, body: RecepcionInicio, db: Session = Depends(get_db)) -> dict:
+    """Abre el caso de esta llamada, con el saludo que ya dijo el agente como primera línea."""
+    campaign = _campaign_de_sesion(db, session_uuid)
+    if not recepcion.es_recepcion(campaign):
+        raise HTTPException(409, "Este agente no es de recepción")
+    demo = es_demo(session_uuid)
+    caso = recepcion.nuevo(
+        campaign, "prueba" if demo else "telefono",
+        session_uuid=None if demo else session_uuid, telefono=(body.telefono or "").strip()[:30] or None,
+    )
+    recepcion.decir(caso, "agente", con_nombre(datos_cliente.render(campaign.intro_script, {}), None))
+    db.add(caso)
+    db.commit()
+    log.info("[%s] Recepción: caso %s abierto (%s)", session_uuid, caso.id, caso.origen)
+    return {"caso_id": caso.id}
+
+
+@router.post("/casos/{caso_id}/turno")
+async def recepcion_turno(caso_id: int, body: RecepcionTurno, db: Session = Depends(get_db)) -> dict:
+    """Lo que el agente contesta y qué hace después: {"decir", "accion": seguir|derivar|transferir|terminar}."""
+    caso = _caso(db, caso_id)
+    respuesta = await recepcion.turno(
+        caso, body.texto,
+        conocimiento=conocimiento_del_caso(db, caso, body.texto),
+        transferir=bool(caso.campaign.transfer_number) and caso.origen == "telefono",
+    )
+    db.commit()
+    log.info("Caso %s: %s -> %r", caso.id, respuesta["accion"], respuesta["decir"][:70])
+    return respuesta
+
+
+@router.post("/casos/{caso_id}/fin")
+def recepcion_fin(caso_id: int, body: RecepcionFin, db: Session = Depends(get_db)) -> dict:
+    """Cortó o se despidió: lo que quedó a medias se deriva igual, para que nadie se quede sin respuesta."""
+    caso = _caso(db, caso_id)
+    recepcion.terminar_llamada(caso, body.causa)
+    db.commit()
+    avisar_caso(caso)
+    return {"caso_id": caso.id, "estado": caso.estado}
+
+
+def avisar_caso(caso: Caso) -> None:
+    """Manda el caso derivado a los webhooks del agente (en segundo plano). Las pruebas no avisan a nadie."""
+    if caso.estado != "abierto" or caso.origen in recepcion.DE_PRUEBA:
+        return
+    if not any(w.get("activo", True) for w in caso.campaign.webhooks or []):
+        return
+    from app.scheduler.tasks import enviar_caso
+
+    enviar_caso.delay(caso.id)
 
 
 @router.get("/targets/{session_uuid}/context")

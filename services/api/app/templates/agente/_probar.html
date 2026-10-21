@@ -5,12 +5,16 @@
   <section class="llamada" data-llamada data-campaign="{{ campaign.id }}" aria-label="Prueba del agente">
     <div data-paso="inicio">
       <h2>Probá tu agente</h2>
+      {% if es_recepcion %}
+      <p>Hablale desde el micrófono como si fueras un cliente que llama: el agente atiende, te pregunta lo que necesita y deriva el caso al área. El caso queda en <a class="link" href="/casos?pruebas=1&amp;filtro=todos">Casos</a> marcado como prueba y no avisa a nadie.</p>
+      {% else %}
       <p>Hablale desde el micrófono de esta computadora: el agente hace la encuesta como en una llamada real, con su voz y su guion. No llama a nadie ni se guarda como resultado.</p>
+      {% endif %}
       <p class="hint">Conviene usar auriculares: si el agente se escucha a sí mismo por el parlante, se confunde.</p>
-      {% if not preguntas_activas %}
+      {% if not preguntas_activas and not es_recepcion %}
       <p class="aviso error">El agente no tiene preguntas activas. Agregalas en <a class="link" href="/campaigns/{{ campaign.id }}?tab=configuracion#preguntas">Configuración</a>.</p>
       {% endif %}
-      <button type="button" class="btn primary grande" data-iniciar {% if not preguntas_activas %}disabled{% endif %}>
+      <button type="button" class="btn primary grande" data-iniciar {% if not preguntas_activas and not es_recepcion %}disabled{% endif %}>
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>Iniciar llamada web
       </button>
     </div>
@@ -63,6 +67,8 @@
     </div>
   </section>
 </form>
+
+{% if es_recepcion %}{% include "agente/_conversar.html" %}{% endif %}
 
 {% if pruebas %}
 <section class="section">

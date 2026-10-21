@@ -1,0 +1,61 @@
+{#- Prueba sin micrófono de un agente de recepción: chat de texto y simulación (la IA hace de cliente). -#}
+<div class="conversar" data-conversar data-campaign="{{ campaign.id }}">
+  <section class="conversar-panel" data-chat aria-labelledby="chat-titulo">
+    <header>
+      <h2 id="chat-titulo">Chat de texto</h2>
+      <p class="hint">Escribí como si fueras el cliente. Contesta con las mismas reglas que por teléfono.</p>
+    </header>
+    <ol class="transcripcion" data-lineas aria-live="polite"></ol>
+    <p class="conversar-estado" data-estado role="status" aria-live="polite"></p>
+    <form class="conversar-escribir" data-escribir autocomplete="off">
+      <label for="chat-texto" class="sr-only">Lo que dice el cliente</label>
+      <input id="chat-texto" type="text" maxlength="1500" placeholder="Hola, encargué un repuesto hace tres semanas…" required>
+      <button type="submit" class="btn primary">Enviar</button>
+    </form>
+    <p class="actions"><button type="button" class="btn mini quiet" data-reiniciar>Empezar de nuevo</button></p>
+  </section>
+
+  <section class="conversar-panel" data-simular aria-labelledby="sim-titulo">
+    <header>
+      <h2 id="sim-titulo">Simulación</h2>
+      <p class="hint">Claude hace de cliente con la situación que elijas y el agente le contesta, sin llamar a nadie.</p>
+    </header>
+    <fieldset class="perfiles" data-perfiles>
+      <legend class="sr-only">Situación del cliente</legend>
+      {% for clave, titulo, texto in perfiles %}
+      <label class="dia"><input type="radio" name="perfil" value="{{ clave }}" {% if loop.first %}checked{% endif %} data-texto="{{ texto }}"><span>{{ titulo }}</span></label>
+      {% endfor %}
+      <label class="dia"><input type="radio" name="perfil" value="otro"><span>Otra situación</span></label>
+    </fieldset>
+    <p class="hint" data-perfil-detalle>{{ perfiles[0][2] if perfiles else "" }}</p>
+    <div data-perfil-propio hidden>
+      <label for="sim-propio" class="sr-only">Situación del cliente</label>
+      <textarea id="sim-propio" rows="2" maxlength="600" placeholder="Ej.: compró un auto hace un mes, todavía no le dieron la chapa y quiere saber cuándo."></textarea>
+    </div>
+    <p class="actions"><button type="button" class="btn primary" data-arrancar>Simular llamada</button></p>
+    <ol class="transcripcion" data-lineas aria-live="polite"></ol>
+    <p class="conversar-estado" data-estado role="status" aria-live="polite"></p>
+  </section>
+</div>
+
+{% if casos_de_prueba %}
+<section class="section">
+  <header><h2>Casos de las pruebas</h2><span class="note">Los últimos que dejaron el chat, la simulación y las pruebas de voz</span></header>
+  <div class="tablewrap"><div class="scroll">
+    <table>
+      <thead><tr><th scope="col">Caso</th><th scope="col">Cómo</th><th scope="col">Área</th><th scope="col">Estado</th></tr></thead>
+      <tbody>
+        {% for c in casos_de_prueba %}
+        <tr>
+          <td><a class="link" href="/casos/{{ c.id }}">#{{ c.id }} · {{ c.resumen or c.nombre or "sin resumen" }}</a></td>
+          <td>{{ {"prueba": "Voz", "chat": "Chat", "simulacion": "Simulación"}.get(c.origen, c.origen) }}</td>
+          <td>{{ c.area_nombre or "—" }}</td>
+          <td><span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed','cerrado':'neutral'}.get(c.estado, 'neutral') }}">{{ {"en_llamada": "En curso", "abierto": "Derivado", "resuelto": "Resuelto", "vacio": "Sin datos"}.get(c.estado, c.estado) }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+</section>
+{% endif %}
+<script src="/static/recepcion.js?v={{ recepcion_js_v }}" defer></script>

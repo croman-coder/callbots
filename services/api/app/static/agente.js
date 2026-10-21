@@ -172,32 +172,45 @@
   });
 
   // ------------------------------------------------------------ Variables propias del análisis
-  var lista = $("[data-vars]"), molde = $("[data-var-plantilla]"), btnAgregar = $("[data-var-agregar]"), estadoVar = $("[data-var-estado]");
-  if (lista && molde && btnAgregar) {
+  // Listas de filas que se agregan y se quitan (variables propias del análisis, áreas de recepción): se guardan
+  // con «Guardar cambios», por eso cada cambio marca la ficha como sin guardar.
+  function repetidor(o) {
+    var lista = $(o.lista), molde = $(o.molde), btnAgregar = $(o.agregar), estado = $(o.estado);
+    if (!lista || !molde || !btnAgregar) return;
     var max = parseInt(lista.dataset.max, 10) || 8;
-    var contar = function () { return $$("[data-var]", lista).length; };
+    var contar = function () { return $$(o.fila, lista).length; };
+    var sucio = function () { if (window.callbotMarcarSucio) window.callbotMarcarSucio(); };
     var refrescar = function () {
       var n = contar();
       btnAgregar.disabled = n >= max;
-      if (estadoVar) estadoVar.textContent = n >= max ? "Máximo " + max + " variables." : (n ? n + (n === 1 ? " variable" : " variables") : "");
+      if (estado) estado.textContent = n >= max ? "Máximo " + max + " " + o.varios + "." : (n ? n + " " + (n === 1 ? o.uno : o.varios) : "");
     };
     var vincular = function (fila) {
-      var tipo = $("[data-var-tipo]", fila), opc = $(".var-opc", fila);
-      if (tipo && opc) tipo.addEventListener("change", function () { opc.hidden = tipo.value !== "opcion"; });
-      $("[data-var-quitar]", fila).addEventListener("click", function () {
-        fila.remove(); refrescar(); if (window.callbotMarcarSucio) window.callbotMarcarSucio();
-      });
+      if (o.alVincular) o.alVincular(fila);
+      $(o.quitar, fila).addEventListener("click", function () { fila.remove(); refrescar(); sucio(); });
     };
-    $$("[data-var]", lista).forEach(vincular);
+    $$(o.fila, lista).forEach(vincular);
     btnAgregar.addEventListener("click", function () {
       if (contar() >= max) return;
       var fila = molde.content.firstElementChild.cloneNode(true);
       lista.appendChild(fila); vincular(fila); refrescar();
-      var nombre = $("input[name=vf_nombre]", fila); if (nombre) nombre.focus();
-      if (window.callbotMarcarSucio) window.callbotMarcarSucio();
+      var foco = $(o.foco, fila); if (foco) foco.focus();
+      sucio();
     });
     refrescar();
   }
+  repetidor({
+    lista: "[data-vars]", molde: "[data-var-plantilla]", agregar: "[data-var-agregar]", estado: "[data-var-estado]",
+    fila: "[data-var]", quitar: "[data-var-quitar]", foco: "input[name=vf_nombre]", uno: "variable", varios: "variables",
+    alVincular: function (fila) {
+      var tipo = $("[data-var-tipo]", fila), opc = $(".var-opc", fila);
+      if (tipo && opc) tipo.addEventListener("change", function () { opc.hidden = tipo.value !== "opcion"; });
+    }
+  });
+  repetidor({
+    lista: "[data-areas]", molde: "[data-area-plantilla]", agregar: "[data-area-agregar]", estado: "[data-area-estado]",
+    fila: "[data-area]", quitar: "[data-area-quitar]", foco: "input[name=ar_nombre]", uno: "área", varios: "áreas"
+  });
 
   // Variables del guion: el chip suma {{clave}} donde está el cursor, en el último campo del guion que se tocó.
   var ultimoCampo = null;

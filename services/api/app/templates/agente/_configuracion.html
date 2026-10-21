@@ -1,6 +1,6 @@
 <form id="ficha" method="post" action="/campaigns/{{ campaign.id }}/guardar" class="ficha-grid" autocomplete="off">
   <input type="hidden" name="tab" value="configuracion">
-  <input type="hidden" name="dias_enviados" value="1">
+  {% if not es_recepcion %}<input type="hidden" name="dias_enviados" value="1">{% endif %}
   <div class="ficha-izq">
     <details class="bloque" open>
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>Configuración de voz</summary>
@@ -54,6 +54,43 @@
       <p class="hint">Toda la IA de Callbot usa Claude por la API de Anthropic.</p>
     </details>
 
+    {% if es_recepcion %}
+    {% macro fila_area(a) %}
+    <div class="area-fila" data-area>
+      <label class="area-nombre">Área
+        <input type="text" name="ar_nombre" maxlength="80" value="{{ a.nombre if a else '' }}" placeholder="Repuestos"></label>
+      <label class="area-atiende">Qué atiende
+        <input type="text" name="ar_atiende" maxlength="300" value="{{ a.atiende if a else '' }}" placeholder="pedidos de repuestos, si llegó, cuándo llega"></label>
+      <label class="area-resp">Responsable
+        <input type="text" name="ar_responsable" maxlength="120" value="{{ a.responsable if a else '' }}" placeholder="Nombre y apellido" autocomplete="off"></label>
+      <label class="area-correo">Correo
+        <input type="email" name="ar_correo" maxlength="160" value="{{ a.correo if a else '' }}" placeholder="repuestos@santarosa.com.py" autocomplete="off" spellcheck="false"></label>
+      <label class="area-plazo">Plazo (h)
+        <input type="number" name="ar_plazo" min="1" max="168" value="{{ a.plazo_horas if a else 24 }}" required></label>
+      <button type="button" class="btn mini quiet danger area-quitar" data-area-quitar>Quitar</button>
+    </div>
+    {% endmacro %}
+    <details class="bloque" open id="areas">
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 13h4l2 3h4l2-3h4M4 13l2.5-7h11L20 13v6H4z"/></svg>Áreas y responsables <span class="hint">· a dónde deriva cada caso</span></summary>
+      <p class="hint">Cuando el agente no puede resolver una consulta con la información de la empresa, registra el caso y lo pasa al área que corresponde. Le dice al cliente el plazo de esa área y el caso aparece en <a class="link" href="/casos">Casos</a> con el responsable. Sin responsable cargado, el caso igual entra y lo asigna Calidad.</p>
+      <input type="hidden" name="ar_enviado" value="1">
+      <div class="areas-recepcion" data-areas data-max="{{ max_areas }}">
+        {% for a in (campaign.areas or []) %}{{ fila_area(a) }}{% endfor %}
+      </div>
+      <template data-area-plantilla>{{ fila_area(none) }}</template>
+      <p class="actions" style="margin-top:var(--s3)">
+        <button type="button" class="btn" data-area-agregar>Agregar área</button>
+        <span class="hint" data-area-estado role="status" aria-live="polite"></span>
+      </p>
+    </details>
+
+    <details class="bloque" open id="limites">
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12h6"/></svg>Lo que no puede decir ni prometer</summary>
+      <p class="hint">El marco del agente de cara al cliente. Una regla por línea; van en cada respuesta. Si queda vacío, usa las de siempre: no dar precios ni fechas que no estén en la base, no prometer garantías ni descuentos, no diagnosticar fallas, no hablar de otras marcas.</p>
+      <label class="sr-only" for="c-limites">Lo que no puede decir ni prometer</label>
+      <textarea id="c-limites" name="limites" rows="6" maxlength="4000">{{ campaign.limites or "" }}</textarea>
+    </details>
+    {% else %}
     <details class="bloque" open>
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>Configuración de llamadas</summary>
       <div class="fila-campos">
@@ -87,9 +124,15 @@
         <span class="chip-pronto">Pronto</span>
       </div>
     </details>
+    {% endif %}
 
     <details class="bloque" open>
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Guion</summary>
+      {% if es_recepcion %}
+      <label class="etiqueta" for="c-intro">Saludo <span class="hint">· lo primero que escucha quien llama; que diga que es un asistente virtual y termine en pregunta</span></label>
+      <textarea id="c-intro" name="intro_script" rows="3" required maxlength="2000">{{ campaign.intro_script }}</textarea>
+      <p class="hint">El resto de la conversación lo arma el agente turno a turno, con sus instrucciones, la base de conocimiento, las áreas y los límites de arriba.</p>
+      {% else %}
       <p class="hint">Podés usar <code>{nombre}</code>: se cambia por el primer nombre del cliente. Si no hay nombre, desaparece y la frase queda natural.
         Y los datos del cliente con <code>{{ "{{" }}clave{{ "}}" }}</code>, o <code>{{ "{{" }}clave|texto{{ "}}" }}</code> para decir otra cosa si a ese cliente le falta el dato: «¿cómo anda su {{ "{{" }}modelo|vehículo{{ "}}" }}?». Tocá una para sumarla donde estás escribiendo:</p>
       <p class="chips-variables" data-variables>
@@ -103,8 +146,10 @@
       <textarea id="c-fallback" name="fallback_script" rows="2" required maxlength="2000">{{ campaign.fallback_script }}</textarea>
       <label class="etiqueta" for="c-optout">Cuando el cliente no quiere responder</label>
       <textarea id="c-optout" name="optout_script" rows="2" required maxlength="2000">{{ campaign.optout_script }}</textarea>
+      {% endif %}
     </details>
 
+    {% if not es_recepcion %}
     <details class="bloque" open id="preguntas">
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Preguntas <span class="hint">· se hacen en este orden</span></summary>
       {% if campaign.questions %}
@@ -156,6 +201,7 @@
                 placeholder="modelo = ufCrm5_1700000000&#10;sucursal = ufCrm5_1700000001">{{ variables_bitrix_texto }}</textarea>
       <p class="hint">El código es el que devuelve Bitrix en la lista de registros (por ejemplo <code>ufCrm5_1700000000</code>). Del Excel no hace falta configurar nada: cada columna que no es teléfono ni nombre («Modelo», «Sucursal», «Asesor») ya es una variable.</p>
     </details>
+    {% endif %}
 
     <details class="bloque">
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14.2H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>Acciones del agente</summary>

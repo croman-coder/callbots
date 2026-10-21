@@ -380,6 +380,35 @@ def enviar_webhooks(call_id: int) -> dict:
     return {"enviados": enviados}
 
 
+@shared_task(name="callbot.enviar_caso")
+def enviar_caso(caso_id: int) -> dict:
+    """Manda un caso de recepción recién derivado a los webhooks activos de su agente (evento «caso_derivado»).
+
+    Es el aviso al área mientras no haya correo: desde n8n o Make se le manda al responsable por donde lo lea.
+    """
+    from app import webhooks
+    from app.models import Caso, WebhookEnvio
+
+    enviados = 0
+    with session_scope() as db:
+        caso = db.get(Caso, caso_id)
+        if caso is None:
+            return {"error": "caso inexistente"}
+        campaign = caso.campaign
+        activos = [w for w in (campaign.webhooks or []) if w.get("activo", True) and w.get("url")]
+        if not activos:
+            return {"enviados": 0}
+        if not campaign.webhook_secreto:
+            campaign.webhook_secreto = webhooks.nuevo_secreto()
+        datos = webhooks.payload_caso(caso)
+        for w in activos:
+            estado, error, ms = webhooks.enviar(w["url"], datos, campaign.webhook_secreto)
+            db.add(WebhookEnvio(campaign_id=campaign.id, call_id=None, url=w["url"][:500], estado=estado,
+                                error=(error or None) and error[:300], duracion_ms=ms, prueba=False))
+            enviados += 1
+    return {"enviados": enviados}
+
+
 # ---------------------------------------------------------------------------
 # 5. Watchdog
 # ---------------------------------------------------------------------------

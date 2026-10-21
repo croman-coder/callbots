@@ -58,6 +58,8 @@ CAMPOS: dict[str, str] = {
     "voicemail_script": "Buzón de voz: mensaje",
     "transfer_number": "Transferencia: teléfono del asesor",
     "transfer_script": "Transferencia: frase",
+    "areas": "Recepción: áreas y responsables",
+    "limites": "Recepción: lo que no puede decir",
 }
 
 

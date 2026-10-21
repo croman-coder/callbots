@@ -118,6 +118,14 @@ class Campaign(Base):
     webhooks: Mapped[list | None] = mapped_column(JSON)
     webhook_secreto: Mapped[str | None] = mapped_column(String(64))
 
+    # --- Recepción (app/recepcion.py) ---
+    # «encuesta»: el agente llama y pregunta. «recepcion»: atiende cuando el cliente llama y deriva a un área.
+    modo: Mapped[str] = mapped_column(String(12), default="encuesta", server_default="encuesta", nullable=False)
+    # Áreas a las que deriva: [{"clave", "nombre", "atiende", "responsable", "correo", "plazo_horas"}].
+    areas: Mapped[list | None] = mapped_column(JSON)
+    # Lo que el agente no puede decir ni prometer («no dar precios», «no diagnosticar fallas»…), una regla por línea.
+    limites: Mapped[str | None] = mapped_column(Text)
+
     # --- Voz del bot ---
     # Se mandan al voice-agent en el guion de cada llamada, así se ajustan
     # desde el panel sin redesplegar nada.
@@ -531,3 +539,44 @@ class CallComment(Base):
     autor: Mapped[str] = mapped_column(String(160), nullable=False)
     texto: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Caso(Base):
+    """Una consulta o un reclamo que entró por un agente de recepción (ver app/recepcion.py).
+
+    Reemplaza la planilla compartida del call center: cada caso tiene área, responsable con nombre y apellido y un
+    plazo para contestar. Calidad ve en la bandeja lo que está abierto y lo que se venció.
+    """
+
+    __tablename__ = "casos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True)
+    # «telefono» (llamó de verdad), «prueba» (desde el navegador), «chat» (texto) o «simulacion» (la IA hizo de cliente).
+    origen: Mapped[str] = mapped_column(String(12), nullable=False)
+    session_uuid: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True))
+    telefono: Mapped[str | None] = mapped_column(String(30))
+    nombre: Mapped[str | None] = mapped_column(String(160))
+    motivo: Mapped[str | None] = mapped_column(String(12))  # consulta | reclamo | turno | estado | otro
+    urgente: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    resumen: Mapped[str | None] = mapped_column(Text)
+    datos: Mapped[dict | None] = mapped_column(JSON)  # modelo, chapa, sucursal… lo que dijo el cliente
+    conversacion: Mapped[list | None] = mapped_column(JSON)  # [{"quien": "agente"|"cliente", "texto", "at"}]
+    # El área al derivar, copiada tal como estaba: si después cambia el responsable, el caso no se mueve solo.
+    area: Mapped[str | None] = mapped_column(String(40))
+    area_nombre: Mapped[str | None] = mapped_column(String(80))
+    responsable: Mapped[str | None] = mapped_column(String(120))
+    correo_responsable: Mapped[str | None] = mapped_column(String(160))
+    plazo_horas: Mapped[int | None] = mapped_column(Integer)
+    # en_llamada | abierto | respondido | cerrado | vacio (cortó sin decir nada)
+    estado: Mapped[str] = mapped_column(String(12), default="en_llamada", server_default="en_llamada", nullable=False, index=True)
+    vence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    derivado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    respondido_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cerrado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    respuesta: Mapped[str | None] = mapped_column(Text)
+    eventos: Mapped[list | None] = mapped_column(JSON)  # [{"at", "por", "que", "texto"}]: el recorrido del caso
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    campaign: Mapped[Campaign] = relationship()

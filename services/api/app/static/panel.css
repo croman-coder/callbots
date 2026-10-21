@@ -1137,3 +1137,53 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
   .tabla-usuarios tr.vacio > td { display: block; }
   .tabla-usuarios tr.persona.abierta { border-bottom-color: transparent; }
 }
+
+/* Recepción: áreas del agente, una fila por área. */
+.areas-recepcion { display: flex; flex-direction: column; gap: var(--s3); }
+.area-fila {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 88px; gap: var(--s2) var(--s3); align-items: end;
+  padding: var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--raised);
+}
+.area-fila label { margin: 0; display: flex; flex-direction: column; gap: 5px; font-size: var(--t-sm); font-weight: 600; min-width: 0; }
+.area-fila input { width: 100%; min-width: 0; }
+.area-fila .area-nombre { grid-column: 1 / 3; grid-row: 1; }
+.area-fila .area-plazo { grid-column: 3; grid-row: 1; }
+.area-fila .area-atiende { grid-column: 1 / -1; }
+.area-fila .area-resp { grid-column: 1; }
+.area-fila .area-correo { grid-column: 2 / -1; }
+.area-fila .area-quitar { grid-column: 1 / -1; justify-self: end; }
+@media (max-width: 560px) {
+  .area-fila .area-resp, .area-fila .area-correo { grid-column: 1 / -1; }
+}
+
+/* Prueba sin micrófono: chat y simulación lado a lado. */
+.conversar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); margin-top: var(--s6); }
+.conversar-panel { display: flex; flex-direction: column; gap: var(--s3); min-height: 420px; padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.conversar-panel header h2 { margin: 0 0 var(--s1); font-size: var(--t-md); }
+.conversar-panel header p { margin: 0; }
+.conversar-panel .transcripcion { min-height: 160px; max-height: 46vh; }
+.conversar-panel .transcripcion:empty { display: none; }
+.conversar-escribir { display: flex; gap: var(--s2); margin: 0; }
+.conversar-escribir input { flex: 1 1 auto; min-width: 0; }
+.conversar-estado { margin: 0; font-size: var(--t-sm); color: var(--ink-2); min-height: 1.4em; }
+.conversar-panel .actions { margin: 0; }
+.perfiles { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: var(--s2); }
+@media (max-width: 900px) { .conversar { grid-template-columns: 1fr; } }
+
+/* Detalle de un caso: lo que pasó a la izquierda, qué hacer a la derecha. */
+.caso-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: var(--s6); align-items: start; }
+.caso-lateral .section + .section, .caso-principal .section + .section { margin-top: var(--s5); }
+.caso-resumen { font-size: var(--t-md); color: var(--ink); max-width: 65ch; }
+.caso-datos { display: flex; flex-wrap: wrap; gap: var(--s2); margin: var(--s3) 0 0; }
+.caso-ficha { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s2) var(--s4); margin: 0 0 var(--s3); font-size: var(--t-sm); }
+.caso-ficha dt { color: var(--ink-3); font-weight: 600; }
+.caso-ficha dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.recorrido { list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-direction: column; }
+.recorrido li { padding: var(--s2) 0; border-top: 1px solid var(--line); font-size: var(--t-sm); }
+.recorrido li:first-child { border-top: 0; padding-top: 0; }
+.recorrido-que { font-weight: 600; color: var(--ink); margin-right: var(--s2); }
+.recorrido p { margin: 2px 0 0; color: var(--ink-2); overflow-wrap: anywhere; }
+table.casos .col-caso { min-width: 280px; }
+table.casos td .pill { margin-left: var(--s1); white-space: nowrap; }
+table.casos td:nth-child(n+2) { white-space: nowrap; }
+@media (max-width: 960px) { .caso-grid { grid-template-columns: 1fr; } }

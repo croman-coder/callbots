@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, pronunciaciones, revision, versiones, voces
+from app import agentes, pronunciaciones, recepcion, revision, versiones, voces
 from app.config import settings
 from app.etiquetas import etiqueta
 from app.plantillas import templates
@@ -310,6 +310,11 @@ def create_campaign(
         campaign.intro_script = base.intro
     if base.outro:
         campaign.outro_script = base.outro
+    if base.modo == "recepcion":
+        # Arranca con las áreas típicas de posventa (sin responsables: los carga quien la configura) y con límites.
+        campaign.modo = "recepcion"
+        campaign.areas = recepcion.normalizar_areas(recepcion.AREAS_POR_DEFECTO)
+        campaign.limites = recepcion.LIMITES_POR_DEFECTO
     for posicion, q in enumerate(base.preguntas, start=1):
         campaign.questions.append(
             Question(

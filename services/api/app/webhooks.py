@@ -5,7 +5,7 @@ destinations → webhook» de Dapta, con la firma que usa cualquier integración
 
 - `X-Callbot-Firma: sha256=<hex>`: HMAC-SHA256 del cuerpo con el secreto del agente. Quien recibe recalcula y compara;
   así sabe que lo mandó Callbot y que nadie lo cambió en el camino.
-- `X-Callbot-Evento`: `llamada_terminada` o `prueba`.
+- `X-Callbot-Evento`: `llamada_terminada`, `caso_derivado` (un agente de recepción pasó un caso a un área) o `prueba`.
 
 Solo direcciones públicas, igual que «Generar contexto»: la API vive en la red interna de Docker y una URL como
 `http://postgres:5432` haría que el servidor le pegue a sus propios servicios. Cada salto se valida y se conecta a la
@@ -36,6 +36,7 @@ log = logging.getLogger(__name__)
 MAX_WEBHOOKS = 10
 TIMEOUT = 10.0
 EVENTO = "llamada_terminada"
+EVENTO_CASO = "caso_derivado"
 
 
 class WebhookInvalido(ValueError):
@@ -133,6 +134,36 @@ def ejemplo(campaign) -> dict[str, Any]:  # noqa: ANN001
                         "transcripcion": "un nueve", "valor": 9, "puntaje_10": 9}],
         "analisis": {"satisfaccion": 9.0, "sentimiento": "positivo", "resumen": "Envío de prueba.", "temas": [],
                      "requiere_seguimiento": False, "motivo_seguimiento": None, "variables": {}},
+    }
+
+
+def payload_caso(caso) -> dict[str, Any]:  # noqa: ANN001 - Caso
+    """Un caso de recepción derivado a un área: quién llamó, qué pide, a quién le toca y para cuándo."""
+    from app import recepcion
+
+    return {
+        "evento": EVENTO_CASO,
+        "agente": {"id": caso.campaign_id, "nombre": caso.campaign.name if caso.campaign else None},
+        "caso": {
+            "id": caso.id,
+            "origen": caso.origen,
+            "estado": caso.estado,
+            "motivo": caso.motivo,
+            "motivo_texto": recepcion.MOTIVOS.get(caso.motivo or "", None),
+            "urgente": bool(caso.urgente),
+            "resumen": caso.resumen,
+            "entro": _iso(caso.created_at),
+            "vence": _iso(caso.vence_at),
+        },
+        "cliente": {"nombre": caso.nombre, "telefono": caso.telefono, "datos": caso.datos or {}},
+        "area": {
+            "clave": caso.area,
+            "nombre": caso.area_nombre,
+            "responsable": caso.responsable,
+            "correo": caso.correo_responsable,
+            "plazo_horas": caso.plazo_horas,
+        },
+        "conversacion": [{"quien": l.get("quien"), "texto": l.get("texto")} for l in caso.conversacion or []],
     }
 
 

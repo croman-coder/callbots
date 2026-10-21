@@ -54,6 +54,10 @@ class SurveyScript(BaseModel):
     pronunciaciones: list[dict] = []
     # Palabras que Whisper tiene que reconocer (app/vocabulario.py).
     vocabulario: list[str] = []
+    # «encuesta» o «recepcion» (app/recepcion.py). En recepción no hay preguntas: el agente conversa turno a turno.
+    modo: str = "encuesta"
+    # Frases fijas de la recepción (si el cliente no habla, si se acaba el tiempo…), para decirlas sin esperar a la API.
+    frases: dict[str, str] = {}
     questions: list[QuestionOut]
 
 
@@ -239,3 +243,17 @@ class StatsOut(BaseModel):
     calls_today: int
     avg_satisfaction: float | None
     response_rate: float
+
+
+class RecepcionInicio(BaseModel):
+    """Empieza la conversación de un agente de recepción: el teléfono es el de quien llamó, si se sabe."""
+
+    telefono: str | None = None
+
+
+class RecepcionTurno(BaseModel):
+    texto: str = ""
+
+
+class RecepcionFin(BaseModel):
+    causa: str | None = None

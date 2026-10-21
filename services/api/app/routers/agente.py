@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, conocimiento, datos_cliente, revision, versiones, vocabulario, voces, webhooks
+from app import agentes, conocimiento, datos_cliente, recepcion, revision, versiones, vocabulario, voces, webhooks
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
@@ -38,6 +38,7 @@ from app.models import (
     CallAttempt,
     CallOutcome,
     Campaign,
+    Caso,
     PruebaAgente,
     Question,
     QuestionType,
@@ -102,7 +103,14 @@ def _datos_probar(db: Session, campaign: Campaign) -> dict:
         .order_by(PruebaAgente.iniciada_en.desc())
         .limit(8)
     ).all()
-    return {"pruebas": pruebas}
+    datos: dict = {"pruebas": pruebas}
+    if recepcion.es_recepcion(campaign):
+        datos["perfiles"] = [(clave, titulo, texto) for clave, (titulo, texto) in recepcion.PERFILES.items()]
+        datos["casos_de_prueba"] = db.scalars(
+            select(Caso).where(Caso.campaign_id == campaign.id, Caso.origen.in_(recepcion.DE_PRUEBA))
+            .order_by(Caso.id.desc()).limit(8)
+        ).all()
+    return datos
 
 
 def _variables_disponibles(db: Session, campaign: Campaign) -> list[tuple[str, str]]:
@@ -322,6 +330,8 @@ def ficha(
         "marcas_santa_rosa": vocabulario.MARCAS_SANTA_ROSA,
         "max_palabras": vocabulario.MAX_PALABRAS,
         "max_variables": variables.MAX_VARIABLES,
+        "es_recepcion": recepcion.es_recepcion(campaign),
+        "max_areas": recepcion.MAX_AREAS,
     }
     if tab == "probar":
         ctx.update(_datos_probar(db, campaign))
@@ -502,6 +512,20 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
         except variables.VariablesError as exc:
             return _volver(campaign_id, tab, error=str(exc))
 
+    # Recepción: áreas en listas paralelas (una fila por área; sin nombre se descarta) y los límites del agente.
+    if "ar_enviado" in form:
+        filas = [
+            {"nombre": n, "atiende": a, "responsable": r, "correo": c, "plazo_horas": h}
+            for n, a, r, c, h in zip_longest(
+                form.getlist("ar_nombre"), form.getlist("ar_atiende"), form.getlist("ar_responsable"),
+                form.getlist("ar_correo"), form.getlist("ar_plazo"), fillvalue="",
+            )
+        ]
+        campaign.areas = recepcion.normalizar_areas(filas) or None
+    limites = texto("limites", 4000)
+    if limites is not None:
+        campaign.limites = limites or None
+
     versiones.registrar(db, campaign, antes, _usuario(request))
     db.commit()
     return _volver(campaign_id, tab, ok="Cambios guardados")
@@ -662,6 +686,7 @@ async def instrucciones_con_ia(
             preguntas=[q.text for q in campaign.questions if q.is_active],
             actual=actual[:20000],
             pedido=pedido[:500],
+            recepcion=recepcion.es_recepcion(campaign),
         )
     except agentes.SitioInvalido as exc:
         return JSONResponse({"error": str(exc)}, 502)

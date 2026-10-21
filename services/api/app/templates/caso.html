@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% set nav = "casos" %}
+{% block title %}Caso #{{ caso.id }} · Callbot{% endblock %}
+
+{% block topbar %}
+{% set resta = plazo_restante(caso, ahora) %}
+<div class="bar">
+  <div>
+    <p class="crumb"><a class="link" href="/casos{% if de_prueba %}?pruebas=1&filtro=todos{% endif %}">Casos</a></p>
+    <h1>{{ caso.nombre or caso.telefono or "Sin nombre" }}</h1>
+    <p class="lede">Caso #{{ caso.id }} · {{ motivos.get(caso.motivo, "sin clasificar") if caso.motivo else "sin clasificar" }} · {{ origenes.get(caso.origen, caso.origen) }} · {{ caso.created_at | fecha("%d/%m/%y %H:%M") }}</p>
+  </div>
+  <div class="right">
+    {% if caso.urgente %}<span class="pill failed">urgente</span>{% endif %}
+    <span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed','cerrado':'neutral'}.get(caso.estado, 'neutral') }}">{{ estados.get(caso.estado, caso.estado) }}</span>
+    {% if resta %}<span class="pill {{ {'ok':'completed','warn':'partial','bad':'failed'}[resta[1]] }}">{{ resta[0] }}</span>{% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+{% if de_prueba %}<p class="hint">Es una {{ origenes.get(caso.origen, "prueba") | lower }}: no avisa a nadie ni cuenta en los números de la bandeja.</p>{% endif %}
+
+<div class="caso-grid">
+  <div class="caso-principal">
+    <section class="section">
+      <header><h2>Qué pide</h2>{% if caso.campaign %}<span class="note">Entró por {{ caso.campaign.name }}</span>{% endif %}</header>
+      <p class="statement caso-resumen">{{ caso.resumen or "El agente todavía no lo resumió." }}</p>
+      {% if caso.datos or caso.telefono %}
+      <p class="caso-datos">
+        {% if caso.telefono %}<span class="chip-dato">teléfono: {{ caso.telefono }}</span>{% endif %}
+        {% for clave, valor in (caso.datos or {}).items() %}<span class="chip-dato">{{ clave | replace("_", " ") }}: {{ valor }}</span>{% endfor %}
+      </p>
+      {% endif %}
+    </section>
+
+    <section class="section">
+      <header><h2>Conversación</h2><span class="note">Tal como la escuchó y la dijo el agente</span></header>
+      {% if caso.conversacion %}
+      <ol class="transcripcion compacta">
+        {% for l in caso.conversacion %}<li class="{{ l.quien }}"><b>{{ "Agente" if l.quien == "agente" else "Cliente" }}</b><p>{{ l.texto }}</p></li>{% endfor %}
+      </ol>
+      {% else %}<p class="muted">Sin conversación.</p>{% endif %}
+    </section>
+  </div>
+
+  <aside class="caso-lateral">
+    <section class="section">
+      <header><h2>Área y plazo</h2></header>
+      <dl class="caso-ficha">
+        <dt>Área</dt><dd>{{ caso.area_nombre or "Sin área: la asigna Calidad" }}</dd>
+        <dt>Responsable</dt><dd>{{ caso.responsable or "Sin responsable cargado" }}{% if caso.correo_responsable %}<span class="sub-line"><a class="link" href="mailto:{{ caso.correo_responsable }}?subject=Caso%20%23{{ caso.id }}">{{ caso.correo_responsable }}</a></span>{% endif %}</dd>
+        {% if caso.plazo_horas %}<dt>Plazo</dt><dd>{{ caso.plazo_horas }} h{% if caso.vence_at %} · hasta el {{ caso.vence_at | fecha("%d/%m %H:%M") }}{% endif %}</dd>{% endif %}
+      </dl>
+      {% if areas and caso.estado in ("abierto", "en_llamada") %}
+      <form method="post" action="/casos/{{ caso.id }}/area" class="fila-revision" autocomplete="off">
+        <label for="c-area" class="sr-only">Pasar a otra área</label>
+        <select id="c-area" name="area">
+          {% for a in areas %}<option value="{{ a.clave }}" {% if a.clave == caso.area %}selected{% endif %}>{{ a.nombre }}{% if a.responsable %} · {{ a.responsable }}{% endif %}</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn">Pasar</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <section class="section">
+      <header><h2>Respuesta</h2></header>
+      {% if caso.estado in ("abierto", "en_llamada") %}
+      <form method="post" action="/casos/{{ caso.id }}/responder" class="panel-form" autocomplete="off">
+        <label for="c-respuesta">Qué se le respondió al cliente</label>
+        <textarea id="c-respuesta" name="respuesta" rows="3" maxlength="4000" required placeholder="Ej.: el repuesto llega el 15/12; lo llamamos y quedó conforme."></textarea>
+        <div class="actions"><button type="submit" class="btn primary">Marcar respondido</button></div>
+      </form>
+      <form method="post" action="/casos/{{ caso.id }}/cerrar" class="en-linea" style="margin-top:var(--s2)">
+        <input type="hidden" name="texto" value="Cerrado sin respuesta">
+        <button type="submit" class="btn mini quiet">Cerrar sin respuesta</button>
+      </form>
+      {% else %}
+      {% if caso.respuesta %}<p class="statement">{{ caso.respuesta }}</p>{% elif caso.estado == "resuelto" %}<p class="statement">Lo contestó el agente en la llamada con la información de la empresa.</p>{% else %}<p class="muted">Sin respuesta registrada.</p>{% endif %}
+      {% if caso.respondido_at %}<p class="hint">Respondido el {{ caso.respondido_at | fecha("%d/%m/%y %H:%M") }}{% if caso.vence_at %} · {{ "en plazo" if caso.respondido_at <= caso.vence_at else "fuera de plazo" }}{% endif %}.</p>{% endif %}
+      <form method="post" action="/casos/{{ caso.id }}/reabrir" class="fila-revision" autocomplete="off">
+        <label for="c-reabrir" class="sr-only">Motivo para reabrir</label>
+        <input id="c-reabrir" type="text" name="texto" maxlength="600" placeholder="Por qué se reabre (opcional)">
+        <button type="submit" class="btn">Reabrir</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <section class="section">
+      <header><h2>Recorrido</h2></header>
+      <ol class="recorrido">
+        {% for e in (caso.eventos or []) | reverse %}
+        <li>
+          <span class="recorrido-que">{{ e.que | capitalize }}</span>
+          <span class="hint tnum">{{ e.at | fecha("%d/%m %H:%M") }}{% if e.por %} · {{ e.por.split("@")[0] }}{% endif %}</span>
+          {% if e.texto %}<p>{{ e.texto }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+      <form method="post" action="/casos/{{ caso.id }}/nota" class="panel-form" autocomplete="off">
+        <label for="c-nota" class="sr-only">Nota</label>
+        <textarea id="c-nota" name="texto" rows="2" maxlength="600" required placeholder="Una nota para el seguimiento: «lo llamé, no atendió»."></textarea>
+        <div class="actions"><button type="submit" class="btn">Agregar nota</button></div>
+      </form>
+    </section>
+  </aside>
+</div>
+{% endblock %}
