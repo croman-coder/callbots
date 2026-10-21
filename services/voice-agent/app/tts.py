@@ -6,6 +6,7 @@ se sintetiza una vez, se guarda en disco a 8 kHz y se reutiliza para siempre.
 
     ┌─ memoria ──► hit: microsegundos
     ├─ disco ────► hit: milisegundos (sobrevive reinicios)
+    ├─ voicestudio ► miss: ~1 s con GPU (voz clonada, en vivo; perfiles "vs:<id>")
     ├─ voicebox ─► miss: segundos (voz clonada)
     └─ piper ────► voicebox caído o lento: milisegundos (voz genérica)
 
@@ -21,7 +22,7 @@ import io
 import logging
 import os
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import httpx
 import numpy as np
@@ -71,10 +72,23 @@ class VoiceParams:
         )
 
 
+PREFIJO_VOICESTUDIO = "vs:"
+
+
+def perfil_de_voicestudio(params: "VoiceParams") -> str | None:
+    """El perfil de VoiceStudio que habla en esta campaña (sin el prefijo), o None."""
+    if config.voicestudio_url and params.profile_id.startswith(PREFIJO_VOICESTUDIO):
+        return params.profile_id[len(PREFIJO_VOICESTUDIO):] or None
+    return None
+
+
 def perfil_de_voicebox(params: "VoiceParams") -> str | None:
     """El perfil de Voicebox que habla en esta campaña, o None si habla Piper."""
     if not config.voicebox_url or params.profile_id == "piper":
         return None
+    if params.profile_id.startswith(PREFIJO_VOICESTUDIO):
+        # Es de VoiceStudio: Voicebox no lo conoce. Si VoiceStudio no está, habla la voz del servidor.
+        return None if config.voicestudio_url else (config.voicebox_profile_id or None)
     return params.profile_id or config.voicebox_profile_id or None
 
 
@@ -134,7 +148,11 @@ def _cache_key(text: str, params: VoiceParams) -> str:
     reproduciendo el audio viejo hasta que alguien borre el caché a mano.
     """
     perfil = perfil_de_voicebox(params)
-    motor = f"voicebox:{perfil}:{config.voicebox_engine}" if perfil else "piper"
+    estudio = perfil_de_voicestudio(params)
+    if estudio:
+        motor = f"voicestudio:{estudio}:{config.voicestudio_pasos}"
+    else:
+        motor = f"voicebox:{perfil}:{config.voicebox_engine}" if perfil else "piper"
     seed = f"{motor}|{config.piper_voice}|{params.clave()}|{text}"
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
 
@@ -208,6 +226,28 @@ async def _voicebox_synthesize(text: str, timeout: float, perfil: str) -> bytes:
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             f"{config.voicebox_url.rstrip('/')}/generate/stream", json=payload
+        )
+        response.raise_for_status()
+        return _wav_to_telephony(response.content)
+
+
+# ---------------------------------------------------------------------------
+# Motor 1b: VoiceStudio (voz clonada en vivo, con GPU)
+# ---------------------------------------------------------------------------
+async def _voicestudio_synthesize(text: str, timeout: float, perfil: str, speed: float = 1.0) -> bytes:
+    """POST /v1/audio/speech (compatible con OpenAI): `voice` es el id del perfil clonado."""
+    payload = {
+        "model": "omnivoice",
+        "input": text,
+        "voice": perfil,
+        "response_format": "wav",
+        "language": config.voicestudio_language,
+        "speed": min(max(speed, 0.5), 2.0),
+        "num_step": config.voicestudio_pasos,
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(
+            f"{config.voicestudio_url.rstrip('/')}/v1/audio/speech", json=payload
         )
         response.raise_for_status()
         return _wav_to_telephony(response.content)
@@ -390,6 +430,24 @@ async def _sintetizar_crudo(
         return cached
 
     pcm = b""
+    estudio = perfil_de_voicestudio(params)
+    if estudio:
+        # Con GPU la frase sale en ~1 s: se la espera, en llamada y al precalentar. Si VoiceStudio
+        # no contesta, habla la voz del servidor sin cachear con esta clave: si se guardara, la frase
+        # quedaría para siempre con otra voz.
+        espera = timeout or config.voicestudio_vivo_timeout
+        try:
+            pcm = await asyncio.wait_for(
+                _voicestudio_synthesize(text, espera, estudio, params.speed), espera
+            )
+        except (asyncio.TimeoutError, httpx.HTTPError, ValueError, wave.Error) as exc:
+            log.warning("VoiceStudio no llegó a tiempo para %r (%s): habla la voz del servidor", text[:40], exc or "tiempo")
+        if not pcm:
+            return await _sintetizar_crudo(text, timeout, replace(params, profile_id=""))
+        _memory_cache[clave_memoria] = pcm
+        _write_cache(text, pcm, params)
+        return pcm
+
     perfil = perfil_de_voicebox(params)
     # En llamada (sin timeout explícito) hay un cliente escuchando. Con Kokoro la frase sale en
     # medio segundo: se la espera (con tope) y así nunca cambia la voz en mitad de la charla. Los
@@ -462,7 +520,7 @@ async def _vaciar_cola() -> None:
 
 def precalentar_en_segundo_plano(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> None:
     """Encola lo que falte del guion de una campaña, sin bloquear la llamada que lo pidió."""
-    if not perfil_de_voicebox(params):
+    if not (perfil_de_voicebox(params) or perfil_de_voicestudio(params)):
         return
     for t in dict.fromkeys(f for texto in texts for f in partir_frases(texto)):
         if (t, params.clave()) not in _memory_cache and _read_cache(t, params) is None:

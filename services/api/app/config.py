@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     voicebox_engine: str = "qwen"
     # Con GPU para la voz se pueden ofrecer las voces clonadas (Qwen, Chatterbox) en el selector.
     voces_con_gpu: bool = Field(False, validation_alias="VOCES_CON_GPU")
+    # VoiceStudio (OmniVoice): clonar voces desde el panel y hacerlas hablar en vivo. Necesita GPU.
+    voicestudio_url: str = ""
 
     # --- Login con la cuenta de los dashboards (Supabase) ---
     # Es la misma cuenta que usan Meta Ads y el tablero comercial: una persona, un

@@ -1,8 +1,9 @@
 """Cliente de Voicebox para el panel.
 
-Solo lo que el panel necesita: listar perfiles, clonar una voz y generar una
-muestra. Quien sintetiza durante las llamadas es el voice-agent, que tiene su
-propio cliente con caché — este no cachea nada a propósito.
+Solo lo que el panel necesita: listar perfiles y generar una muestra. Clonar
+voces ahora es de VoiceStudio (ver voicestudio.py). Quien sintetiza durante las
+llamadas es el voice-agent, que tiene su propio cliente con caché — este no
+cachea nada a propósito.
 """
 
 from __future__ import annotations
@@ -15,9 +16,7 @@ from app.config import settings
 
 log = logging.getLogger(__name__)
 
-# La clonación procesa audio y la generación corre un modelo pesado: los dos
-# tardan bastante más que una request web normal.
-CLONE_TIMEOUT = 300.0
+# La generación corre un modelo pesado: tarda bastante más que una request web normal.
 GENERATE_TIMEOUT = 300.0
 QUICK_TIMEOUT = 10.0
 
@@ -60,58 +59,6 @@ def list_profiles() -> list[dict]:
         return response.json()
     except httpx.HTTPError as exc:
         raise _fail("No se pudieron listar los perfiles", exc) from exc
-
-
-def clone_voice(
-    name: str,
-    audio_bytes: bytes,
-    filename: str,
-    reference_text: str,
-    language: str = "es",
-) -> dict:
-    """Crea el perfil y le sube la muestra de referencia. Devuelve el perfil.
-
-    Son dos pasos en Voicebox: primero el perfil vacío, después el audio que lo
-    convierte en un clon. Si el segundo falla, el perfil queda creado y hay que
-    borrarlo — por eso el mensaje de error lo menciona.
-    """
-    base = _base()
-
-    try:
-        response = httpx.post(
-            f"{base}/profiles",
-            json={
-                "name": name,
-                "description": "Voz del callbot de encuestas",
-                "language": language,
-                "voice_type": "cloned",
-            },
-            timeout=QUICK_TIMEOUT,
-        )
-        response.raise_for_status()
-        profile = response.json()
-    except httpx.HTTPError as exc:
-        raise _fail("No se pudo crear el perfil", exc) from exc
-
-    profile_id = profile["id"]
-
-    try:
-        response = httpx.post(
-            f"{base}/profiles/{profile_id}/samples",
-            files={"file": (filename, audio_bytes, "audio/wav")},
-            data={"reference_text": reference_text},
-            timeout=CLONE_TIMEOUT,
-        )
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise VoiceboxError(
-            f"El perfil {profile_id} se creó pero el audio no se pudo procesar: "
-            f"{getattr(getattr(exc, 'response', None), 'text', str(exc))[:200]}. "
-            f"Borralo desde Voicebox antes de reintentar."
-        ) from exc
-
-    log.info("Voz clonada en Voicebox: %s (%s)", name, profile_id)
-    return profile
 
 
 def engine_de(profile: dict) -> str:

@@ -11,7 +11,7 @@ import logging
 import re
 
 from app.config import settings
-from app.services import voicebox
+from app.services import voicebox, voicestudio
 
 log = logging.getLogger(__name__)
 
@@ -21,8 +21,25 @@ MOTORES = {
     "qwen": {"nombre": "Qwen3-TTS", "detalle": "Voz clonada, muy natural", "en_vivo": False},
     "qwen_custom_voice": {"nombre": "Qwen3-TTS", "detalle": "Voz prediseñada", "en_vivo": False},
     "piper": {"nombre": "Piper", "detalle": "Respaldo: suena robótica", "en_vivo": True},
+    "omnivoice": {"nombre": "OmniVoice", "detalle": "Voz clonada, habla en vivo", "en_vivo": True},
 }
 GENERO_PRESET = {"ef_dora": "Mujer", "em_alex": "Hombre", "em_santa": "Hombre"}
+
+# Lo que lee en voz alta la persona cuya voz se clona. Tiene el tono de una llamada (saludo, pregunta,
+# agradecimiento) porque el clon copia también la forma de hablar, y dura unos 15 segundos.
+TEXTO_REFERENCIA = (
+    "Hola, buenas tardes. Le hablo de Santa Rosa Automotores. "
+    "Lo llamamos para contarle que su vehículo ya está listo y que puede pasar a retirarlo cuando guste. "
+    "¿Tiene alguna consulta? Con mucho gusto lo ayudo. ¡Muchas gracias y que tenga un excelente día!"
+)
+
+
+def frase_consentimiento(persona: str) -> str:
+    """Lo que la persona dice (y queda grabado) para autorizar el uso de su voz."""
+    return (
+        f"Yo, {persona}, autorizo a Santa Rosa Paraguay a usar mi voz para las llamadas automáticas "
+        "de Callbot, y sé que puedo pedir que la borren cuando quiera."
+    )
 
 
 def _genero(perfil: dict) -> str:
@@ -79,6 +96,7 @@ def catalogo() -> tuple[list[dict], str | None]:
                 "escuchar": True,
             }
         )
+    voces.extend(clonadas())
     # Primero las que hablan en vivo (no cambian de voz en mitad de la llamada), después por nombre.
     voces.sort(key=lambda v: (not v["en_vivo"], v["nombre"].lower()))
     voces.append(
@@ -97,6 +115,36 @@ def catalogo() -> tuple[list[dict], str | None]:
         }
     )
     return voces, error
+
+
+def clonadas() -> list[dict]:
+    """Las voces clonadas en VoiceStudio con consentimiento registrado: sin él no se ofrecen."""
+    if not voicestudio.is_configured():
+        return []
+    try:
+        perfiles = voicestudio.list_profiles()
+    except voicestudio.VoiceStudioError as exc:
+        log.warning("Voces clonadas: %s", exc)
+        return []
+    return [
+        {
+            "id": voicestudio.id_callbot(str(p["id"])),
+            "nombre": _nombre_limpio(str(p.get("name") or "Sin nombre")),
+            "genero": _genero(p),
+            "tipo": "Clonada",
+            "descripcion": p.get("description") or "",
+            "motor": "omnivoice",
+            "motor_nombre": MOTORES["omnivoice"]["nombre"],
+            "detalle": MOTORES["omnivoice"]["detalle"],
+            "en_vivo": True,
+            "predeterminada": False,
+            "escuchar": True,
+            "consentimiento": p.get("consent_text") or "",
+            "creada": p.get("created_at"),
+        }
+        for p in perfiles
+        if p.get("id") and p.get("kind", "clone") == "clone" and p.get("verified_own_voice")
+    ]
 
 
 def elegida(voces: list[dict], voice_profile_id: str | None) -> dict | None:

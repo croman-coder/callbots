@@ -933,3 +933,24 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .tabla-voces tbody tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .elegir-voz { display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; }
 .tabla-voces .icono.sonando { color: var(--brand); border-color: var(--brand); }
+
+/* Voces: biblioteca y clonar */
+#biblioteca .tabla-voces tbody tr { cursor: default; }
+.en-linea { display: inline; margin: 0 0 0 var(--s2); }
+.clonar h3 { margin: var(--s5) 0 var(--s2); font-size: var(--t-md, 1rem); }
+.clonar h3:first-child { margin-top: 0; }
+.grabador { padding: var(--s3) var(--s4); border: 1px solid var(--line-2); border-radius: var(--r-lg); display: flex; flex-direction: column; gap: var(--s2); }
+.grabador .leer { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
+.texto-leer { margin: 0; padding: var(--s3) var(--s4); border-left: 3px solid var(--brand); background: var(--active-soft); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-size: 1.05rem; line-height: 1.6; text-wrap: pretty; }
+.grabador .controles { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
+.grabador .controles .resto { flex: 1; }
+.grabador .reloj { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: var(--t-sm); }
+.grabador .nivel { --nivel: 0; width: 120px; height: 8px; border-radius: 4px; background: var(--line-2); position: relative; overflow: hidden; }
+.grabador .nivel::after { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--nivel)); background: var(--ok); transition: transform 80ms linear; }
+.grabador [data-grabar].grabando { color: var(--bad); border-color: var(--bad); }
+.grabador audio { width: 100%; }
+.check { display: flex; align-items: flex-start; gap: var(--s2); margin: var(--s3) 0; font-size: var(--t-sm); line-height: 1.5; cursor: pointer; }
+.check input { margin-top: 3px; }
+.subir { cursor: pointer; }
+.subir:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .grabador .nivel::after { transition: none; } }

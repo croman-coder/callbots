@@ -51,6 +51,15 @@ class Config:
     # caer a Piper, que suena robótico y con otra voz. Los motores de clonación no se esperan.
     voicebox_vivo_timeout: float = float(os.getenv("VOICEBOX_VIVO_TIMEOUT", "3"))
 
+    # VoiceStudio (OmniVoice): voces clonadas que hablan en vivo, pero solo con GPU (en CPU una
+    # frase tarda ~25 s). Las campañas lo eligen con un perfil "vs:<id>".
+    voicestudio_url: str = os.getenv("VOICESTUDIO_URL", "")
+    voicestudio_language: str = os.getenv("VOICESTUDIO_LANGUAGE", "Spanish")
+    voicestudio_vivo_timeout: float = float(os.getenv("VOICESTUDIO_VIVO_TIMEOUT", "4"))
+    # Pasos de difusión: menos es más rápido y algo menos fino. Medido en la notebook (RTX 5060), una
+    # frase de 6 s: 8 pasos 0,8 s; 12 pasos 1,1 s; 16 pasos 1,4 s; 32 pasos 2,6 s.
+    voicestudio_pasos: int = int(os.getenv("VOICESTUDIO_PASOS", "12"))
+
     # Piper (respaldo, y motor principal si no hay voicebox)
     piper_voice: str = os.getenv("PIPER_VOICE", "es_AR-daniela-high")
     piper_dir: str = os.getenv("PIPER_DIR", "/models/piper")

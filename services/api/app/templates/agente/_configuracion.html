@@ -37,10 +37,10 @@
       </details>
 
       <div class="deslizadores">
-        <p class="hint">El volumen vale para todas las voces. Velocidad, tono y expresividad solo cambian la voz de respaldo (Piper).</p>
+        <p class="hint">El volumen vale para todas las voces. La velocidad cambia Piper y las voces clonadas; tono y expresividad, solo Piper.</p>
         {% for campo, titulo, minimo, maximo, paso, ayuda in [
           ("voice_volume", "Volumen", 0.4, 1.2, 0.05, "1 = nivel normal"),
-          ("voice_speed", "Velocidad", 0.6, 1.6, 0.05, "solo Piper"),
+          ("voice_speed", "Velocidad", 0.6, 1.6, 0.05, "Piper y clonadas"),
           ("voice_pitch", "Tono", 0.8, 1.25, 0.01, "solo Piper"),
           ("voice_expressiveness", "Expresividad", 0, 1.2, 0.02, "solo Piper")] %}
         <label class="desliza">{{ titulo }}

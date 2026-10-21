@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes
+from app import agentes, voces
 from app.config import settings
 from app.plantillas import templates
 from app.db import get_db
@@ -27,7 +27,7 @@ from app.deps import require_admin
 from app.routers.simulator import emitir_ticket
 from app.bitrix.client import normalize_phone_py
 from app.scheduling import next_call_slot, parse_days, parse_hhmm
-from app.services import calidad, contactabilidad, importar, preguntar, voicebox
+from app.services import calidad, contactabilidad, importar, preguntar, voicebox, voicestudio
 from app.services.export import construir_excel
 from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
@@ -1171,39 +1171,128 @@ def voices_page(
     request: Request,
     error: str | None = None,
     ok: str | None = None,
-    preview: str | None = None,
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    profiles: list[dict] = []
-    load_error: str | None = None
-
-    if voicebox.is_configured():
-        try:
-            profiles = voicebox.list_profiles()
-        except voicebox.VoiceboxError as exc:
-            load_error = str(exc)
-
-    active = next(
-        (p for p in profiles if p.get("id") == settings.voicebox_profile_id), None
-    )
-
-    campaigns = db.scalars(select(Campaign).order_by(Campaign.name)).all()
-
+    """Voces: la biblioteca para escuchar y, con VoiceStudio, clonar la voz de una persona."""
+    lista, error_catalogo = voces.catalogo()
+    en_uso: dict[str, list[str]] = {}
+    for c in db.scalars(select(Campaign).order_by(Campaign.name)).all():
+        en_uso.setdefault(c.voice_profile_id or settings.voicebox_profile_id or "piper", []).append(c.name)
     return templates.TemplateResponse(
         request,
         "voices.html",
         {
-            "campaigns": campaigns,
-            "configured": voicebox.is_configured(),
-            "profiles": profiles,
-            "active": active,
-            "active_id": settings.voicebox_profile_id,
-            "load_error": load_error,
+            "voces": lista,
+            "en_uso": en_uso,
+            "error_catalogo": error_catalogo,
+            "puede_clonar": voicestudio.is_configured(),
+            "texto_referencia": voces.TEXTO_REFERENCIA,
+            "frase_permiso_plantilla": voces.frase_consentimiento("{persona}"),
             "error": error,
             "ok": ok,
-            "preview": preview,
-            "settings": settings,
         },
+    )
+
+
+# Una grabación de 20 s en WAV de 48 kHz son ~2 MB: 15 MB alcanza para cualquier formato razonable.
+MAX_AUDIO_BYTES = 15 * 1024 * 1024
+
+
+@router.post("/voices/clonar")
+async def clonar_voz(
+    request: Request,
+    nombre: str = Form(""),
+    genero: str = Form(""),
+    persona: str = Form(""),
+    texto: str = Form(""),
+    acepto: str = Form(""),
+    referencia: UploadFile | None = File(None),
+    consentimiento: UploadFile | None = File(None),
+) -> JSONResponse:
+    """Clona la voz de una persona que dio su permiso: grabación de referencia + su consentimiento grabado."""
+    if not voicestudio.is_configured():
+        return JSONResponse({"error": "El motor de voces clonadas todavía no está instalado en el servidor."}, 503)
+    usuario = request.state.principal.usuario if getattr(request.state, "principal", None) else "?"
+    nombre, persona, texto = nombre.strip()[:40], " ".join(persona.split())[:80], " ".join(texto.split())[:600]
+    if not nombre or not persona:
+        return JSONResponse({"error": "Poné el nombre de la voz y el de la persona que habla."}, 400)
+    if genero not in ("Mujer", "Hombre"):
+        return JSONResponse({"error": "Elegí si es voz de mujer o de hombre."}, 400)
+    if acepto != "si":
+        return JSONResponse({"error": "Sin el permiso de la persona no se puede clonar su voz."}, 400)
+    if len(texto) < 20:
+        return JSONResponse({"error": "Falta lo que se dice en la grabación, palabra por palabra."}, 400)
+    if referencia is None or consentimiento is None:
+        return JSONResponse({"error": "Faltan la grabación de la voz o la del permiso."}, 400)
+    ref, perm = await referencia.read(), await consentimiento.read()
+    if not ref or not perm:
+        return JSONResponse({"error": "Una de las grabaciones está vacía. Grabala de nuevo."}, 400)
+    if len(ref) > MAX_AUDIO_BYTES or len(perm) > MAX_AUDIO_BYTES:
+        return JSONResponse({"error": "El audio es demasiado grande: alcanza con 10 a 20 segundos."}, 400)
+    if not agentes.permitir(f"clonar:{usuario}"):
+        return JSONResponse({"error": "Ya clonaste varias voces en la última hora. Probá más tarde."}, 429)
+
+    fecha = datetime.now(ZoneInfo("America/Asuncion")).strftime("%d/%m/%Y %H:%M")
+    permiso = (
+        f"{voces.frase_consentimiento(persona)} Grabado en Callbot el {fecha} (hora de Paraguay); "
+        f"cargado por {usuario}."
+    )
+    try:
+        # httpx sincrónico: a un thread, que la API siga atendiendo mientras se procesa el audio.
+        perfil = await asyncio.to_thread(
+            voicestudio.clonar,
+            f"{nombre} ({genero.lower()})",
+            ref,
+            referencia.filename or "referencia.wav",
+            texto,
+            perm,
+            consentimiento.filename or "consentimiento.wav",
+            permiso,
+        )
+    except voicestudio.VoiceStudioError as exc:
+        return JSONResponse({"error": str(exc)}, 502)
+    log.info("Voz clonada %s (%s) por %s", perfil.get("id"), nombre, usuario)
+    return JSONResponse({"id": voicestudio.id_callbot(str(perfil["id"])), "nombre": nombre})
+
+
+@router.post("/voices/{voz_id}/borrar")
+def borrar_voz(voz_id: str, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Borra una voz clonada (por ejemplo, si la persona retira su permiso). Las campañas que la
+    usaban pasan a la voz del servidor."""
+    perfil = voicestudio.id_estudio(voz_id)
+    if not perfil or not re.fullmatch(r"[A-Za-z0-9_-]{1,61}", perfil):
+        return _redirect(f"/voices?error={quote_plus('Solo se pueden borrar las voces clonadas')}")
+    try:
+        voicestudio.borrar(perfil)
+    except voicestudio.VoiceStudioError as exc:
+        return _redirect(f"/voices?error={quote_plus(str(exc))}")
+    campanas = db.scalars(select(Campaign).where(Campaign.voice_profile_id == voz_id)).all()
+    for c in campanas:
+        c.voice_profile_id = None
+    db.commit()
+    aviso = "Voz borrada"
+    if campanas:
+        aviso += f". {len(campanas)} agente(s) pasan a la voz del servidor"
+    return _redirect(f"/voices?ok={quote_plus(aviso)}")
+
+
+@router.get("/voices/preview")
+def preview_voice(profile_id: str, text: str | None = None) -> Response:
+    """Genera y devuelve un WAV para escuchar en el navegador."""
+    sample = (text or "").strip()[:300] or (
+        "Hola, buenos días. Le hablamos de Santa Rosa Automotores. "
+        "¿Tiene un minuto para una consulta muy breve?"
+    )
+    perfil = voicestudio.id_estudio(profile_id)
+    try:
+        wav = voicestudio.muestra(perfil, sample) if perfil else voicebox.generate(profile_id, sample)
+    except (voicebox.VoiceboxError, voicestudio.VoiceStudioError) as exc:
+        raise HTTPException(502, str(exc))
+
+    return Response(
+        content=wav,
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -1234,68 +1323,12 @@ def update_campaign_voice(
 
     # "" = la del servidor, "piper" = Piper a propósito, o el id de un perfil de Voicebox.
     perfil = voice_profile_id.strip()
-    if perfil and perfil != "piper" and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", perfil):
+    if perfil and perfil != "piper" and not re.fullmatch(r"(vs:)?[A-Za-z0-9_-]{1,61}", perfil):
         return _redirect(f"/voices?error={quote_plus('Voz inválida')}")
     campaign.voice_profile_id = perfil or None
     db.commit()
 
     return _redirect(f"/voices?ok=Voz+actualizada+en+{quote_plus(campaign.name)}")
-
-
-@router.post("/voices/clone")
-async def clone_voice(
-    name: str = Form(...),
-    reference_text: str = Form(...),
-    audio: UploadFile = File(...),
-) -> RedirectResponse:
-    """Clona una voz desde una grabación subida por el navegador."""
-    content = await audio.read()
-
-    if not content:
-        return _redirect(f"/voices?error={quote_plus('El archivo de audio está vacío')}")
-
-    # 25 MB alcanza de sobra para 30 segundos en cualquier formato razonable;
-    # más que eso es un archivo equivocado.
-    if len(content) > 25 * 1024 * 1024:
-        return _redirect(f"/voices?error={quote_plus('El audio supera los 25 MB')}")
-
-    try:
-        # voicebox usa httpx sincrónico y la clonación tarda minutos: si corriera
-        # en el event loop, la API entera quedaría congelada mientras procesa.
-        profile = await asyncio.to_thread(
-            voicebox.clone_voice,
-            name.strip(),
-            content,
-            audio.filename or "muestra.wav",
-            reference_text.strip(),
-        )
-    except voicebox.VoiceboxError as exc:
-        return _redirect(f"/voices?error={quote_plus(str(exc)[:300])}")
-
-    return _redirect(
-        f"/voices?ok={quote_plus('Voz clonada: ' + profile.get('name', ''))}"
-        f"&preview={profile['id']}"
-    )
-
-
-@router.get("/voices/preview")
-def preview_voice(profile_id: str, text: str | None = None) -> Response:
-    """Genera y devuelve un WAV para escuchar en el navegador."""
-    sample = text or (
-        "Hola, buenos días. Le hablamos del servicio de posventa del taller. "
-        "Estamos haciendo una encuesta muy breve sobre su última visita."
-    )
-
-    try:
-        wav = voicebox.generate(profile_id, sample)
-    except voicebox.VoiceboxError as exc:
-        raise HTTPException(502, str(exc))
-
-    return Response(
-        content=wav,
-        media_type="audio/wav",
-        headers={"Cache-Control": "no-store"},
-    )
 
 
 # ---------------------------------------------------------------------------
