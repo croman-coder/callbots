@@ -34,6 +34,31 @@ def is_configured() -> bool:
     return bool(settings.anthropic_api_key.strip())
 
 
+# Lo que se le pide a Claude acá es corto y concreto (una respuesta por teléfono, un JSON con el análisis): pensar no
+# mejora nada y cuesta segundos. Los modelos Claude 5 piensan por defecto, y en una respuesta de 200 tokens Haiku 5.5
+# se los gastaba todos pensando: devolvía solo el bloque de pensamiento y el bot nunca contestaba (medido el
+# 21/10/2026). Cada familia se apaga distinto, y mandarle lo que no acepta es un 400:
+#   - Opus 5.5 y Fable: el pensamiento no se apaga; esfuerzo bajo y lugar de sobra para que igual quede texto.
+#   - Sonnet 5.5: «disabled» es un 400; el modo sin pensar es «between_tools».
+#   - Haiku 4.5 y anteriores: no piensan si no se les pide, y `effort` les da error.
+#   - El resto (Haiku 5.5, Opus 5, Sonnet 5, Opus 4.6 a 4.8): «disabled», válido con esfuerzo bajo.
+_SIEMPRE_PIENSAN = ("claude-opus-5-5", "claude-fable-", "claude-mythos-")
+_SIN_ESFUERZO = ("claude-haiku-4", "claude-3", "claude-sonnet-4-5", "claude-opus-4-1", "claude-opus-4-0", "claude-sonnet-4-0")
+MARGEN_PARA_PENSAR = 1024
+
+
+def _sin_pensar(modelo: str, max_tokens: int) -> dict[str, Any]:
+    """Los campos del pedido que dejan la respuesta corta y rápida en este modelo."""
+    m = modelo.lower()
+    if m.startswith(_SIN_ESFUERZO):
+        return {"max_tokens": max_tokens}
+    if m.startswith(_SIEMPRE_PIENSAN):
+        return {"max_tokens": max_tokens + MARGEN_PARA_PENSAR, "output_config": {"effort": "low"}}
+    if m.startswith("claude-sonnet-5-5"):
+        return {"max_tokens": max_tokens, "thinking": {"type": "between_tools"}, "output_config": {"effort": "low"}}
+    return {"max_tokens": max_tokens, "thinking": {"type": "disabled"}, "output_config": {"effort": "low"}}
+
+
 def _request(system: str, user: str, max_tokens: int) -> tuple[dict[str, str], dict[str, Any]]:
     headers = {
         "x-api-key": settings.anthropic_api_key,
@@ -42,9 +67,9 @@ def _request(system: str, user: str, max_tokens: int) -> tuple[dict[str, str], d
     }
     body = {
         "model": settings.llm_model,
-        "max_tokens": max_tokens,
         "system": system,
         "messages": [{"role": "user", "content": user}],
+        **_sin_pensar(settings.llm_model, max_tokens),
     }
     return headers, body
 
@@ -57,6 +82,9 @@ def _text(data: Any) -> str | None:
         log.warning("Claude devolvió algo inesperado: %s", str(data)[:200])
         return None
     texto = "".join(partes).strip()
+    if not texto and isinstance(data, dict) and data.get("stop_reason") == "max_tokens":
+        # Se le acabaron los tokens antes de escribir: no es «no tenía nada que decir», es un pedido mal dimensionado.
+        log.warning("Claude cortó por max_tokens sin escribir texto (modelo %s): se usa la frase fija", settings.llm_model)
     return texto or None
 
 

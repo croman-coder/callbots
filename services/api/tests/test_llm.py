@@ -103,3 +103,31 @@ def test_el_analisis_sin_nadie_que_conteste_devuelve_nada(monkeypatch):
 def test_sin_clave_de_claude_no_hay_analisis(monkeypatch):
     monkeypatch.setattr(llm.settings, "anthropic_api_key", "")
     assert analysis.query_llm("x") == (None, None)
+
+
+# ---------------------------------------------------------------- respuestas rápidas, sin pensar de más
+# Medido el 21/10/2026: con Haiku 5.5 el pensamiento viene prendido y en 200 tokens se los gastaba todos pensando
+# (stop_reason "max_tokens", ningún bloque de texto): el bot nunca contestaba una pregunta del cliente.
+@pytest.mark.parametrize("modelo,pensar,esfuerzo,extra_tokens", [
+    ("claude-haiku-5-5", {"type": "disabled"}, "low", False),
+    ("claude-sonnet-5", {"type": "disabled"}, "low", False),
+    ("claude-opus-5", {"type": "disabled"}, "low", False),
+    ("claude-opus-4-8", {"type": "disabled"}, "low", False),
+    ("claude-sonnet-5-5", {"type": "between_tools"}, "low", False),  # ahí "disabled" es un 400
+    ("claude-opus-5-5", None, "low", True),    # no se puede apagar: esfuerzo bajo y lugar para pensar
+    ("claude-fable-5-1", None, "low", True),
+    ("claude-haiku-4-5", None, None, False),   # no piensa si no se le pide; `effort` le da error
+])
+def test_el_pedido_no_gasta_la_respuesta_pensando(monkeypatch, modelo, pensar, esfuerzo, extra_tokens):
+    monkeypatch.setattr(llm.settings, "llm_model", modelo)
+    _, cuerpo = llm._request("s", "u", 200)
+    assert cuerpo.get("thinking") == pensar
+    assert (cuerpo.get("output_config") or {}).get("effort") == esfuerzo
+    assert (cuerpo["max_tokens"] > 200) is extra_tokens
+
+
+def test_si_se_le_acaban_los_tokens_pensando_avisa_y_usa_la_frase_fija(monkeypatch, caplog):
+    _responder(lambda r: httpx.Response(200, json={"stop_reason": "max_tokens", "content": [{"type": "thinking", "thinking": ""}]}), monkeypatch)
+    with caplog.at_level("WARNING"):
+        assert asyncio.run(llm.complete("s", "u")) is None
+    assert "max_tokens" in caplog.text
