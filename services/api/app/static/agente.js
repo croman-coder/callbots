@@ -138,6 +138,7 @@
           if (desdeCero && ed.dataset.auto) {
             return guardarSolo().then(function () { estado.textContent = "Instrucciones creadas y guardadas. Podés corregirlas cuando quieras."; });
           }
+          if (window.callbotMarcarSucio) window.callbotMarcarSucio();
           estado.textContent = "Listo. Revisalas y tocá «Guardar cambios».";
         })
         .catch(function () { estado.textContent = "No pude generar las instrucciones. Probá de nuevo."; })
@@ -148,6 +149,20 @@
       generar(true);
       try { history.replaceState(null, "", location.pathname + "?tab=probar"); } catch (e) {}
     }
+  }
+
+  // ------------------------------------------------------------ Cambios sin guardar
+  // Avisa antes de salir si hay cambios sin guardar, y muestra «Guardando…» mientras se guarda.
+  var ficha = document.getElementById("ficha"), sucio = false;
+  if (ficha) {
+    ficha.addEventListener("input", function () { sucio = true; });
+    ficha.addEventListener("change", function () { sucio = true; });
+    ficha.addEventListener("submit", function () {
+      sucio = false;
+      $$('button[form="ficha"]').forEach(function (b) { b.disabled = true; b.textContent = "Guardando…"; });
+    });
+    window.addEventListener("beforeunload", function (e) { if (sucio) { e.preventDefault(); e.returnValue = ""; } });
+    window.callbotMarcarSucio = function () { sucio = true; };
   }
 
   // ------------------------------------------------------------ Detalles chicos

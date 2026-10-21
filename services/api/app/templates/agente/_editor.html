@@ -30,7 +30,7 @@
       <span data-ia-texto>{{ "Mejorar con IA" if campaign.conversation_prompt else "Generar con IA" }}</span>
     </button>
     <label class="sr-only" for="pedido-ia">Qué cambiar</label>
-    <input id="pedido-ia" type="text" data-pedido maxlength="300" placeholder="Qué querés cambiar (opcional)" {% if not campaign.conversation_prompt %}hidden{% endif %}>
+    <input id="pedido-ia" type="text" data-pedido maxlength="300" placeholder="Qué querés cambiar (opcional)…" {% if not campaign.conversation_prompt %}hidden{% endif %}>
     <span class="tokens" data-tokens>~{{ tokens }} tokens</span>
   </div>
   <p class="hint" data-estado role="status" aria-live="polite"></p>

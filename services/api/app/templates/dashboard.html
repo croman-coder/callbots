@@ -52,7 +52,7 @@
             <td>{{ a.followup_reason or a.summary or "Sin detalle registrado" }}</td>
             <td class="num">
               {% if a.satisfaction_score is not none %}
-                <span class="score-bad">{{ a.satisfaction_score | round(1) }}</span>
+                <span class="score-bad">{{ a.satisfaction_score | dec }}</span>
               {% else %}<span class="muted">—</span>{% endif %}
             </td>
             <td class="num nowrap">
@@ -134,11 +134,11 @@
         <div class="lbl">{{ text }}</div>
         <div class="track">
           <span class="fill {{ 'low' if low }}" style="width: {{ pct | round(1) }}%"
-                role="img" aria-label="{{ avg | round(1) }} {{ esc }}"></span>
+                role="img" aria-label="{{ avg | dec }} {{ esc }}"></span>
         </div>
       </div>
       <div class="val">
-        <span {% if low %}class="score-bad"{% endif %}>{{ avg | round(1) }}</span>
+        <span {% if low %}class="score-bad"{% endif %}>{{ avg | dec }}</span>
         <small>{{ n }} respuesta{{ "s" if n != 1 }}</small>
       </div>
     </div>
@@ -221,7 +221,7 @@
             {%- set low = c.analysis and c.analysis.satisfaction_score is not none
                           and c.analysis.satisfaction_score < satisfactory_min -%}
           <tr>
-            <td class="muted tnum">{{ c.started_at.strftime("%d/%m %H:%M") if c.started_at else "—" }}</td>
+            <td class="muted tnum">{{ c.started_at | fecha("%d/%m %H:%M") }}</td>
             <td class="name">{{ c.target.contact_name or "Sin nombre" }}</td>
             <td class="mono muted">{{ c.target.phone or "—" }}</td>
             <td><span class="pill {{ c.outcome.value if c.outcome else 'calling' }}">{{ c.outcome.value if c.outcome else "en curso" }}</span></td>
@@ -232,7 +232,7 @@
             <td class="num">{{ c.questions_answered }}<span class="muted">/{{ c.questions_asked }}</span></td>
             <td class="num">
               {%- if c.analysis and c.analysis.satisfaction_score is not none -%}
-                <span {% if low %}class="score-bad"{% endif %}>{{ c.analysis.satisfaction_score | round(1) }}</span>
+                <span {% if low %}class="score-bad"{% endif %}>{{ c.analysis.satisfaction_score | dec }}</span>
               {%- else -%}<span class="muted">—</span>{%- endif -%}
             </td>
             <td class="num"><a class="link" href="/calls/{{ c.id }}">Ver</a></td>

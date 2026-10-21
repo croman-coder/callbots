@@ -14,7 +14,7 @@
   <div class="kpi"><span class="k">Tasa de conexión</span><span class="v">{{ kpi.tasa_conexion }}<small> %</small></span></div>
   <div class="kpi"><span class="k">Duración promedio</span><span class="v">{% if kpi.duracion is not none %}{{ "%02d" | format(kpi.duracion // 60) }}<small>m </small>{{ "%02d" | format(kpi.duracion % 60) }}<small>s</small>{% else %}—{% endif %}</span></div>
   <div class="kpi"><span class="k">Metas logradas</span><span class="v">{{ kpi.metas }}</span></div>
-  <div class="kpi {% if kpi.satisfaccion is not none and kpi.satisfaccion < satisfactory_min %}malo{% endif %}"><span class="k">Satisfacción media</span><span class="v">{% if kpi.satisfaccion is not none %}{{ kpi.satisfaccion }}<small> /10</small>{% else %}—{% endif %}</span></div>
+  <div class="kpi {% if kpi.satisfaccion is not none and kpi.satisfaccion < satisfactory_min %}malo{% endif %}"><span class="k">Satisfacción media</span><span class="v">{% if kpi.satisfaccion is not none %}{{ kpi.satisfaccion | dec }}<small> /10</small>{% else %}—{% endif %}</span></div>
 </div>
 
 <div class="dos-graficos">
@@ -56,7 +56,7 @@
       <div class="lbl">{{ p.pos }}. {{ p.texto }} <span class="muted">· {{ p.n }} respuesta{{ "s" if p.n != 1 }}</span>
         <div class="track"><span class="fill {{ 'ok' if p.promedio >= satisfactory_min else 'warn' if p.promedio >= 7 else 'bad' }}" style="width:{{ (p.promedio * 10) | round(0) | int }}%"></span></div>
       </div>
-      <div class="val">{{ p.promedio }}<small>/10</small></div>
+      <div class="val">{{ p.promedio | dec }}<small>/10</small></div>
     </div>
     {% endfor %}
   </div>

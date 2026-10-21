@@ -69,7 +69,7 @@
 <div class="metrics">
   <div class="metric t-celeste {% if promedio is not none and promedio < satisfactory_min %}is-bad{% endif %}">
     <div class="k">Satisfacción promedio</div>
-    {% if promedio is not none %}<div class="v">{{ promedio }}<small> /10</small></div>
+    {% if promedio is not none %}<div class="v">{{ promedio | dec }}<small> /10</small></div>
     {% else %}<div class="v pending">Sin datos</div>{% endif %}
   </div>
   <div class="metric t-menta">
@@ -191,7 +191,7 @@
           {% set a = c.analysis %}
           {% set s = a.satisfaction_score if a else none %}
           <tr>
-            <td class="nowrap">{{ c.started_at.strftime("%d/%m/%y %H:%M") if c.started_at else "—" }}</td>
+            <td class="nowrap">{{ c.started_at | fecha("%d/%m/%y %H:%M") }}</td>
             <td>{{ c.target.contact_name or "—" }}</td>
             <td><span class="mono">{{ c.target.phone or "—" }}</span></td>
             <td>{{ c.target.campaign.name if c.target.campaign else "—" }}</td>
@@ -209,7 +209,7 @@
             <td class="num tnum">{{ c.questions_answered }}/{{ c.questions_asked }}</td>
             <td class="num tnum">
               {%- if s is not none -%}
-                <strong {% if s < satisfactory_min %}class="score-bad"{% endif %}>{{ s | round(1) }}</strong>
+                <strong {% if s < satisfactory_min %}class="score-bad"{% endif %}>{{ s | dec }}</strong>
               {%- else -%}—{%- endif -%}
             </td>
             {% set q = calidades.get(c.id) %}

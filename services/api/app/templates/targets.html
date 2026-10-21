@@ -72,8 +72,8 @@
               {% if t.bitrix_entity_id %}<span class="sub-line mono">{{ t.bitrix_entity_type_id }}#{{ t.bitrix_entity_id }}</span>{% endif %}
             </td>
             <td class="mono">{{ t.phone or "—" }}</td>
-            <td class="muted tnum">{{ t.trigger_at.strftime("%d/%m/%y %H:%M") if t.trigger_at else "—" }}</td>
-            <td class="tnum">{{ t.scheduled_at.strftime("%d/%m/%y %H:%M") if t.scheduled_at else "—" }}</td>
+            <td class="muted tnum">{{ t.trigger_at | fecha("%d/%m/%y %H:%M") }}</td>
+            <td class="tnum">{{ t.scheduled_at | fecha("%d/%m/%y %H:%M") }}</td>
             <td>
               <span class="pill {{ t.status.value }}">{{ t.status.value }}</span>
               {% if t.last_error %}<span class="sub-line err">{{ t.last_error[:80] }}</span>{% endif %}

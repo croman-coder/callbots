@@ -341,7 +341,10 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
                 return _volver(campaign_id, tab, error="El guion no puede quedar con frases vacías")
             setattr(campaign, campo, limpio)
 
-    inicio, fin = _hora(texto("call_window_start", 5)), _hora(texto("call_window_end", 5))
+    try:
+        inicio, fin = _hora(texto("call_window_start", 5)), _hora(texto("call_window_end", 5))
+    except HTTPException:
+        return _volver(campaign_id, tab, error="Revisá el horario: va como HH:MM, por ejemplo 09:00")
     if inicio:
         campaign.call_window_start = inicio
     if fin:
@@ -353,11 +356,15 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
         if not validos:
             return _volver(campaign_id, tab, error="Elegí al menos un día para llamar")
         campaign.call_window_days = ",".join(str(d) for d in validos)
+    try:
+        enteros = {c: numero(c) for c in ("max_attempts", "retry_interval_minutes", "delay_hours", "bitrix_entity_type_id")}
+        reales = {c: numero(c, float) for c in ("voice_speed", "voice_pitch", "voice_expressiveness", "voice_volume")}
+    except HTTPException:
+        return _volver(campaign_id, tab, error="Hay un número mal escrito: revisá intentos, reintento, demora y voz")
     for campo, minimo, maximo in (("max_attempts", 1, 10), ("retry_interval_minutes", 5, 1440), ("delay_hours", 0, 720)):
-        valor = numero(campo)
-        if valor is not None:
-            setattr(campaign, campo, _entre(valor, minimo, maximo))
-    entidad = numero("bitrix_entity_type_id")
+        if enteros[campo] is not None:
+            setattr(campaign, campo, _entre(enteros[campo], minimo, maximo))
+    entidad = enteros["bitrix_entity_type_id"]
     if entidad is not None:
         campaign.bitrix_entity_type_id = entidad
     disparador = texto("trigger_field", 120)
@@ -367,7 +374,7 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     perfil = texto("voice_profile_id", 64)
     if perfil is not None:
         if perfil and perfil != "piper" and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", perfil):
-            return _volver(campaign_id, tab, error="Voz inválida")
+            return _volver(campaign_id, tab, error="Esa voz no existe: elegí una de la lista")
         campaign.voice_profile_id = perfil or None
     # Mismos topes que en Voz: un valor absurdo deja la voz irreconocible o tarda una eternidad.
     for campo, minimo, maximo in (
@@ -376,9 +383,8 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
         ("voice_expressiveness", 0.0, 1.5),
         ("voice_volume", 0.2, 1.5),
     ):
-        valor = numero(campo, float)
-        if valor is not None:
-            setattr(campaign, campo, _entre(valor, minimo, maximo))
+        if reales[campo] is not None:
+            setattr(campaign, campo, _entre(reales[campo], minimo, maximo))
 
     db.commit()
     return _volver(campaign_id, tab, ok="Cambios guardados")

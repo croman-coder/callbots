@@ -908,3 +908,9 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
   .editor, .llamada { position: static; }
 }
 @media (prefers-reduced-motion: reduce) { .girando { animation-duration: 3s; } }
+
+/* Pautas de interfaz: textos largos que no rompen el diseño, scroll que no arrastra la página,
+   anclas que no quedan tapadas. */
+dialog.asistente, .transcripcion, .editor-vista, .editor textarea[data-md] { overscroll-behavior: contain; }
+.bloque, [id] { scroll-margin-top: 88px; }
+.transcripcion li p, .preguntas .texto, .markdown, .dato, .canal p, .destino span { overflow-wrap: anywhere; }

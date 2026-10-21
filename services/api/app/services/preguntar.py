@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 
+from app.config import settings
 from app.services import llm
 
 MAX_CARACTERES = 60_000
@@ -51,7 +52,11 @@ def bloque(call) -> str:
     t = call.target
     campana = t.campaign.name if t and t.campaign else "?"
     nombre = (t.contact_name or "").split(" ")[0] if t else ""
-    cuando = call.started_at.strftime("%d/%m/%Y %H:%M") if call.started_at else "sin fecha"
+    # En hora de Paraguay: si no, Claude contesta «a las 13» por una llamada de las 10.
+    inicio = call.started_at
+    if inicio is not None and inicio.tzinfo is not None:
+        inicio = inicio.astimezone(settings.timezone)
+    cuando = inicio.strftime("%d/%m/%Y %H:%M") if inicio else "sin fecha"
     a = call.analysis
     cabecera = [f"Llamada #{call.id}", cuando, f"campaña «{campana}»", f"resultado {_v(call.outcome) or 'en curso'}"]
     if nombre:

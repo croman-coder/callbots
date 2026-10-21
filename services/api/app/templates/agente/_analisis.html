@@ -7,7 +7,7 @@
     <p class="hint">Qué es una llamada exitosa para este agente y qué tiene que mirar Claude al analizarla. Se suma a las reglas fijas del análisis (puntaje, sentimiento, resumen, temas y seguimiento).</p>
     <label class="sr-only" for="a-objetivo">Objetivo e instrucciones del análisis</label>
     <textarea id="a-objetivo" name="analysis_prompt" rows="6" maxlength="8000" data-contar="tokens-analisis"
-              placeholder="Ej.: Es exitosa si el cliente responde todas las preguntas. Tratá como grave cualquier mención a que el vehículo volvió por la misma falla.">{{ campaign.analysis_prompt or "" }}</textarea>
+              placeholder="Ej.: Es exitosa si el cliente responde todas las preguntas. Tratá como grave cualquier mención a que el vehículo volvió por la misma falla…">{{ campaign.analysis_prompt or "" }}</textarea>
     <p class="hint derecha"><span id="tokens-analisis">~{{ (campaign.analysis_prompt or "") | length // 4 }} tokens</span></p>
   </details>
 

@@ -98,8 +98,10 @@ def test_guardar_rechaza_lo_invalido(cliente, base, datos, motivo):
     assert r.status_code == 303 and "error=" in r.headers["location"]
 
 
-def test_hora_mal_escrita_da_400(cliente):
-    assert cliente.post("/campaigns/1/guardar", data={"call_window_start": "25:99"}, headers=H).status_code == 400
+@pytest.mark.parametrize("datos", [{"call_window_start": "25:99"}, {"max_attempts": "tres"}, {"voice_speed": "rápido"}])
+def test_un_valor_mal_escrito_vuelve_con_el_aviso(cliente, datos):
+    r = cliente.post("/campaigns/1/guardar", data={"tab": "configuracion", **datos}, headers=H)
+    assert r.status_code == 303 and "error=" in r.headers["location"]
 
 
 def test_dias_y_topes(cliente, base):
