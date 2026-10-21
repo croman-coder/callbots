@@ -56,6 +56,9 @@ async def handle_connection(
             await socket.hangup()
             return
 
+        # Antes de precalentar o decir nada: de esto depende cómo suenan las marcas y las siglas.
+        tts.set_pronunciaciones(script.pronunciaciones)
+
         if not script.questions:
             log.error("La campaña %s no tiene preguntas activas", script.campaign_id)
             await socket.hangup()
@@ -97,6 +100,7 @@ async def prewarm_tts(primera_vez: bool = True) -> int:
     api = ApiClient()
     try:
         grupos = await api.get_all_prompts()
+        tts.set_pronunciaciones(api.pronunciaciones)
         total = sum(len(g.get("texts", [])) for g in grupos)
         if not total:
             if primera_vez:

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid as uuid_mod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -65,6 +65,8 @@ class Script:
     voicemail_script: str = ""
     transfer_enabled: bool = False
     transfer_script: str = ""
+    # Cómo se dicen las marcas y siglas: [{"palabra", "dicho"}] (ver pronunciacion.py).
+    pronunciaciones: list[dict] = field(default_factory=list)
 
     @property
     def all_prompts(self) -> list[str]:
@@ -96,6 +98,7 @@ class AnswerVerdict:
 
 class ApiClient:
     def __init__(self) -> None:
+        self.pronunciaciones: list[dict] = []  # lo último que mandó /internal/prompts
         self._client = httpx.AsyncClient(
             base_url=config.api_base_url.rstrip("/"),
             headers={"X-Callbot-Token": config.internal_token},
@@ -151,6 +154,7 @@ class ApiClient:
             voicemail_script=str(data.get("voicemail_script") or ""),
             transfer_enabled=bool(data.get("transfer_enabled", False)),
             transfer_script=str(data.get("transfer_script") or ""),
+            pronunciaciones=list(data.get("pronunciaciones") or []),
             questions=[Question(**q) for q in data["questions"]],
         )
 
@@ -188,6 +192,7 @@ class ApiClient:
             response = await self._client.get("/internal/prompts")
             response.raise_for_status()
             data = response.json()
+            self.pronunciaciones = list(data.get("pronunciaciones") or [])
             if data.get("grupos"):
                 return data["grupos"]
             # API vieja: un solo grupo con la modulación por default

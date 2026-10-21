@@ -23,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app import pronunciaciones
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -138,6 +139,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             voice_volume=campaign.voice_volume,
             voice_profile_id=campaign.voice_profile_id,
             **_opciones_de_llamada(campaign),
+            pronunciaciones=pronunciaciones.lista(db),
             questions=[QuestionOut.model_validate(q) for q in _active_questions(campaign)],
         )
 
@@ -170,6 +172,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
         voice_volume=campaign.voice_volume,
         voice_profile_id=campaign.voice_profile_id,
         **_opciones_de_llamada(campaign),
+        pronunciaciones=pronunciaciones.lista(db),
         questions=[QuestionOut.model_validate(q) for q in questions],
     )
 
@@ -507,7 +510,7 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
     # `texts` se mantiene por compatibilidad con agentes viejos.
     unique = [t for t in dict.fromkeys(todos)]
 
-    return {"campaigns": len(campaigns), "texts": unique, "grupos": grupos}
+    return {"campaigns": len(campaigns), "texts": unique, "grupos": grupos, "pronunciaciones": pronunciaciones.lista(db)}
 
 
 @router.get("/targets/{session_uuid}/context")

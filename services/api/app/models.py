@@ -420,3 +420,14 @@ class CallAnalysis(Base):
     )
 
     call: Mapped[CallAttempt] = relationship(back_populates="analysis")
+
+
+class Pronunciation(Base):
+    """Cómo tiene que decir el bot una palabra (ver app/pronunciaciones.py)."""
+
+    __tablename__ = "pronunciations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    palabra: Mapped[str] = mapped_column(String(60), nullable=False)
+    dicho: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

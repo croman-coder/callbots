@@ -63,6 +63,24 @@
     });
   }
 
+  // ------------------------------------------------------------ Pronunciación: oír cómo queda una palabra
+  var vozPrueba = $("[data-voz-prueba]"), estadoPron = $("[data-estado-pronunciacion]");
+  $$("[data-probar-dicho]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (!vozPrueba) return;
+      if (sonando) { sonando.pause(); sonando = null; }
+      if (botonSonando) botonSonando.classList.remove("sonando");
+      botonSonando = b; b.classList.add("sonando"); if (estadoPron) estadoPron.textContent = "Generando…";
+      // Con `literal` el servidor dice el texto tal cual (ya es «cómo se dice»): no le aplica el diccionario otra vez.
+      sonando = new Audio("/voices/preview?literal=1&profile_id=" + encodeURIComponent(vozPrueba.value) + "&text=" + encodeURIComponent(b.dataset.probarDicho));
+      function fin(msg) { b.classList.remove("sonando"); botonSonando = null; if (estadoPron) estadoPron.textContent = msg || ""; }
+      sonando.addEventListener("playing", function () { if (estadoPron) estadoPron.textContent = "Escuchando…"; });
+      sonando.addEventListener("ended", function () { fin("Tocá ▶ para oír cómo queda."); });
+      sonando.addEventListener("error", function () { fin("No se pudo generar la muestra. Probá de nuevo."); });
+      sonando.play().catch(function () {});
+    });
+  });
+
   $$("form[data-confirmar]").forEach(function (f) {
     f.addEventListener("submit", function (e) { if (!confirm(f.dataset.confirmar)) e.preventDefault(); });
   });

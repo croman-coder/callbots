@@ -968,6 +968,24 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .en-linea { display: inline; margin: 0 0 0 var(--s2); }
 .clonar h3 { margin: var(--s5) 0 var(--s2); font-size: var(--t-md, 1rem); }
 .clonar h3:first-child { margin-top: 0; }
+/* Pronunciación: una fila por palabra. */
+.fila-pron { display: flex; gap: var(--s2); align-items: center; margin: 0; }
+.fila-pron input[type="text"] { min-width: 0; flex: 1; }
+.tabla-pronunciacion td { vertical-align: middle; }
+.nueva-pron { margin-top: var(--s4); align-items: flex-end; }
+.nueva-pron > div { flex: 1; min-width: 0; }
+.nueva-pron label { margin-top: 0; }
+.panel-form .tablewrap { margin-top: var(--s3); }
+@media (max-width: 760px) {
+  .nueva-pron { flex-direction: column; align-items: stretch; }
+  .tabla-pronunciacion, .tabla-pronunciacion tbody { display: block; }
+  .tabla-pronunciacion thead { display: none; }
+  .tabla-pronunciacion tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s2); align-items: center; padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
+  .tabla-pronunciacion td { display: block; padding: 0; border: 0; min-width: 0; }
+  .tabla-pronunciacion td:nth-child(1) { grid-column: 1 / -1; }
+  .tabla-pronunciacion td:nth-child(2) { grid-column: 1 / -1; }
+  .tabla-pronunciacion td:nth-child(3) { grid-column: 1 / -1; text-align: left; }
+}
 /* Crear una voz con IA: probar variantes y quedarse con la que suena bien. */
 .disenar .row { align-items: end; }
 .muestra-diseno { margin-top: var(--s4); padding: var(--s4); border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--raised); }

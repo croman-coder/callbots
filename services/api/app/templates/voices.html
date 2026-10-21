@@ -10,6 +10,7 @@
   </div>
   <div class="right">
     <a class="btn primary" href="#crear">Crear una voz con IA</a>
+    <a class="btn" href="#pronunciacion">Pronunciación</a>
     <a class="btn" href="#clonar">Clonar una voz</a>
   </div>
 </div>
@@ -110,6 +111,59 @@
     </div>
   </form>
   {% endif %}
+</section>
+
+<section class="section" id="pronunciacion">
+  <header>
+    <h2>Pronunciación</h2>
+    <span class="note">Cómo dice el bot las marcas y las siglas</span>
+  </header>
+  <div class="panel-form">
+    <p class="hint" style="margin-top:0">Un sintetizador en español lee «Renault» a la española y «GWM» como si fuera una palabra. Escribí la palabra como está en el guion y, al lado, <strong>cómo se dice, escrito como se lee</strong>. El guion y la transcripción siguen con la palabra original: el cambio es solo en el audio, y vale para las próximas frases que genere el bot (las que ya estaban guardadas con la pronunciación vieja se vuelven a generar solas).</p>
+    {% if voces_en_vivo %}
+    <div class="row" style="align-items:end">
+      <div><label for="pr-voz">Probar con la voz de</label>
+        <select id="pr-voz" data-voz-prueba>{% for v in voces_en_vivo %}<option value="{{ v.id }}">{{ v.nombre }} · {{ v.motor_nombre }}</option>{% endfor %}</select></div>
+      <div><span class="hint" data-estado-pronunciacion role="status" aria-live="polite">Tocá ▶ para oír cómo queda.</span></div>
+    </div>
+    {% endif %}
+    <div class="tablewrap"><div class="scroll">
+      <table class="tabla-pronunciacion">
+        <thead><tr><th scope="col">Se escribe</th><th scope="col">Se dice</th><th scope="col"><span class="sr-only">Acciones</span></th></tr></thead>
+        <tbody>
+          {% for e in pronunciaciones %}
+          <tr>
+            <td><strong translate="no">{{ e.palabra }}</strong></td>
+            <td>
+              <form method="post" action="/pronunciaciones" class="en-linea fila-pron">
+                <input type="hidden" name="palabra" value="{{ e.palabra }}">
+                <input type="text" name="dicho" value="{{ e.dicho }}" maxlength="120" aria-label="Cómo se dice {{ e.palabra }}" spellcheck="false" required>
+                <button type="submit" class="btn mini quiet">Guardar</button>
+              </form>
+            </td>
+            <td class="num nowrap">
+              {% if voces_en_vivo %}<button type="button" class="icono" data-probar-dicho="{{ e.dicho }}" aria-label="Escuchar cómo se dice {{ e.palabra }}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg></button>{% endif %}
+              <form method="post" action="/pronunciaciones/{{ e.id }}/borrar" class="en-linea"
+                    data-confirmar="¿Borrar «{{ e.palabra }}»? El bot vuelve a decirla como está escrita.">
+                <button type="submit" class="btn quiet danger mini">Borrar</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3"><p class="empty"><strong>Sin palabras todavía</strong>Sumá las marcas que el bot dice mal.</p></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+    <form method="post" action="/pronunciaciones" class="fila-pron nueva-pron">
+      <div><label for="pr-palabra">Palabra nueva</label>
+        <input id="pr-palabra" type="text" name="palabra" maxlength="60" placeholder="Jetour" spellcheck="false" required></div>
+      <div><label for="pr-dicho">Se dice</label>
+        <input id="pr-dicho" type="text" name="dicho" maxlength="120" placeholder="Yétur" spellcheck="false" required></div>
+      <button type="submit" class="btn">Agregar</button>
+    </form>
+    <p class="hint">Las que vienen cargadas son las que se pronuncian de una sola forma (siglas y marcas conocidas): <strong>escuchalas y corregí lo que no te suene</strong>. Se reconoce la palabra entera, sin importar mayúsculas; escribir «Santa Rosa» como una sola entrada también vale.</p>
+  </div>
 </section>
 
 <section class="section" id="clonar">

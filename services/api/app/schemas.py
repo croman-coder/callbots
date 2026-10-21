@@ -50,6 +50,8 @@ class SurveyScript(BaseModel):
     # Transferencia: solo se ofrece si el agente tiene un teléfono de asesor cargado.
     transfer_enabled: bool = False
     transfer_script: str = ""
+    # Cómo se dicen las marcas y siglas (app/pronunciaciones.py): [{"palabra", "dicho"}].
+    pronunciaciones: list[dict] = []
     questions: list[QuestionOut]
 
 

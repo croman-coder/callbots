@@ -32,6 +32,7 @@ import numpy as np
 import soxr
 
 from app.config import SAMPLE_RATE, config
+from app import pronunciacion
 from app.guion import partir_frases
 
 log = logging.getLogger(__name__)
@@ -110,6 +111,29 @@ def perfil_de_voicebox(params: "VoiceParams") -> str | None:
 
 DEFAULT_PARAMS = VoiceParams()
 
+# Cómo se dicen las marcas y siglas (ver pronunciacion.py). Es global: igual para todas las llamadas.
+_pronunciaciones: list[dict] = []
+
+
+def set_pronunciaciones(entradas: list[dict] | None) -> None:
+    """Carga el diccionario que mandó la API. Si cambió, se olvida el audio en memoria: el de disco ya distingue
+    (la clave lleva lo que se dice, no lo que se escribe), así que solo se regeneran las frases con palabras
+    afectadas."""
+    global _pronunciaciones
+    nuevas = [
+        {"palabra": str(e["palabra"]), "dicho": str(e["dicho"])}
+        for e in (entradas or [])
+        if isinstance(e, dict) and e.get("palabra") and e.get("dicho")
+    ]
+    if nuevas != _pronunciaciones:
+        _pronunciaciones = nuevas
+        _memory_cache.clear()
+
+
+def pronunciar(text: str) -> str:
+    """Lo que realmente se dice: el texto con las marcas y siglas escritas como se leen."""
+    return pronunciacion.aplicar(text, _pronunciaciones)
+
 
 def _to_telephony(
     samples: np.ndarray, source_rate: int, pitch: float = 1.0
@@ -172,7 +196,7 @@ def _cache_key(text: str, params: VoiceParams) -> str:
         motor = f"elevenlabs:{eleven}:{config.elevenlabs_model}:{config.elevenlabs_estabilidad}:{config.elevenlabs_similitud}"
     else:
         motor = f"voicebox:{perfil}:{config.voicebox_engine}" if perfil else "piper"
-    seed = f"{motor}|{config.piper_voice}|{params.clave()}|{text}"
+    seed = f"{motor}|{config.piper_voice}|{params.clave()}|{pronunciar(text)}"
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:32]
 
 
@@ -497,6 +521,8 @@ async def _sintetizar_crudo(
     text = (text or "").strip()
     if not text:
         return b""
+    # `text` es lo que está escrito (así se busca en el caché y se encola); `hablado`, lo que se le pasa al motor.
+    hablado = pronunciar(text)
 
     clave_memoria = (text, params.clave())
     if clave_memoria in _memory_cache:
@@ -516,7 +542,7 @@ async def _sintetizar_crudo(
         espera = timeout or config.voicestudio_vivo_timeout
         try:
             pcm = await asyncio.wait_for(
-                _voicestudio_synthesize(text, espera, estudio, params.speed), espera
+                _voicestudio_synthesize(hablado, espera, estudio, params.speed), espera
             )
         except (asyncio.TimeoutError, httpx.HTTPError, ValueError, wave.Error) as exc:
             log.warning("VoiceStudio no llegó a tiempo para %r (%s): habla la voz del servidor", text[:40], exc or "tiempo")
@@ -533,9 +559,9 @@ async def _sintetizar_crudo(
         # próxima vez y la frase no queda guardada con otra voz para siempre.
         espera = timeout or config.elevenlabs_vivo_timeout
         try:
-            if not _hay_presupuesto_elevenlabs(len(text)):
+            if not _hay_presupuesto_elevenlabs(len(hablado)):
                 raise ValueError("tope diario de caracteres")
-            pcm = await asyncio.wait_for(_elevenlabs_synthesize(text, espera, eleven, params.speed), espera)
+            pcm = await asyncio.wait_for(_elevenlabs_synthesize(hablado, espera, eleven, params.speed), espera)
         except (asyncio.TimeoutError, httpx.HTTPError, ValueError) as exc:
             log.warning("ElevenLabs no pudo con %r (%s): habla la voz del servidor", text[:40], exc or "tiempo")
         if not pcm:
@@ -553,7 +579,7 @@ async def _sintetizar_crudo(
         if await _engine_de(perfil) in MOTORES_RAPIDOS:
             try:
                 pcm = await asyncio.wait_for(
-                    _voicebox_synthesize(text, config.voicebox_vivo_timeout, perfil), config.voicebox_vivo_timeout
+                    _voicebox_synthesize(hablado, config.voicebox_vivo_timeout, perfil), config.voicebox_vivo_timeout
                 )
             except (asyncio.TimeoutError, httpx.HTTPError, ValueError, wave.Error) as exc:
                 log.warning("Voicebox no llegó a tiempo para %r (%s): habla Piper", text[:40], exc or "tiempo")
@@ -562,14 +588,14 @@ async def _sintetizar_crudo(
     elif perfil:
         try:
             pcm = await _voicebox_synthesize(
-                text, timeout or config.voicebox_call_timeout, perfil
+                hablado, timeout or config.voicebox_call_timeout, perfil
             )
         except (httpx.HTTPError, ValueError, wave.Error) as exc:
             log.warning("Voicebox no pudo sintetizar %r: %s", text[:50], exc)
 
     if not pcm:
         # Piper es sincrónico: a un thread, que el event loop atiende otras llamadas
-        pcm = await asyncio.to_thread(_piper_synthesize, text, params)
+        pcm = await asyncio.to_thread(_piper_synthesize, hablado, params)
         if pcm and perfil:
             # Respaldo: no se cachea, ni en disco ni en memoria. Si se guardara, esa frase
             # quedaría con voz de Piper para siempre (y en memoria taparía al precalentado).

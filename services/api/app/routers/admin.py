@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, voces
+from app import agentes, pronunciaciones, voces
 from app.config import settings
 from app.etiquetas import etiqueta
 from app.plantillas import templates
@@ -1199,6 +1199,8 @@ def voices_page(
             "texto_referencia": voces.TEXTO_REFERENCIA,
             "max_referencia": int(voces.MAX_REFERENCIA_SEGUNDOS),
             "frase_permiso_plantilla": voces.frase_consentimiento("{persona}"),
+            "pronunciaciones": pronunciaciones.lista(db),
+            "voces_en_vivo": [v for v in lista if v["en_vivo"] and v["escuchar"]],
             "error": error,
             "ok": ok,
         },
@@ -1357,12 +1359,17 @@ def borrar_voz(voz_id: str, db: Session = Depends(get_db)) -> RedirectResponse:
 
 
 @router.get("/voices/preview")
-def preview_voice(profile_id: str, text: str | None = None) -> Response:
-    """Genera y devuelve un WAV para escuchar en el navegador."""
+def preview_voice(
+    profile_id: str, text: str | None = None, literal: int = 0, db: Session = Depends(get_db)
+) -> Response:
+    """Genera y devuelve un WAV para escuchar en el navegador. Aplica el diccionario de pronunciación, para oír lo
+    que va a decir el bot; con `literal=1` el texto se dice tal cual (es lo que usa la prueba de una palabra)."""
     sample = (text or "").strip()[:300] or (
         "Hola, buenos días. Le hablamos de Santa Rosa Automotores. "
         "¿Tiene un minuto para una consulta muy breve?"
     )
+    if not literal:
+        sample = pronunciaciones.aplicar(sample, pronunciaciones.lista(db))
     perfil = voicestudio.id_estudio(profile_id)
     eleven = elevenlabs.id_elevenlabs(profile_id)
     media = "audio/wav"
