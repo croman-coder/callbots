@@ -63,6 +63,12 @@ class ReplyRequest(BaseModel):
     retries_used: int = 0
 
 
+class GreetingIn(BaseModel):
+    """Lo que contestó el cliente al saludo («¿tiene un minutito?»)."""
+
+    transcript: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Reportes del voice-agent hacia la API
 # ---------------------------------------------------------------------------

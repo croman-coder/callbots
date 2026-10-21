@@ -43,17 +43,29 @@ NO_WORDS = {
 }
 
 # --- Frases que cortan la encuesta ----------------------------------------
-OPTOUT_PATTERNS = [
-    r"\bno (me )?(llamen|molesten|contacten)\b",
-    r"\bno quiero (hablar|responder|participar|contestar)\b",
-    r"\bno (puedo|tengo tiempo)\b",
-    r"\bestoy (ocupad|manejand|trabajand)",
-    r"\bm[aá]s tarde\b",
-    r"\bd[ei]spu[eé]s\b.*\bllam",
-    r"\bsacame de la lista\b",
+# Dos cosas distintas que antes estaban juntas: «no me llamen más» (baja: no se lo vuelve a llamar) y «ahora no
+# puedo, estoy manejando» (ocupado: se corta amable y se lo llama en otro momento). Juntas, quien decía «llamame más
+# tarde» quedaba marcado para no llamarlo nunca más.
+BAJA_PATTERNS = [
+    r"\bno (me )?(llamen|molesten|contacten|llames|molestes|vuelvan a llamar)\b",
+    r"\bno quiero (hablar|responder|participar|contestar|que me llamen)\b",
+    r"\bno me interesa\b",
+    r"\b(saca|sacame|saquen|saquenme|sacar|sacarme|borren|borrenme)\w* de (la|su|sus|esta|esa) (lista|base)",
     r"\bnumero equivocado\b",
     r"\bno es mi numero\b",
+    r"\bse equivoc(o|aron) de numero\b",
 ]
+OCUPADO_PATTERNS = [
+    r"\bno (puedo|tengo tiempo)\b",
+    r"\bestoy (ocupad|manejand|trabajand|en (una )?reunion|en el trabajo|en clase|atendiendo)",
+    r"\bm[aá]s tarde\b",
+    r"\bd[ei]spu[eé]s\b.*\bllam",
+    r"\bllam\w* (otro dia|manana|luego|en otro momento|mas tarde|despues)\b",
+    r"\b(en este momento|ahora mismo|ahorita) no\b",
+    r"\bno es (un )?buen momento\b",
+]
+# Todo lo que corta la encuesta. Cuál de los dos fue decide si se lo vuelve a llamar.
+OPTOUT_PATTERNS = BAJA_PATTERNS + OCUPADO_PATTERNS
 
 # --- Ruido que el ASR devuelve cuando no hubo voz real ---------------------
 NOISE_TRANSCRIPTS = {
@@ -136,10 +148,23 @@ def looks_like_prompt_echo(transcript: str | None) -> bool:
 
 
 def detect_optout(transcript: str | None) -> bool:
+    """Pidió cortar la encuesta, por la razón que sea (baja u ocupado)."""
     text = normalize(transcript)
     if not text:
         return False
     return any(re.search(p, text) for p in OPTOUT_PATTERNS)
+
+
+def detect_baja(transcript: str | None) -> bool:
+    """Pidió que no lo llamen más: no se lo vuelve a llamar."""
+    text = normalize(transcript)
+    return bool(text) and any(re.search(p, text) for p in BAJA_PATTERNS)
+
+
+def detect_ocupado(transcript: str | None) -> bool:
+    """No puede ahora («estoy manejando», «llamame más tarde»): se lo llama en otro momento."""
+    text = normalize(transcript)
+    return bool(text) and any(re.search(p, text) for p in OCUPADO_PATTERNS)
 
 
 def _extract_number(text: str, low: int, high: int) -> int | None:

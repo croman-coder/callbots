@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 import uuid as uuid_mod
 from datetime import datetime, timedelta, timezone
 
@@ -38,6 +39,7 @@ from app.models import (
 from app.schemas import (
     AnswerIn,
     AnswerResult,
+    GreetingIn,
     QuestionOut,
     ReplyRequest,
     SessionFinished,
@@ -45,7 +47,7 @@ from app.schemas import (
     SurveyScript,
 )
 from app.services import conversation
-from app.services.scoring import interpret
+from app.services.scoring import detect_baja, detect_ocupado, interpret
 from app.services.transferir import pide_persona
 
 log = logging.getLogger(__name__)
@@ -82,6 +84,11 @@ def _load_call(db: Session, session_uuid: uuid_mod.UUID) -> CallAttempt:
 
 # La dice el agente si el cliente pidió un asesor y la transferencia no se pudo hacer. Va fija acá
 # (y también en el voice-agent) para precalentarla con la voz de la campaña.
+# Lo que dice el bot si al saludar el cliente contesta que no puede ahora. Igual en el voice-agent (api_client.py).
+FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga un buen día."
+# La pregunta del saludo, para que Claude sepa a qué volver si el cliente pregunta algo antes de empezar.
+PREGUNTA_DEL_SALUDO = "¿Tiene un minuto para unas preguntas cortas?"
+
 FRASE_TRANSFERENCIA_FALLIDA = (
     "Disculpe, ahora no puedo comunicarlo con un asesor. Tomo nota para que lo llamen. "
     "Si le parece, sigamos con la encuesta."
@@ -263,9 +270,13 @@ def submit_answer(
     if existing is None:
         db.add(answer)
 
-    if result.is_optout:
+    # Cortar la encuesta puede ser «no me llamen más» (baja) o «ahora no puedo» (ocupado). Solo la baja deja de
+    # llamarlo: el ocupado termina como parcial y, si no llegó a contestar nada, se lo vuelve a llamar.
+    if result.is_optout and detect_baja(payload.transcript):
         call.target.status = TargetStatus.OPTED_OUT
         log.info("Sesión %s: el cliente pidió no ser contactado", session_uuid)
+    elif result.is_optout:
+        log.info("Sesión %s: el cliente no puede ahora; se lo llama en otro momento", session_uuid)
 
     db.commit()
 
@@ -410,6 +421,60 @@ async def conversational_reply(
     return {"reply": texto}
 
 
+_PREGUNTA = re.compile(
+    r"\?|^(quien|que|de donde|para que|por que|como|cual|cuanto|con quien|de parte de)\b"
+    r"|\b(quien habla|quien es|de parte de quien|de donde (me )?llam|para que es|que (es|quiere|necesita|desea))\b"
+)
+
+
+@router.post("/sessions/{session_uuid}/greeting")
+async def respuesta_al_saludo(session_uuid: uuid_mod.UUID, body: GreetingIn, db: Session = Depends(get_db)) -> dict:
+    """Qué hacer con lo que contestó el cliente al «¿tiene un minutito?» del saludo.
+
+    `accion`: «seguir» (dijo que sí, saludó o algo que no cambia nada), «baja» (no quiere que lo llamen: queda
+    marcado), «reprogramar» (no puede ahora: se lo llama en otro momento), «asesor» (pidió una persona y el agente
+    tiene a quién pasarle) o «responder» (preguntó algo: `respuesta` es lo que contesta Claude, que vuelve a pedir
+    el minuto). Reglas primero, sin LLM: solo una pregunta paga la espera de Claude.
+    """
+    texto = (body.transcript or "").strip()
+    demo = es_demo(session_uuid)
+    if demo:
+        campaign = db.get(Campaign, session_uuid.int) or db.scalar(
+            select(Campaign).where(Campaign.is_active.is_(True)).order_by(Campaign.id)
+        )
+        call = None
+    else:
+        call = _load_call(db, session_uuid)
+        campaign = call.target.campaign if call.target else None
+
+    if not texto:
+        return {"accion": "seguir"}
+    if detect_baja(texto):
+        if call is not None:
+            call.target.status = TargetStatus.OPTED_OUT
+            db.commit()
+        log.info("[%s] Al saludar pidió que no lo llamen", session_uuid)
+        return {"accion": "baja"}
+    if campaign is not None and campaign.transfer_number and pide_persona(texto):
+        return {"accion": "asesor"}
+    if detect_ocupado(texto):
+        log.info("[%s] Al saludar dijo que no puede ahora", session_uuid)
+        return {"accion": "reprogramar"}
+    if _PREGUNTA.search(_plano_pregunta(texto)) or "?" in texto:
+        respuesta = await conversation.reply(
+            pregunta=PREGUNTA_DEL_SALUDO, dijo=texto, intento=0,
+            extra_prompt=getattr(campaign, "conversation_prompt", None),
+        )
+        if respuesta:
+            return {"accion": "responder", "respuesta": respuesta}
+    return {"accion": "seguir"}
+
+
+def _plano_pregunta(texto: str) -> str:
+    sin_tildes = "".join(c for c in unicodedata.normalize("NFD", texto.lower()) if unicodedata.category(c) != "Mn")
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9ñ\s]", " ", sin_tildes)).strip()
+
+
 def con_nombre(texto: str, nombre: str | None) -> str:
     """Lo mismo que hace el voice-agent al decir el guion (`_personalize` en dialog.py): tienen que
     dar el mismo texto, porque el audio precalentado se busca por el texto exacto."""
@@ -479,6 +544,7 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
             campaign.optout_script,
         ]
         textos += [q.text for q in campaign.questions if q.is_active]
+        textos.append(FRASE_LLAMAR_DESPUES)
         # Lo que se dice si atiende un contestador o si el cliente pide un asesor: tiene que salir con
         # la voz buena y sin espera, igual que el resto del guion.
         if campaign.voicemail_action == "mensaje":

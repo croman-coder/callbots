@@ -19,7 +19,14 @@ import wave
 from datetime import datetime, timezone
 
 from app import buzon, stt, tts
-from app.api_client import FRASE_TRANSFERENCIA_FALLIDA, ApiClient, ApiError, Question, Script
+from app.api_client import (
+    FRASE_LLAMAR_DESPUES,
+    FRASE_TRANSFERENCIA_FALLIDA,
+    ApiClient,
+    ApiError,
+    Question,
+    Script,
+)
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
 from app.guion import partir_frases, personalizar
@@ -153,7 +160,8 @@ class SurveyDialog:
         return bool(self.script.voicemail_action) and not self.script.demo
 
     async def _conducir_encuesta(self) -> None:
-        await self._greet()
+        if not await self._greet():
+            return
 
         for question in self.script.questions:
             keep_going = await self._ask(question)
@@ -230,17 +238,55 @@ class SurveyDialog:
         await self.socket.play_silence(buzon.ESPERA_TONO_MS)
 
     # ------------------------------------------------------------------
-    async def _greet(self) -> None:
+    async def _greet(self) -> bool:
+        """Saluda y escucha la respuesta al «¿tiene un minutito?». Devuelve False si la llamada termina acá.
+
+        Lo que conteste se transcribe y la API decide (reglas primero; Claude solo si preguntó algo): «sí, dale» o
+        nada → sigue; «ahora no puedo» → corta amable y se lo llama en otro momento; «no me llamen» → frase de baja;
+        pide un asesor → se transfiere; pregunta → se le contesta y se vuelve a escuchar, una sola vez.
+        """
         intro = _personalize(self.script.intro_script, self.script.contact_name)
         await _say(self.socket, intro, self._voz)
 
-        # Damos lugar a un "sí, dígame" antes de arrancar con la primera pregunta.
-        # No se transcribe: solo se espera a que termine de hablar.
-        recording = await listen(
-            self.socket, max_seconds=6, silence_ms=800, no_speech_timeout=3
-        )
-        if recording.result is ListenResult.HANGUP:
-            raise AudioSocketClosed("cortó durante la presentación")
+        for intento in range(2):
+            recording = await listen(self.socket, max_seconds=6, silence_ms=800, no_speech_timeout=3)
+            if recording.result is ListenResult.HANGUP:
+                raise AudioSocketClosed("cortó durante la presentación")
+            if not recording.has_audio:
+                return True  # no dijo nada: se arranca
+
+            transcript = (await stt.transcribe(recording.pcm)).text.strip()
+            await self.socket.send_event("cliente", transcript)
+            log.info("[%s] Saludo -> %r", self.session_uuid, transcript)
+            if not transcript:
+                return True
+
+            pedido = asyncio.create_task(self.api.greeting(self.session_uuid, transcript))
+            if "?" in transcript and intento == 0:
+                # Si preguntó algo, contesta Claude: la muletilla tapa la espera en vez de sumarse a ella.
+                await _say(self.socket, MULETILLA, self._voz)
+            decision = await pedido
+            accion = decision.get("accion")
+
+            if accion == "reprogramar":
+                self.hangup_cause = "pidio_llamar_despues"
+                await _say(self.socket, FRASE_LLAMAR_DESPUES, self._voz)
+                return False
+            if accion == "baja":
+                self.hangup_cause = "pidio_no_llamar"
+                await _say(self.socket, self.script.optout_script, self._voz)
+                return False
+            if accion == "asesor" and self.script.transfer_enabled:
+                if await self._transferir():
+                    return False
+                self.hangup_cause = "transferencia_fallida"
+                await _say(self.socket, FRASE_TRANSFERENCIA_FALLIDA, self._voz)
+                return True
+            if accion == "responder" and decision.get("respuesta") and intento == 0:
+                await _say(self.socket, decision["respuesta"], self._voz)
+                continue  # se escucha de nuevo: la respuesta vuelve a pedir el minuto
+            return True
+        return True
 
     # ------------------------------------------------------------------
     async def _ask(self, question: Question) -> bool:

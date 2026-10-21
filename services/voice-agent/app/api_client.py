@@ -29,6 +29,9 @@ FRASE_TRANSFERENCIA_FALLIDA = (
     "Disculpe, ahora no puedo comunicarlo con un asesor. Tomo nota para que lo llamen. "
     "Si le parece, sigamos con la encuesta."
 )
+# La dice el agente si al saludar el cliente contesta que no puede ahora. Igual en la API (routers/internal.py), que
+# la precalienta.
+FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga un buen día."
 
 
 @dataclass
@@ -78,6 +81,7 @@ class Script:
             extra += [t for t in (self.transfer_script, FRASE_TRANSFERENCIA_FALLIDA) if t]
         return [
             self.intro_script,
+            FRASE_LLAMAR_DESPUES,
             self.outro_script,
             self.fallback_script,
             self.optout_script,
@@ -157,6 +161,20 @@ class ApiClient:
             pronunciaciones=list(data.get("pronunciaciones") or []),
             questions=[Question(**q) for q in data["questions"]],
         )
+
+    async def greeting(self, session_uuid: uuid_mod.UUID, transcript: str) -> dict:
+        """Qué hacer con lo que contestó el cliente al saludo: {"accion": seguir|baja|reprogramar|asesor|responder,
+        "respuesta": ...}. Ante cualquier falla, «seguir»: la encuesta no se traba por esto."""
+        try:
+            response = await self._client.post(
+                f"/internal/sessions/{session_uuid}/greeting", json={"transcript": transcript}
+            )
+            response.raise_for_status()
+            datos = response.json()
+            return datos if isinstance(datos, dict) and datos.get("accion") else {"accion": "seguir"}
+        except (httpx.HTTPError, ValueError) as exc:
+            log.warning("No se pudo clasificar la respuesta al saludo: %s", exc)
+            return {"accion": "seguir"}
 
     async def conversational_reply(
         self,
