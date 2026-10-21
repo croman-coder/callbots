@@ -46,6 +46,7 @@ CAMPOS: dict[str, str] = {
     "delay_hours": "Demora desde el disparador (horas)",
     "bitrix_entity_type_id": "Bitrix: entityTypeId",
     "trigger_field": "Bitrix: campo disparador",
+    "vocabulario": "Palabras que reconoce",
     "voice_profile_id": "Voz",
     "voice_speed": "Voz: velocidad",
     "voice_pitch": "Voz: tono",

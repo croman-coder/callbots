@@ -124,7 +124,7 @@ def entorno(monkeypatch):
             return r
         return r
 
-    async def transcribir(pcm):
+    async def transcribir(pcm, vocabulario=None):
         return types.SimpleNamespace(text=textos.pop(0), confidence=0.9)
 
     monkeypatch.setattr(tts, "sintetizar_frase", frase)

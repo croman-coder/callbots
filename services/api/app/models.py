@@ -107,6 +107,9 @@ class Campaign(Base):
     # Datos propios que Claude saca de cada llamada, además de los fijos (ver services/variables.py):
     # [{"clave", "nombre", "tipo", "descripcion", "opciones"}].
     analysis_fields: Mapped[list | None] = mapped_column(JSON)
+    # Palabras que Whisper tiene que reconocer en lo que dice el cliente (marcas, modelos, sucursales), una por línea.
+    # Medido el 21/10/2026: sin ellas escribía bien 8 de 17 nombres; con ellas, 17 de 17 (ver docs/vocabulario.md).
+    vocabulario: Mapped[str | None] = mapped_column(Text)
 
     # --- Voz del bot ---
     # Se mandan al voice-agent en el guion de cada llamada, así se ajustan

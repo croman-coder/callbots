@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, versiones, voces
+from app import agentes, versiones, vocabulario, voces
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
@@ -289,6 +289,8 @@ def ficha(
         "tz": settings.timezone,
         "bitrix_comentario": settings.bitrix_timeline_comment and bool(settings.bitrix_webhook_url),
         "tipos_variable": variables.TIPOS,
+        "marcas_santa_rosa": vocabulario.MARCAS_SANTA_ROSA,
+        "max_palabras": vocabulario.MAX_PALABRAS,
         "max_variables": variables.MAX_VARIABLES,
     }
     if tab == "probar":
@@ -358,6 +360,9 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
         limpio = texto(campo, maximo)
         if limpio is not None:
             setattr(campaign, campo, limpio or None)
+
+    if "vocabulario" in form:
+        campaign.vocabulario = vocabulario.normalizar(str(form["vocabulario"]))
 
     for campo in ("intro_script", "outro_script", "fallback_script", "optout_script"):
         limpio = texto(campo, 2000)

@@ -166,6 +166,18 @@
       </div>
     </details>
 
+    <details class="bloque" open>
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Palabras que tiene que entender <span class="hint">· marcas, modelos, sucursales</span></summary>
+      <p class="hint">El reconocimiento de voz no conoce las marcas ni los modelos: «Renó Kárdian» lo escribía «Renault Cardian» y «Zíker», «seeker». Con esta lista los escribe bien (probado: de 8 a 17 de 17 nombres). Una por línea, como se escriben. Se suman solas las palabras de <a class="link" href="/voices#pronunciacion">Pronunciación</a>.</p>
+      <label class="sr-only" for="c-vocabulario">Palabras que tiene que entender</label>
+      <textarea id="c-vocabulario" name="vocabulario" rows="5" maxlength="4000" spellcheck="false" data-vocabulario
+                placeholder="Kardian&#10;Haval H6&#10;Mariano Roque Alonso">{{ campaign.vocabulario or "" }}</textarea>
+      <p class="actions" style="margin-top:var(--s2)">
+        <button type="button" class="btn mini" data-marcas="{{ marcas_santa_rosa | join('|') }}">Agregar las marcas de Santa Rosa</button>
+        <span class="hint">Hasta {{ max_palabras }} palabras. Las primeras van con más peso.</span>
+      </p>
+    </details>
+
     <details class="bloque">
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a2 2 0 0 0-3-2zM15 3a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></svg>Base de conocimiento</summary>
       <p class="hint">Conectar documentos (catálogo, precios, preguntas frecuentes) para que el agente responda con datos. Por ahora lo que sabe está en las instrucciones de la derecha.</p>

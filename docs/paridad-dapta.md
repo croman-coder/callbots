@@ -1,0 +1,57 @@
+# Paridad con Dapta: qué hay, qué falta y en qué orden
+
+Relevado el 21/10/2026 con las páginas públicas de dapta.ai y su documentación (docs.dapta.ai, 383 páginas). Se
+replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera, sobre lo que ya tiene Callbot
+(Asterisk + troncal de Personal, Claude, Whisper, Bitrix24). Detalle por pantalla en `referencia-dapta.md`.
+
+✅ hecho · 🟡 parcial · ⬜ falta · — no aplica a Santa Rosa
+
+## Estado por área
+
+| Área de Dapta | Callbot hoy | Qué falta |
+|---|---|---|
+| **Crear agente de voz** (asistente, plantillas, contexto de la empresa, «Generate context», «Improve with AI») | ✅ | ⬜ plantilla Calificación de leads |
+| **Variables dinámicas** `{{var}}` en el guion | 🟡 solo `{nombre}` | ⬜ variables con los campos de Bitrix o del Excel (modelo, sucursal, fecha de ingreso, asesor) |
+| **Pronunciación** (palabra → cómo se dice, con ▶) | ✅ 21/10 | |
+| **Pruebas**: llamada web, llamada al número de prueba, chat de texto, simulación (la IA hace de cliente) | 🟡 web y softphone | ⬜ chat de texto · ⬜ simulación |
+| **Voces** (ElevenLabs, clonadas, filtros) | ✅ IA, clonadas, ElevenLabs (falta la clave) | |
+| **Ajustes de habla**: velocidad, volumen, quién empieza, buzón, corte por silencio, duración máxima | 🟡 velocidad, volumen, buzón | ⬜ corte por silencio y duración máxima configurables · ⬜ sonido de fondo · ⬜ escucha activa («ajá») |
+| **Transcripción**: palabras reforzadas (hasta 100 términos) | ✅ 21/10 (de 8 a 17 de 17 nombres bien escritos) | |
+| **Normalizar texto para voz** (números, fechas) | ⬜ | ⬜ |
+| **Acciones en la llamada**: terminar, transferir (fría, cálida, con screening), marcar dígitos, plantilla de WhatsApp, agendar, acción a una API | 🟡 terminar y transferir en frío | ⬜ horario hábil para transferir · ⬜ acción a una API (webhook en vivo) · ⬜ agendar · ⬜ WhatsApp en la llamada · ⬜ transferencia cálida |
+| **Telefonía**: números, troncal SIP propia, entrantes, llamadas simultáneas | 🟡 troncal por variables, solo salientes | ⬜ entrantes (depende del FortiGate / Personal) |
+| **Secuencias de voz**: intentos, días y franjas, fechas, A/B de agentes, fuentes (Excel, Sheets, webhook, CRM), WhatsApp si no atiende | 🟡 Excel y Bitrix, horario, intentos | ⬜ entrada por webhook (llamar al lead apenas llega) · ⬜ varias franjas y fechas · ⬜ A/B de agentes · ⬜ WhatsApp si no atiende |
+| **Análisis**: objetivo, variables propias, destinos (Sheets, CRM, flow), avisos, reporte diario, corrección manual, comentarios | 🟡 objetivo, variables, Panel/Excel/Bitrix | ⬜ webhook de destino con «probar con la última llamada» · ⬜ corregir el resultado a mano · ⬜ comentarios · ⬜ aviso por correo/WhatsApp · ⬜ reporte diario · ⬜ Google Sheets |
+| **Brains** (base de conocimiento: archivos, web, texto) | ⬜ | ⬜ |
+| **Asistente (Dapti)** | 🟡 «Preguntale a tus llamadas» | ⬜ crear y editar agentes desde el chat |
+| **Historial de versiones** | ✅ 21/10 | |
+| **Usuarios y roles** | ✅ cuentas de los dashboards | |
+| **Agentes de texto / WhatsApp**, **Inbox**, **secuencias de texto** | ⬜ | ⬜ producto aparte, con YCloud (lo usa Calidad NPS) |
+| **Llamadas por WhatsApp** | — | Meta exige volumen y verificación; Dapta tampoco conecta números nuevos |
+| **Flow Studio** / **Data Studio** | — | lo cubren los webhooks y Bitrix |
+| **MCP** (manejar la plataforma desde Claude) | ⬜ | ⬜ servidor MCP de Callbot |
+| **Notetaker**, **dForms** | — | otro producto |
+| **dCal** (agenda de código abierto, MIT) | ⬜ | candidato para «agendar»: se puede alojar en Coolify |
+
+## Orden de trabajo
+
+**Tanda 1. Sin claves ni decisiones (se construye ya):**
+1. ✅ Vocabulario del agente para Whisper (marcas, modelos, sucursales): ataca directo «no me escucha bien».
+2. Base de conocimiento: documentos y texto que el agente usa para responder con datos.
+3. Variables con los campos del destinatario (Bitrix / Excel) en el guion.
+4. Webhook de resultados con «probar con la última llamada».
+5. Corrección manual del resultado y comentarios en cada llamada.
+6. Corte por silencio, duración máxima y horario hábil para transferir, configurables por agente.
+7. Simulación: la IA hace de cliente y se ve cómo responde el agente, sin llamar a nadie.
+
+**Tanda 2. Necesitan una clave o una decisión:**
+- Aviso por WhatsApp y WhatsApp si no atiende (clave de YCloud y plantilla aprobada por Meta).
+- Aviso y reporte diario por correo (SMTP).
+- Agendar turnos de taller o test drive (¿calendario de Bitrix, Google o dCal propio?).
+- Llamar al lead apenas entra desde Meta/Bitrix (webhook de Bitrix) + plantilla Calificación de leads.
+- Google Sheets como destino (cuenta de servicio de Google).
+- Llamadas entrantes (regla en el FortiGate o RTP simétrico en Personal).
+- Enlace público de la llamada (requiere decidir si se graba la llamada completa).
+
+**Tanda 3. Productos nuevos:** agentes de WhatsApp con Inbox y secuencias de texto; servidor MCP; asistente que
+crea y edita agentes.

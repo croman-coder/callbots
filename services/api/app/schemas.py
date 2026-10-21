@@ -52,6 +52,8 @@ class SurveyScript(BaseModel):
     transfer_script: str = ""
     # Cómo se dicen las marcas y siglas (app/pronunciaciones.py): [{"palabra", "dicho"}].
     pronunciaciones: list[dict] = []
+    # Palabras que Whisper tiene que reconocer (app/vocabulario.py).
+    vocabulario: list[str] = []
     questions: list[QuestionOut]
 
 

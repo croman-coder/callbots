@@ -199,6 +199,16 @@
     refrescar();
   }
 
+  // Vocabulario: suma las marcas de Santa Rosa que todavía no estén en la lista.
+  var vocab = $("[data-vocabulario]"), botonMarcas = $("[data-marcas]");
+  if (vocab && botonMarcas) botonMarcas.addEventListener("click", function () {
+    var actuales = vocab.value.split(/[\n,;]+/).map(function (p) { return p.trim(); }).filter(Boolean);
+    var minus = actuales.map(function (p) { return p.toLowerCase(); });
+    var nuevas = botonMarcas.dataset.marcas.split("|").filter(function (m) { return minus.indexOf(m.toLowerCase()) === -1; });
+    vocab.value = actuales.concat(nuevas).join("\n");
+    if (window.callbotMarcarSucio) window.callbotMarcarSucio();
+  });
+
   // Acciones que no se deshacen con un clic (volver a una versión): se confirman antes.
   $$("form[data-confirmar]").forEach(function (f) {
     f.addEventListener("submit", function (e) { if (!confirm(f.dataset.confirmar)) e.preventDefault(); });

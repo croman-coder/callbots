@@ -255,7 +255,7 @@ class SurveyDialog:
             if not recording.has_audio:
                 return True  # no dijo nada: se arranca
 
-            transcript = (await stt.transcribe(recording.pcm)).text.strip()
+            transcript = (await stt.transcribe(recording.pcm, self.script.vocabulario)).text.strip()
             await self.socket.send_event("cliente", transcript)
             log.info("[%s] Saludo -> %r", self.session_uuid, transcript)
             if not transcript:
@@ -332,7 +332,7 @@ class SurveyDialog:
             confidence = None
 
             if recording.has_audio:
-                result = await stt.transcribe(recording.pcm)
+                result = await stt.transcribe(recording.pcm, self.script.vocabulario)
                 transcript = result.text
                 confidence = result.confidence
 

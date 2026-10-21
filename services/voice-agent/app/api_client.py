@@ -70,6 +70,8 @@ class Script:
     transfer_script: str = ""
     # Cómo se dicen las marcas y siglas: [{"palabra", "dicho"}] (ver pronunciacion.py).
     pronunciaciones: list[dict] = field(default_factory=list)
+    # Palabras que Whisper tiene que reconocer (marcas, modelos, sucursales): ver stt.prompt_para.
+    vocabulario: list[str] = field(default_factory=list)
 
     @property
     def all_prompts(self) -> list[str]:
@@ -159,6 +161,7 @@ class ApiClient:
             transfer_enabled=bool(data.get("transfer_enabled", False)),
             transfer_script=str(data.get("transfer_script") or ""),
             pronunciaciones=list(data.get("pronunciaciones") or []),
+            vocabulario=[str(p) for p in (data.get("vocabulario") or []) if p],
             questions=[Question(**q) for q in data["questions"]],
         )
 
