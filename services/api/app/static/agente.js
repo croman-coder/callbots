@@ -199,6 +199,20 @@
     refrescar();
   }
 
+  // Variables del guion: el chip suma {{clave}} donde está el cursor, en el último campo del guion que se tocó.
+  var ultimoCampo = null;
+  $$("textarea[name$='_script']").forEach(function (t) { t.addEventListener("focus", function () { ultimoCampo = t; }); });
+  $$("[data-variable]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var t = ultimoCampo || $("textarea[name='intro_script']");
+      if (!t) return;
+      var marca = "{{" + b.dataset.variable + "}}", ini = t.selectionStart || t.value.length, fin = t.selectionEnd || ini;
+      t.value = t.value.slice(0, ini) + marca + t.value.slice(fin);
+      t.focus(); t.setSelectionRange(ini + marca.length, ini + marca.length);
+      if (window.callbotMarcarSucio) window.callbotMarcarSucio();
+    });
+  });
+
   // Vocabulario: suma las marcas de Santa Rosa que todavía no estén en la lista.
   var vocab = $("[data-vocabulario]"), botonMarcas = $("[data-marcas]");
   if (vocab && botonMarcas) botonMarcas.addEventListener("click", function () {

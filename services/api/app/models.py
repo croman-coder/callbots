@@ -112,6 +112,8 @@ class Campaign(Base):
     vocabulario: Mapped[str | None] = mapped_column(Text)
     # Bases de conocimiento que usa el agente para responder (ids de Brain, hasta 5; ver app/conocimiento.py).
     brain_ids: Mapped[list | None] = mapped_column(JSON)
+    # Campos de Bitrix que viajan como variables del guion: {"modelo": "ufCrm5_1700000000"}.
+    variables_bitrix: Mapped[dict | None] = mapped_column(JSON)
 
     # --- Voz del bot ---
     # Se mandan al voice-agent en el guion de cada llamada, así se ajustan
@@ -271,6 +273,10 @@ class SurveyTarget(Base):
 
     contact_name: Mapped[str | None] = mapped_column(String(160))
     phone: Mapped[str | None] = mapped_column(String(40), index=True)
+
+    # Datos extra del cliente para el guion ({{modelo}}, {{sucursal}}…): columnas del Excel o campos de Bitrix
+    # (ver app/datos_cliente.py).
+    datos: Mapped[dict | None] = mapped_column(JSON)
 
     # --- Fechas ---
     # T0: la fecha del campo disparador (ingreso al taller)

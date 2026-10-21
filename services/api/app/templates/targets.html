@@ -72,6 +72,7 @@
             <td class="name">
               {{ t.contact_name or "Sin nombre" }}
               {% if t.bitrix_title %}<span class="sub-line">{{ t.bitrix_title }}</span>{% endif %}
+              {% if t.datos %}<span class="sub-line">{% for k, v in t.datos.items() %}{{ k | replace("_", " ") }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
               {% if t.bitrix_entity_id %}<span class="sub-line mono">{{ t.bitrix_entity_type_id }}#{{ t.bitrix_entity_id }}</span>{% endif %}
             </td>
             <td class="tnum nowrap">{{ t.phone or "—" }}</td>

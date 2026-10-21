@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, conocimiento, versiones, vocabulario, voces
+from app import agentes, conocimiento, datos_cliente, versiones, vocabulario, voces
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
@@ -104,6 +104,21 @@ def _datos_probar(db: Session, campaign: Campaign) -> dict:
     return {"pruebas": pruebas}
 
 
+def _variables_disponibles(db: Session, campaign: Campaign) -> list[tuple[str, str]]:
+    """(clave, qué es): las fijas, las de Bitrix que eligió el agente y las columnas que trajeron sus últimos Excel."""
+    salida = dict(datos_cliente.FIJAS)
+    for clave, campo in (campaign.variables_bitrix or {}).items():
+        salida.setdefault(clave, f"campo {campo} de Bitrix")
+    recientes = db.scalars(
+        select(SurveyTarget.datos).where(SurveyTarget.campaign_id == campaign.id, SurveyTarget.datos.is_not(None))
+        .order_by(SurveyTarget.id.desc()).limit(200)
+    ).all()
+    for datos in recientes:
+        for clave, valor in (datos or {}).items():
+            salida.setdefault(clave, f"del Excel, por ejemplo «{valor}»")
+    return list(salida.items())
+
+
 def _datos_configuracion(db: Session, campaign: Campaign) -> dict:
     lista, error_voces = voces.catalogo()
     saludo = (campaign.intro_script or "").replace("{nombre}", "Marta")
@@ -117,6 +132,8 @@ def _datos_configuracion(db: Session, campaign: Campaign) -> dict:
         "tipos": list(QuestionType),
         "etiquetas_tipo": ETIQUETAS_TIPO,
         "modelo_llm": settings.llm_model,
+        "variables_disponibles": _variables_disponibles(db, campaign),
+        "variables_bitrix_texto": datos_cliente.mapa_a_texto(campaign.variables_bitrix),
         "bases": db.scalars(select(Brain).order_by(Brain.nombre)).all(),
         "bases_elegidas": [int(i) for i in (campaign.brain_ids or [])],
         "max_bases": conocimiento.MAX_POR_AGENTE,
@@ -367,6 +384,9 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
 
     if "vocabulario" in form:
         campaign.vocabulario = vocabulario.normalizar(str(form["vocabulario"]))
+
+    if "variables_bitrix" in form:
+        campaign.variables_bitrix = datos_cliente.mapa_bitrix(str(form["variables_bitrix"])) or None
 
     if "brains_enviado" in form:
         pedidas = list(dict.fromkeys(int(i) for i in form.getlist("brain_ids") if str(i).isdigit()))

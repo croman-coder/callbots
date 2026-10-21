@@ -527,15 +527,16 @@ async def add_targets_archivo(
     if len(contenido) > 5 * 1024 * 1024:
         return _redirect(f"/targets?error={quote_plus('El archivo supera los 5 MB')}#cargar")
     try:
-        filas = importar.leer_filas(contenido, archivo.filename or "")
+        filas = importar.leer_filas_con_datos(contenido, archivo.filename or "")
     except importar.ArchivoInvalido as exc:
         return _redirect(f"/targets?error={quote_plus(str(exc))}#cargar")
     return _alta_de_destinatarios(db, campaign_id, filas, cuando, f"archivo {archivo.filename}")
 
 
 def _alta_de_destinatarios(
-    db: Session, campaign_id: int, filas: list[tuple[str, str | None]], cuando: str, origen: str
+    db: Session, campaign_id: int, filas: list[tuple], cuando: str, origen: str
 ) -> RedirectResponse:
+    """`filas`: (teléfono, nombre) o (teléfono, nombre, datos extra para el guion)."""
     campaign = db.get(Campaign, campaign_id)
     if campaign is None:
         raise HTTPException(404, "Campaña inexistente")
@@ -562,7 +563,9 @@ def _alta_de_destinatarios(
     # que un teléfono repetido dentro del mismo pegado se colaba entero.
     en_este_lote: set[str] = set()
 
-    for crudo, nombre in filas:
+    for fila in filas:
+        crudo, nombre = fila[0], fila[1]
+        datos = fila[2] if len(fila) > 2 else None
         telefono = normalize_phone_py(crudo)
         nombre = (nombre or "").strip()[:160] or None
 
@@ -597,6 +600,7 @@ def _alta_de_destinatarios(
                 bitrix_entity_id=None,
                 contact_name=nombre,
                 phone=telefono,
+                datos=datos or None,
                 trigger_at=trigger_at,
                 scheduled_at=scheduled_at,
                 status=TargetStatus.SCHEDULED,

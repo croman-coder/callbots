@@ -11,7 +11,7 @@ replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera
 | Área de Dapta | Callbot hoy | Qué falta |
 |---|---|---|
 | **Crear agente de voz** (asistente, plantillas, contexto de la empresa, «Generate context», «Improve with AI») | ✅ | ⬜ plantilla Calificación de leads |
-| **Variables dinámicas** `{{var}}` en el guion | 🟡 solo `{nombre}` | ⬜ variables con los campos de Bitrix o del Excel (modelo, sucursal, fecha de ingreso, asesor) |
+| **Variables dinámicas** `{{var}}` en el guion | ✅ 21/10 (Excel, Bitrix, fijas; `{{var\|si falta}}`) | |
 | **Pronunciación** (palabra → cómo se dice, con ▶) | ✅ 21/10 | |
 | **Pruebas**: llamada web, llamada al número de prueba, chat de texto, simulación (la IA hace de cliente) | 🟡 web y softphone | ⬜ chat de texto · ⬜ simulación |
 | **Voces** (ElevenLabs, clonadas, filtros) | ✅ IA, clonadas, ElevenLabs (falta la clave) | |
@@ -38,7 +38,7 @@ replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera
 **Tanda 1. Sin claves ni decisiones (se construye ya):**
 1. ✅ Vocabulario del agente para Whisper (marcas, modelos, sucursales): ataca directo «no me escucha bien».
 2. ✅ Base de conocimiento: documentos y texto que el agente usa para responder con datos.
-3. Variables con los campos del destinatario (Bitrix / Excel) en el guion.
+3. ✅ Variables con los campos del destinatario (Bitrix / Excel) en el guion.
 4. Webhook de resultados con «probar con la última llamada».
 5. Corrección manual del resultado y comentarios en cada llamada.
 6. Corte por silencio, duración máxima y horario hábil para transferir, configurables por agente.

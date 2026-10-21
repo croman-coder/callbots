@@ -8,6 +8,7 @@ T0 + delay_hours, ajustado a la ventana horaria de la campaña.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -66,6 +67,26 @@ def _contact_full_name(contact: dict[str, Any]) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
+def _valor_bitrix(valor: Any) -> str:
+    """Un campo de Bitrix como texto para decir: listas se unen, fechas quedan dd/mm, booleanos sí/no."""
+    if valor is None or valor == "" or valor == []:
+        return ""
+    if isinstance(valor, list):
+        return ", ".join(_valor_bitrix(v) for v in valor if _valor_bitrix(v))
+    if isinstance(valor, bool):
+        return "sí" if valor else "no"
+    fecha = parse_bitrix_datetime(valor) if isinstance(valor, str) and re.match(r"\d{4}-\d{2}-\d{2}T", valor) else None
+    if fecha:
+        return fecha.strftime("%d/%m")
+    return str(valor).strip()[:200]
+
+
+def _datos_de_item(item: dict[str, Any], variables: dict[str, str]) -> dict[str, str] | None:
+    datos = {clave: _valor_bitrix(item.get(campo)) for clave, campo in variables.items()}
+    datos = {k: v for k, v in datos.items() if v}
+    return datos or None
+
+
 def sync_campaign(db: Session, campaign: Campaign, client: BitrixClient) -> SyncReport:
     """Trae de Bitrix los registros de una campaña y agenda los que falten."""
     report = SyncReport(campaign_id=campaign.id, campaign_name=campaign.name)
@@ -84,6 +105,9 @@ def sync_campaign(db: Session, campaign: Campaign, client: BitrixClient) -> Sync
         bitrix_filter.update(campaign.extra_filter)
 
     select_fields = ["id", "title", trigger_field, settings.bitrix_field_contact_id]
+    # Los campos que el agente usa como variables del guion ({{modelo}}, {{sucursal}}…).
+    variables = dict(campaign.variables_bitrix or {})
+    select_fields += [c for c in variables.values() if c not in select_fields]
     for extra in (settings.bitrix_field_invoice_date, settings.bitrix_field_delivery_date):
         if extra:
             select_fields.append(extra)
@@ -172,6 +196,7 @@ def sync_campaign(db: Session, campaign: Campaign, client: BitrixClient) -> Sync
             bitrix_title=(item.get("title") or "")[:255] or None,
             contact_name=(contact_name or "")[:160] or None,
             phone=phone,
+            datos=_datos_de_item(item, variables),
             trigger_at=trigger_at,
             scheduled_at=scheduled_at,
             invoice_date=parse_bitrix_datetime(

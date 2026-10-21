@@ -90,7 +90,11 @@
 
     <details class="bloque" open>
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Guion</summary>
-      <p class="hint">Podés usar <code>{nombre}</code>: se cambia por el primer nombre del cliente. Si no hay nombre, desaparece y la frase queda natural.</p>
+      <p class="hint">Podés usar <code>{nombre}</code>: se cambia por el primer nombre del cliente. Si no hay nombre, desaparece y la frase queda natural.
+        Y los datos del cliente con <code>{{ "{{" }}clave{{ "}}" }}</code>, o <code>{{ "{{" }}clave|texto{{ "}}" }}</code> para decir otra cosa si a ese cliente le falta el dato: «¿cómo anda su {{ "{{" }}modelo|vehículo{{ "}}" }}?». Tocá una para sumarla donde estás escribiendo:</p>
+      <p class="chips-variables" data-variables>
+        {% for clave, detalle in variables_disponibles %}<button type="button" class="chip-dato" data-variable="{{ clave }}" title="{{ detalle }}">{{ "{{" }}{{ clave }}{{ "}}" }}</button>{% endfor %}
+      </p>
       <label class="etiqueta" for="c-intro">Saludo <span class="hint">· lo primero que escucha; que termine en pregunta</span></label>
       <textarea id="c-intro" name="intro_script" rows="3" required maxlength="2000">{{ campaign.intro_script }}</textarea>
       <label class="etiqueta" for="c-outro">Despedida</label>
@@ -147,6 +151,10 @@
         <label>Campo disparador <input type="text" name="trigger_field" value="{{ campaign.trigger_field }}" required spellcheck="false"></label>
         <label>Demora (horas) <input type="number" name="delay_hours" min="0" max="720" value="{{ campaign.delay_hours }}" required></label>
       </div>
+      <label class="etiqueta" for="c-vars-bitrix">Campos de Bitrix que se usan en el guion <span class="hint">· uno por línea: variable = código del campo</span></label>
+      <textarea id="c-vars-bitrix" name="variables_bitrix" rows="3" spellcheck="false" maxlength="3000"
+                placeholder="modelo = ufCrm5_1700000000&#10;sucursal = ufCrm5_1700000001">{{ variables_bitrix_texto }}</textarea>
+      <p class="hint">El código es el que devuelve Bitrix en la lista de registros (por ejemplo <code>ufCrm5_1700000000</code>). Del Excel no hace falta configurar nada: cada columna que no es teléfono ni nombre («Modelo», «Sucursal», «Asesor») ya es una variable.</p>
     </details>
 
     <details class="bloque">

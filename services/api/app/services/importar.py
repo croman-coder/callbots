@@ -98,6 +98,12 @@ def _columna(encabezado: list[str], claves: tuple[str, ...]) -> int | None:
 
 def leer_filas(contenido: bytes, nombre_archivo: str) -> list[tuple[str, str | None]]:
     """[(teléfono tal cual, nombre o None)]. Lanza ArchivoInvalido con un motivo legible."""
+    return [(tel, nom) for tel, nom, _ in leer_filas_con_datos(contenido, nombre_archivo)]
+
+
+def leer_filas_con_datos(contenido: bytes, nombre_archivo: str) -> list[tuple[str, str | None, dict[str, str]]]:
+    """[(teléfono, nombre o None, datos extra)]: las demás columnas («Modelo», «Sucursal»…) son datos para el guion
+    (ver app/datos_cliente.py). Sin encabezado reconocible no hay datos extra."""
     if not contenido:
         raise ArchivoInvalido("El archivo está vacío.")
     nombre = (nombre_archivo or "").lower()
@@ -116,8 +122,9 @@ def leer_filas(contenido: bytes, nombre_archivo: str) -> list[tuple[str, str | N
 
     col_tel = _columna(filas[0], _TELEFONO)
     col_nom = _columna(filas[0], _NOMBRE)
+    encabezado: list[str] = []
     if col_tel is not None:
-        cuerpo = filas[1:]
+        encabezado, cuerpo = filas[0], filas[1:]
     else:
         # Sin encabezado reconocible: teléfono en la primera columna y nombre en la segunda.
         col_tel, col_nom, cuerpo = 0, 1, filas
@@ -127,10 +134,13 @@ def leer_filas(contenido: bytes, nombre_archivo: str) -> list[tuple[str, str | N
     if len(cuerpo) > MAX_FILAS:
         raise ArchivoInvalido(f"El archivo tiene más de {MAX_FILAS} filas. Partilo en varios.")
 
-    salida: list[tuple[str, str | None]] = []
+    from app.datos_cliente import datos_de_fila
+
+    ignorar = {i for i in (col_tel, col_nom) if i is not None}
+    salida: list[tuple[str, str | None, dict[str, str]]] = []
     for fila in cuerpo:
         tel = fila[col_tel] if col_tel < len(fila) else ""
         nom = fila[col_nom] if col_nom is not None and col_nom < len(fila) else ""
         if tel or nom:
-            salida.append((tel, nom or None))
+            salida.append((tel, nom or None, datos_de_fila(encabezado, fila, ignorar) if encabezado else {}))
     return salida

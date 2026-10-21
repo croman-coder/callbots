@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import conocimiento, pronunciaciones, vocabulario
+from app import conocimiento, datos_cliente, pronunciaciones, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -95,14 +95,39 @@ FRASE_TRANSFERENCIA_FALLIDA = (
 )
 
 
-def _opciones_de_llamada(campaign: Campaign) -> dict:
+def _opciones_de_llamada(campaign: Campaign, datos: dict[str, str] | None = None) -> dict:
     """Buzón de voz y transferencia, para el guion (igual en una llamada real y en una de prueba)."""
+    datos = datos or {}
     return {
         "voicemail_action": campaign.voicemail_action or None,
-        "voicemail_script": campaign.voicemail_script or "",
+        "voicemail_script": datos_cliente.render(campaign.voicemail_script or "", datos),
         "transfer_enabled": bool(campaign.transfer_number),
-        "transfer_script": campaign.transfer_script or "",
+        "transfer_script": datos_cliente.render(campaign.transfer_script or "", datos),
     }
+
+
+def _textos_del_guion(campaign: Campaign, questions: list[Question], datos: dict[str, str]) -> dict:
+    """Saludo, cierre, frases y preguntas con los datos del cliente puestos ({{modelo}}, {{sucursal}}…)."""
+    r = lambda t: datos_cliente.render(t, datos)  # noqa: E731
+    return {
+        "intro_script": r(campaign.intro_script),
+        "outro_script": r(campaign.outro_script),
+        "fallback_script": r(campaign.fallback_script),
+        "optout_script": r(campaign.optout_script),
+        "questions": [QuestionOut.model_validate(q).model_copy(update={"text": r(q.text)}) for q in questions],
+    }
+
+
+def _datos_de_prueba(db: Session, campaign: Campaign) -> dict[str, str]:
+    """En una prueba no hay cliente: se usan los datos del último destinatario cargado (sin su nombre, que en la
+    prueba no se dice), así se escucha cómo suena el guion con datos de verdad."""
+    ultimo = db.scalar(
+        select(SurveyTarget).where(SurveyTarget.campaign_id == campaign.id).order_by(SurveyTarget.id.desc()).limit(1)
+    )
+    datos = datos_cliente.valores(ultimo, campaign)
+    for clave in ("nombre", "nombre_completo"):
+        datos.pop(clave, None)
+    return datos
 
 
 def _active_questions(campaign: Campaign) -> list[Question]:
@@ -136,19 +161,15 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             campaign_id=campaign.id,
             campaign_name=campaign.name,
             contact_name=None,
-            intro_script=campaign.intro_script,
-            outro_script=campaign.outro_script,
-            fallback_script=campaign.fallback_script,
-            optout_script=campaign.optout_script,
             voice_speed=campaign.voice_speed,
             voice_pitch=campaign.voice_pitch,
             voice_expressiveness=campaign.voice_expressiveness,
             voice_volume=campaign.voice_volume,
             voice_profile_id=campaign.voice_profile_id,
-            **_opciones_de_llamada(campaign),
+            **_opciones_de_llamada(campaign, (datos := _datos_de_prueba(db, campaign))),
+            **_textos_del_guion(campaign, _active_questions(campaign), datos),
             pronunciaciones=pronunciaciones.lista(db),
             vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
-            questions=[QuestionOut.model_validate(q) for q in _active_questions(campaign)],
         )
 
     # --- llamada real ---
@@ -170,19 +191,15 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
         campaign_id=campaign.id,
         campaign_name=campaign.name,
         contact_name=first_name,
-        intro_script=campaign.intro_script,
-        outro_script=campaign.outro_script,
-        fallback_script=campaign.fallback_script,
-        optout_script=campaign.optout_script,
         voice_speed=campaign.voice_speed,
         voice_pitch=campaign.voice_pitch,
         voice_expressiveness=campaign.voice_expressiveness,
         voice_volume=campaign.voice_volume,
         voice_profile_id=campaign.voice_profile_id,
-        **_opciones_de_llamada(campaign),
+        **_opciones_de_llamada(campaign, (datos := datos_cliente.valores(target, campaign))),
+        **_textos_del_guion(campaign, questions, datos),
         pronunciaciones=pronunciaciones.lista(db),
         vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
-        questions=[QuestionOut.model_validate(q) for q in questions],
     )
 
 
@@ -403,20 +420,26 @@ async def conversational_reply(
     Devuelve `{"reply": null}` cuando Claude no está configurado, tarda de más
     o falla. El voice-agent usa entonces la frase fija de la campaña.
     """
+    target = None
     if es_demo(session_uuid):
-        campaign = db.scalar(
+        # La prueba de un agente lleva su id en la sesión: se responde con SUS instrucciones y SU conocimiento.
+        campaign = (db.get(Campaign, session_uuid.int) if session_uuid.int else None) or db.scalar(
             select(Campaign).where(Campaign.is_active.is_(True)).order_by(Campaign.id)
         )
     else:
         call = _load_call(db, session_uuid)
-        campaign = call.target.campaign if call.target else None
+        target = call.target
+        campaign = target.campaign if target else None
 
     texto = await conversation.reply(
         pregunta=body.question_text,
         dijo=body.transcript,
         intento=body.retries_used,
         extra_prompt=getattr(campaign, "conversation_prompt", None),
-        conocimiento=conocimiento.para_respuesta(db, campaign, f"{body.question_text} {body.transcript}"),
+        conocimiento="\n\n".join(b for b in (
+            conocimiento.para_respuesta(db, campaign, f"{body.question_text} {body.transcript}"),
+            datos_cliente.para_claude(datos_cliente.valores(target, campaign)) if target is not None else "",
+        ) if b),
     )
     if texto:
         log.info("[%s] Respuesta conversacional: %r", session_uuid, texto[:80])
@@ -526,20 +549,21 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
         # Primeros nombres de quienes van a ser llamados: el saludo lleva el nombre, y una frase
         # con un nombre que nunca se sintetizó sale con Piper en medio de la voz buena.
         proximos = db.scalars(
-            select(SurveyTarget.contact_name)
+            select(SurveyTarget)
             .where(
                 SurveyTarget.campaign_id == campaign.id,
                 SurveyTarget.status.in_(
                     [TargetStatus.PENDING, TargetStatus.SCHEDULED, TargetStatus.QUEUED]
                 ),
-                SurveyTarget.contact_name.is_not(None),
             )
             .order_by(SurveyTarget.id)
             .limit(400)
         ).all()
         nombres = list(
-            dict.fromkeys(n.split(" ")[0] for n in proximos if n and n.strip())
+            dict.fromkeys(t.contact_name.split(" ")[0] for t in proximos if t.contact_name and t.contact_name.strip())
         )[:MAX_NOMBRES_PRECALENTADOS]
+        # Con datos del cliente ({{modelo}}…) cada destinatario dice otra frase: se precalientan las de los próximos.
+        datos_proximos = [datos_cliente.valores(t, campaign) for t in proximos[:MAX_NOMBRES_PRECALENTADOS]]
 
         textos = [
             campaign.intro_script,
@@ -556,11 +580,16 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
         if campaign.transfer_number:
             textos += [campaign.transfer_script, FRASE_TRANSFERENCIA_FALLIDA]
         variantes: list[str] = []
-        for t in textos:
-            if t and "{nombre}" in t:
-                variantes += [con_nombre(t, None)] + [con_nombre(t, n) for n in nombres]
+        for texto in textos:
+            if texto and "{{" in texto:
+                # Cada cliente con sus datos (y su nombre, si el texto también lo lleva), más la versión sin datos.
+                for datos in [{}, *datos_proximos]:
+                    con_datos = datos_cliente.render(texto, datos)
+                    variantes.append(con_nombre(con_datos, datos.get("nombre")) if "{nombre}" in con_datos else con_datos)
+            elif texto and "{nombre}" in texto:
+                variantes += [con_nombre(texto, None)] + [con_nombre(texto, n) for n in nombres]
             else:
-                variantes.append(t)
+                variantes.append(texto)
         limpios = [t.strip() for t in dict.fromkeys(variantes) if t and t.strip()]
         todos += limpios
 
