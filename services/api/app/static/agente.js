@@ -199,6 +199,11 @@
     refrescar();
   }
 
+  // Acciones que no se deshacen con un clic (volver a una versión): se confirman antes.
+  $$("form[data-confirmar]").forEach(function (f) {
+    f.addEventListener("submit", function (e) { if (!confirm(f.dataset.confirmar)) e.preventDefault(); });
+  });
+
   // ------------------------------------------------------------ Detalles chicos
   $$("[data-copiar-texto]").forEach(function (b) { b.addEventListener("click", function () { copiar(b.dataset.copiarTexto, b); }); });
   $$("input[type=range][data-salida]").forEach(function (r) {

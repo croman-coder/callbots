@@ -24,12 +24,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, voces
+from app import agentes, versiones, voces
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
 from app.deps import principal_ws, require_admin
 from app.models import (
+    AgentVersion,
     Answer,
     CallAnalysis,
     CallAttempt,
@@ -59,6 +60,7 @@ PESTANAS = (
     ("registro", "Registro de llamadas"),
     ("metrica", "Métrica"),
     ("canales", "Canales"),
+    ("versiones", "Versiones"),
 )
 # Las que tienen algo que guardar con «Guardar cambios».
 CON_FORMULARIO = {"contexto", "probar", "configuracion", "analisis"}
@@ -146,6 +148,23 @@ def _datos_registro(db: Session, campaign: Campaign, filtro: str, page: int) -> 
         "page": page,
         "paginas": paginas,
     }
+
+
+def _datos_versiones(db: Session, campaign: Campaign) -> dict:
+    """Las versiones de la más nueva a la más vieja, cada una con lo que cambió respecto de la anterior."""
+    filas = db.scalars(
+        select(AgentVersion).where(AgentVersion.campaign_id == campaign.id).order_by(AgentVersion.id)
+    ).all()
+    salida = []
+    anterior = None
+    for f in filas:
+        salida.append({"v": f, "cambios": versiones.diferencias(anterior.snapshot if anterior else None, f.snapshot)})
+        anterior = f
+    salida.reverse()
+    actual = versiones.instantanea(campaign)
+    # «Actual» = la última versión, si la configuración sigue igual (puede haber cambiado por otra vía, como la pantalla Voces).
+    coincide = bool(filas) and not versiones.cambios(filas[-1].snapshot or {}, actual)
+    return {"versiones": salida, "version_actual_coincide": coincide, "max_versiones": versiones.MAX_VERSIONES}
 
 
 def _datos_metrica(db: Session, campaign: Campaign, dias: str) -> dict:
@@ -280,6 +299,8 @@ def ficha(
         ctx.update(_datos_registro(db, campaign, filtro, page))
     elif tab == "metrica":
         ctx.update(_datos_metrica(db, campaign, dias))
+    elif tab == "versiones":
+        ctx.update(_datos_versiones(db, campaign))
     return templates.TemplateResponse(request, "agente.html", ctx)
 
 
@@ -306,6 +327,7 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     form = await request.form()
     tab = str(form.get("tab", "contexto"))
     campaign = _agente(db, campaign_id)
+    antes = versiones.instantanea(campaign)  # para el historial: ver app/versiones.py
 
     def texto(campo: str, maximo: int) -> str | None:
         return str(form[campo]).strip()[:maximo] if campo in form else None
@@ -432,8 +454,28 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
         except variables.VariablesError as exc:
             return _volver(campaign_id, tab, error=str(exc))
 
+    versiones.registrar(db, campaign, antes, _usuario(request))
     db.commit()
     return _volver(campaign_id, tab, ok="Cambios guardados")
+
+
+def _usuario(request: Request) -> str | None:
+    principal = getattr(request.state, "principal", None)
+    return principal.usuario if principal else None
+
+
+@router.post("/campaigns/{campaign_id}/versiones/{version_id}/restaurar")
+def restaurar_version(campaign_id: int, version_id: int, request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Vuelve el agente a la configuración de una versión. Queda anotado como una versión nueva."""
+    campaign = _agente(db, campaign_id)
+    version = db.get(AgentVersion, version_id)
+    if version is None or version.campaign_id != campaign.id:
+        return _volver(campaign_id, "versiones", error="Esa versión ya no está.")
+    cambiaron = versiones.restaurar(db, campaign, version, _usuario(request))
+    db.commit()
+    if not cambiaron:
+        return _volver(campaign_id, "versiones", ok="El agente ya estaba así: no se cambió nada.")
+    return _volver(campaign_id, "versiones", ok="Listo, el agente volvió a esa versión. Las llamadas que ya empezaron siguen con la anterior.")
 
 
 @router.post("/campaigns/{campaign_id}/estado")

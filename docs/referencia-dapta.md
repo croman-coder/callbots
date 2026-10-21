@@ -53,7 +53,7 @@ recargar y comprobar): 25 de 25 funciones andan. Lo que Dapta tiene y Callbot no
 
 ### Ficha del agente (`/voice-agents/<id>`)
 Cabecera: ← Nombre – Propósito · historial de versiones · **Guardar cambios**.
-Callbot: ✅ nombre, propósito, Guardar cambios y Pausar/Activar · ⬜ historial de versiones.
+Callbot: ✅ nombre, propósito, Guardar cambios, Pausar/Activar e **historial de versiones** (pestaña Versiones: qué cambió, quién, cuándo, y volver a cualquiera; no incluye las preguntas).
 Pestañas:
 
 | Pestaña | Qué tiene | Callbot |

@@ -15,14 +15,31 @@ BASIC = {"authorization": "Basic " + base64.b64encode(f"{settings.admin_user}:{s
 
 
 class FalsaSesion:
+    """Lo justo para guardar la voz y anotar la versión (app/versiones.py)."""
+
     def __init__(self, campana):
-        self.campana, self.confirmado = campana, False
+        self.campana, self.confirmado, self.agregados = campana, False, []
 
     def get(self, _modelo, _id):
         return self.campana
 
     def commit(self):
         self.confirmado = True
+
+    def scalar(self, _consulta):
+        return 1  # ya hay versiones: no se anota el punto de partida
+
+    def add(self, objeto):
+        self.agregados.append(objeto)
+
+    def flush(self):
+        pass
+
+    def scalars(self, _consulta):
+        return SimpleNamespace(all=lambda: [])
+
+    def execute(self, _consulta):
+        pass
 
 
 @pytest.fixture()

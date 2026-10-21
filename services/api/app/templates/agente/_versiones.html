@@ -1,0 +1,44 @@
+<div class="columna-unica">
+  <h2 class="titulo-seccion">Historial de versiones</h2>
+  <p class="hint">Cada vez que se guardan cambios en este agente queda una versión: qué cambió, quién y cuándo. Se puede volver a cualquiera; volver también queda anotado, así que se puede deshacer. No incluye las preguntas ni si el agente está activo o pausado. Se guardan las últimas {{ max_versiones }}.</p>
+
+  {% if not versiones %}
+  <p class="empty"><strong>Todavía no hay versiones</strong>La primera queda cuando se guarde un cambio, junto con cómo estaba antes.</p>
+  {% else %}
+  <ol class="versiones">
+    {% for item in versiones %}
+    {% set v = item.v %}
+    <li>
+      <details class="bloque version"{% if loop.first %} open{% endif %}>
+        <summary>
+          <span class="version-cuando tnum">{{ v.created_at | fecha("%d/%m/%y %H:%M") if v.created_at else "" }}</span>
+          <span class="version-que">{{ v.resumen }}</span>
+          <span class="version-quien">{{ v.created_by or "sistema" }}</span>
+          {% if loop.first and version_actual_coincide %}<span class="pill completed">actual</span>{% endif %}
+        </summary>
+        {% if item.cambios %}
+        <div class="tablewrap"><div class="scroll">
+          <table class="tabla-cambios">
+            <thead><tr><th scope="col">Qué</th><th scope="col">Antes</th><th scope="col">Después</th></tr></thead>
+            <tbody>
+              {% for campo, antes, despues in item.cambios %}
+              <tr><th scope="row">{{ campo }}</th><td class="antes">{{ antes }}</td><td>{{ despues }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+        {% elif loop.last %}
+        <p class="hint" style="margin:0">Es el punto de partida: la configuración que tenía el agente antes del primer cambio guardado.</p>
+        {% endif %}
+        {% if not (loop.first and version_actual_coincide) %}
+        <form method="post" action="/campaigns/{{ campaign.id }}/versiones/{{ v.id }}/restaurar" class="actions"
+              data-confirmar="¿Volver el agente a como estaba el {{ v.created_at | fecha('%d/%m/%y a las %H:%M') if v.created_at else 'en esa versión' }}? Se reemplaza la configuración actual (guion, instrucciones, análisis, horario y voz). Queda anotado y se puede deshacer.">
+          <button type="submit" class="btn mini">Volver a esta versión</button>
+        </form>
+        {% endif %}
+      </details>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+</div>

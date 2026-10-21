@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, pronunciaciones, voces
+from app import agentes, pronunciaciones, versiones, voces
 from app.config import settings
 from app.etiquetas import etiqueta
 from app.plantillas import templates
@@ -1392,6 +1392,7 @@ def preview_voice(
 
 @router.post("/voices/campaign/{campaign_id}")
 def update_campaign_voice(
+    request: Request,
     campaign_id: int,
     voice_speed: float = Form(1.0),
     voice_pitch: float = Form(1.0),
@@ -1409,6 +1410,7 @@ def update_campaign_voice(
     campaign = db.get(Campaign, campaign_id)
     if campaign is None:
         raise HTTPException(404, "Campaña inexistente")
+    antes = versiones.instantanea(campaign)
 
     campaign.voice_speed = min(max(voice_speed, 0.5), 2.0)
     campaign.voice_pitch = min(max(voice_pitch, 0.7), 1.4)
@@ -1420,6 +1422,8 @@ def update_campaign_voice(
     if perfil and perfil != "piper" and not re.fullmatch(r"((vs|el):)?[A-Za-z0-9_-]{1,61}", perfil):
         return _redirect(f"/voices?error={quote_plus('Voz inválida')}")
     campaign.voice_profile_id = perfil or None
+    principal = getattr(request.state, "principal", None)
+    versiones.registrar(db, campaign, antes, principal.usuario if principal else None)
     db.commit()
 
     return _redirect(f"/voices?ok=Voz+actualizada+en+{quote_plus(campaign.name)}")

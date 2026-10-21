@@ -797,6 +797,16 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .desliza { display: grid; grid-template-columns: 110px minmax(0, 1fr) 46px; align-items: center; gap: var(--s3); font-size: var(--t-sm); font-weight: 600; }
 .desliza .hint { grid-column: 2 / -1; margin-top: -6px; }
 .desliza output { font-variant-numeric: tabular-nums; text-align: right; }
+/* Historial de versiones del agente. */
+.versiones { list-style: none; margin: var(--s4) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.version > summary { flex-wrap: wrap; gap: var(--s2) var(--s3); }
+.version-cuando { font-weight: 700; }
+.version-que { flex: 1 1 260px; font-weight: 500; color: var(--ink-2); }
+.version-quien { font-size: var(--t-sm); color: var(--ink-3); }
+.tabla-cambios th[scope="row"] { width: 220px; white-space: nowrap; }
+.tabla-cambios td { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--t-sm); }
+.tabla-cambios td.antes { color: var(--ink-3); }
+.version .actions { margin-top: var(--s3); }
 /* Variables propias del análisis: una fila por variable. */
 .vars-propias { display: flex; flex-direction: column; gap: var(--s3); }
 .var-fila {

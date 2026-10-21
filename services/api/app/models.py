@@ -431,3 +431,19 @@ class Pronunciation(Base):
     palabra: Mapped[str] = mapped_column(String(60), nullable=False)
     dicho: Mapped[str] = mapped_column(String(120), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AgentVersion(Base):
+    """Una versión guardada de la configuración de un agente (ver app/versiones.py): sirve para ver qué cambió, quién
+    y cuándo, y para volver atrás."""
+
+    __tablename__ = "agent_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by: Mapped[str | None] = mapped_column(String(160))
+    resumen: Mapped[str] = mapped_column(String(400), nullable=False)
+    snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
