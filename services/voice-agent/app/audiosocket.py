@@ -13,20 +13,15 @@ Tipos:
     0x10  audio. Payload = PCM slin 8 kHz, 16-bit LE, mono (320 bytes = 20 ms).
     0xff  error. Payload = 1 byte con el código.
 
-El pacing de la reproducción se toma del reloj de Asterisk: por cada trama de
-audio que entra, se escribe una de salida. Así no hace falta un timer propio y
-no hay drift ni desbordes de buffer.
+El reloj es el tiempo real, no la cantidad de tramas que llegan. La reproducción sale de a una trama cada 20 ms
+medidos con el reloj del sistema, y quien escucha mide sus esperas en segundos. Contar tramas parecía más simple
+(«por cada trama que entra, sale una»), pero el audio de entrada llega a ráfagas —el WebSocket del navegador junta
+varias, y la red también— y cuando una no llegaba a tiempo había que inventar un silencio para no colgarse: cada
+ráfaga se contaba dos veces. Medido el 21/10/2026: el agente creía haber dicho el saludo y la primera pregunta a los
+18 s cuando duraban 31 s, escuchaba mientras la persona todavía oía el saludo y le metía silencios falsos a su voz.
 
-Ese reloj, sin embargo, solo late mientras entre RTP. Si el otro extremo no
-manda audio —NAT sin abrir, troncal de una vía— no entra ninguna trama, todo lo
-que espere una se cuelga para siempre y el bot se queda mudo. Y como tampoco
-sale RTP, el agujero de NAT que dejaría entrar el retorno nunca se abre: el
-silencio se sostiene solo.
-
-Por eso la lectura del socket vive en una tarea aparte que llena una cola, y
-`read_audio_frame` entrega silencio si no llegó nada en lo que dura una trama.
-El reloj sigue latiendo aunque el canal esté mudo: el bot habla igual, su audio
-abre el NAT, y el conteo de tramas del que dependen los timeouts no se detiene.
+La lectura del socket vive en una tarea aparte que llena una cola. Si el otro extremo no manda audio —NAT sin
+abrir, troncal de una vía— el bot habla igual (su audio abre el NAT) y las esperas vencen a su hora.
 """
 
 from __future__ import annotations
@@ -77,6 +72,8 @@ class AudioSocket:
         self._incoming: asyncio.Queue[bytes] = asyncio.Queue()
         self._closed: AudioSocketClosed | None = None
         self._pump: asyncio.Task[None] | None = None
+        # Cuándo toca escribir la próxima trama de audio (reloj del loop, en segundos).
+        self._reloj: float | None = None
 
     # ------------------------------------------------------------------ lectura
     async def read_frame(self) -> tuple[int, bytes]:
@@ -154,30 +151,44 @@ class AudioSocket:
             log.warning("La lectura del AudioSocket se cortó: %s", exc)
             self._closed = AudioSocketClosed(str(exc))
 
-    async def read_audio_frame(self) -> bytes:
-        """Próximo bloque de audio entrante, o silencio si no llegó ninguno.
+    async def siguiente_trama(self, espera: float) -> bytes | None:
+        """La próxima trama de audio que mandó el otro extremo, o None si no llegó ninguna en `espera` segundos.
 
-        Devolver silencio en vez de esperar es lo que mantiene vivo el reloj
-        cuando el otro extremo no manda RTP: quien reproduce sigue escribiendo
-        y quien escucha sigue contando tramas para sus timeouts.
+        Nunca inventa audio: lo que devuelve es lo que llegó, en orden. Quien escucha mide el tiempo con el reloj, no
+        contando lo que le devuelve esta función.
         """
         if self._pump is None:
-            # Nadie arrancó la tarea: se lee derecho, como antes.
+            # Nadie arrancó la tarea de fondo: se lee derecho.
             while True:
                 frame_type, payload = await self.read_frame()
                 if frame_type == TYPE_AUDIO:
                     return payload
-
+        if not self._incoming.empty():
+            return self._incoming.get_nowait()
+        if self._closed is not None:
+            raise self._closed
         try:
-            return await asyncio.wait_for(
-                self._incoming.get(), timeout=FRAME_SECONDS
-            )
+            return await asyncio.wait_for(self._incoming.get(), timeout=espera)
         except asyncio.TimeoutError:
-            # Con la llamada terminada no hay más audio que esperar: lo que
-            # sigue es el corte, no otro silencio.
             if self._closed is not None and self._incoming.empty():
                 raise self._closed
-            return SILENCE_FRAME
+            return None
+
+    def _descartar_entrante(self) -> None:
+        """Tira lo que el otro extremo mandó mientras habla el bot: si no, su voz se mezclaría con la respuesta."""
+        while not self._incoming.empty():
+            self._incoming.get_nowait()
+
+    async def _a_tiempo(self) -> None:
+        """Espera hasta que toque la próxima trama: una cada 20 ms de reloj real. Si se atrasó (el proceso estuvo
+        ocupado), no se pone al día de golpe más de 100 ms: una ráfaga larga se oiría como un tropezón."""
+        ahora = asyncio.get_running_loop().time()
+        if self._reloj is None or self._reloj < ahora - 0.1:
+            self._reloj = ahora
+        self._reloj += FRAME_SECONDS
+        espera = self._reloj - ahora
+        if espera > 0:
+            await asyncio.sleep(espera)
 
     # ----------------------------------------------------------------- escritura
     def _write_frame(self, frame_type: int, payload: bytes = b"") -> None:
@@ -186,22 +197,29 @@ class AudioSocket:
         )
 
     async def play(self, pcm: bytes, drain_input: bool = True) -> None:
-        """Reproduce PCM 8 kHz en el canal, sincronizado con el reloj de Asterisk.
+        """Reproduce PCM 8 kHz en el canal, una trama cada 20 ms de reloj real.
 
-        Por cada trama entrante se escribe una saliente. El audio que llega
-        durante la reproducción se descarta: si no, la voz del bot se mezclaría
-        con la respuesta del cliente en la transcripción.
+        El audio que llega durante la reproducción se descarta: si no, la voz del bot se mezclaría con la respuesta
+        del cliente en la transcripción.
         """
         for offset in range(0, len(pcm), BYTES_PER_FRAME):
             chunk = pcm[offset : offset + BYTES_PER_FRAME]
             if len(chunk) < BYTES_PER_FRAME:
                 chunk = chunk.ljust(BYTES_PER_FRAME, b"\x00")
+            await self._escribir_audio(chunk, drain_input)
 
-            if drain_input:
-                await self.read_audio_frame()
-
+    async def _escribir_audio(self, chunk: bytes, descartar: bool = True) -> None:
+        if self._closed is not None:
+            raise self._closed
+        if descartar:
+            self._descartar_entrante()
+        try:
             self._write_frame(TYPE_AUDIO, chunk)
             await self._writer.drain()
+        except (ConnectionResetError, BrokenPipeError) as exc:
+            # El otro extremo cortó mientras hablaba el bot: es un corte, no un error del servicio.
+            raise AudioSocketClosed(f"se cortó mientras hablaba el bot ({exc.__class__.__name__})") from exc
+        await self._a_tiempo()
 
     async def send_event(self, rol: str, texto: str) -> None:
         """Una línea de la transcripción para el navegador (rol: «agente» o «cliente»)."""
@@ -215,11 +233,9 @@ class AudioSocket:
             pass
 
     async def play_silence(self, milliseconds: int) -> None:
-        """Silencio activo: mantiene el canal y deja hablar al cliente."""
+        """Silencio activo: mantiene el canal abierto y el reloj andando."""
         for _ in range(max(0, milliseconds // 20)):
-            await self.read_audio_frame()
-            self._write_frame(TYPE_AUDIO, SILENCE_FRAME)
-            await self._writer.drain()
+            await self._escribir_audio(SILENCE_FRAME)
 
     async def hangup(self) -> None:
         try:
