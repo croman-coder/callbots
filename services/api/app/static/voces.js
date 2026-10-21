@@ -125,15 +125,27 @@
   }
   var enviando = false;
   var permiso = new Grabador($("[data-bloque=permiso]", form), 15, revisar);
-  var voz = new Grabador($("[data-bloque=voz]", form), 20, revisar);
+  var maxVoz = parseFloat($("[data-bloque=voz]", form).dataset.max) || 7;
+  var voz = new Grabador($("[data-bloque=voz]", form), maxVoz, revisar);
 
   persona.addEventListener("input", function () {
     frase.textContent = frase.dataset.plantilla.replace("{persona}", persona.value.trim() || "(tu nombre y apellido)");
   });
   archivo.addEventListener("change", function () {
     var f = archivo.files && archivo.files[0];
-    if (f && f.size > 15 * 1024 * 1024) { archivo.value = ""; estado.textContent = "El audio es demasiado grande: alcanza con 10 a 20 segundos."; return; }
-    voz.usarArchivo(f);
+    if (f && f.size > 15 * 1024 * 1024) { archivo.value = ""; estado.textContent = "El audio es demasiado grande: alcanza con unos 5 segundos."; return; }
+    if (!f) { voz.usarArchivo(null); return; }
+    // El largo se mira antes de aceptarlo: la placa de video del servidor solo alcanza para referencias cortas.
+    var prueba = new Audio(URL.createObjectURL(f));
+    prueba.addEventListener("loadedmetadata", function () {
+      if (isFinite(prueba.duration) && prueba.duration > maxVoz + 0.5) {
+        archivo.value = ""; voz.usarArchivo(null);
+        estado.textContent = "Ese audio dura " + Math.round(prueba.duration) + " segundos: para clonar alcanza con unos 5 (hasta " + maxVoz + ").";
+        return;
+      }
+      voz.usarArchivo(f);
+    });
+    prueba.addEventListener("error", function () { voz.usarArchivo(f); });
   });
   form.addEventListener("input", revisar);
   form.addEventListener("change", revisar);

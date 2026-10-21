@@ -1,0 +1,71 @@
+# VoiceStudio (OmniVoice) para Callbot: clona voces y las hace hablar en vivo.
+# https://github.com/debpalash/VoiceStudio  (AGPL-3.0: se usa sin modificar, como servicio aparte)
+#
+# Va APARTE del compose de Callbot, como Voicebox: una imagen pesada (PyTorch + CUDA) no debe frenar el
+# deploy de Callbot. Callbot lo alcanza por la red de su app en Coolify como http://voicestudio:3900,
+# sin publicar ningún puerto al host.
+#
+# Necesita la GPU del servidor: en CPU una frase tarda ~25 s, en la RTX 5070 ~1 s.
+# La placa se comparte con Whisper (voice-agent) y gemma (Ollama, Hermes): ver docs/voces-clonadas-gpu.md.
+#
+#   cd ~/voicestudio-callbot
+#   echo "OMNIVOICE_API_KEY=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')" > .env && chmod 600 .env
+#   docker compose up -d
+#
+# Versión fijada: no se actualiza sola. Para subir de versión se cambia el tag y se prueba una voz.
+services:
+  voicestudio:
+    image: ghcr.io/debpalash/voicestudio:0.5.6
+    container_name: voicestudio
+    restart: unless-stopped
+    environment:
+      # Sin esta clave el servicio rechaza todo lo que no venga del propio contenedor.
+      OMNIVOICE_API_KEY: ${OMNIVOICE_API_KEY:?generá una clave larga en .env}
+      OMNIVOICE_DATA_DIR: /app/omnivoice_data
+      HF_HOME: /app/omnivoice_data/huggingface
+      # PyTorch ve los 24 núcleos del servidor y el contenedor tiene 6: igualar los hilos evita que el
+      # kernel lo frene todo el tiempo (el mismo problema que tuvo Voicebox).
+      OMP_NUM_THREADS: "6"
+      MKL_NUM_THREADS: "6"
+      # Menos fragmentación de la memoria de la placa: la placa se comparte con Whisper y gemma y el margen es
+      # de ~1 GB. (El 21/10/2026 una generación con 3,2 GB chocó con «CUDA out of memory».)
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+      # Sin torch.compile: por defecto VoiceStudio compila el modelo con CUDA graphs, y cada largo de frase
+      # distinto reserva su propio bloque de memoria de la placa (medido: 2,1 → 3,2 → 4,4 GB en cuatro
+      # frases, hasta un «CUDA out of memory»). En modo normal la memoria queda acotada.
+      TORCH_COMPILE_DISABLE: "1"
+    volumes:
+      - voicestudio-data:/app/omnivoice_data   # perfiles, audios de referencia y modelos (no se bajan de nuevo)
+    networks:
+      - callbot
+    # Topes DUROS de memoria. El servidor (62 GB) ya anda justo: el 20/10/2026 Voicebox chocó dos veces
+    # contra su tope de 8 GB probando modelos de clonación en CPU, y el kernel lo mató. Con un tope por
+    # contenedor, si algo se pasa muere SOLO este contenedor, no Postgres ni Asterisk ni Hermes.
+    #  - mem_limit: lo máximo de RAM que puede usar
+    #  - memswap_limit igual a mem_limit: no se le permite usar el swap del servidor (ya está lleno)
+    #  - oom_score_adj alto: si aun así el servidor se quedara sin memoria, este es el primero en caer
+    mem_limit: 6g
+    memswap_limit: 6g
+    oom_score_adj: 500
+    cpus: 6
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3900/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 180s
+
+networks:
+  callbot:
+    external: true
+    name: xg5ucgo36sqanypjxpajzyk5   # red de la app callbot en Coolify
+
+volumes:
+  voicestudio-data:

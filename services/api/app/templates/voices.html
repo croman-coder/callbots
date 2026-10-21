@@ -99,12 +99,12 @@
     <label class="check"><input type="checkbox" name="acepto"> La persona sabe que su voz se va a usar en llamadas automáticas a clientes y está de acuerdo.</label>
 
     <h3>3. La grabación de su voz</h3>
-    <div class="grabador" data-bloque="voz">
-      <p class="leer">Que lea esto con calma, como si hablara por teléfono con un cliente (10 a 20 segundos):</p>
+    <div class="grabador" data-bloque="voz" data-max="{{ max_referencia }}">
+      <p class="leer">Que lea esta frase con calma, como si hablara por teléfono con un cliente (unos 5 segundos, como mucho {{ max_referencia }}):</p>
       <blockquote class="texto-leer">{{ texto_referencia }}</blockquote>
       <div class="controles">
         <button type="button" class="btn" data-grabar>Grabar</button>
-        <span class="reloj" data-reloj>0:00 / 0:20</span>
+        <span class="reloj" data-reloj>0:00 / 0:0{{ max_referencia }}</span>
         <span class="nivel" data-nivel aria-hidden="true"></span>
         <span class="resto"></span>
         <label class="btn quiet subir">Subir un audio<input type="file" accept="audio/*" data-subir class="sr-only"></label>
@@ -119,11 +119,12 @@
         <li><strong>A un palmo del micrófono</strong>, con auriculares con micrófono si hay.</li>
         <li><strong>Natural, como en una llamada</strong>: el clon copia también el ritmo y el tono.</li>
         <li><strong>Una sola persona</strong> en la grabación.</li>
+        <li><strong>Corta a propósito:</strong> una frase de unos 5 segundos clona igual de bien que una larga y entra en la memoria de la placa de video del servidor.</li>
       </ul>
     </details>
     <label for="cl-texto">Lo que se dice en la grabación, palabra por palabra</label>
     <textarea id="cl-texto" name="texto" rows="3" spellcheck="false">{{ texto_referencia }}</textarea>
-    <p class="hint">Si grabaste leyendo el texto de arriba, ya está. Si subiste otro audio, escribí acá exactamente lo que dice.</p>
+    <p class="hint">Si grabaste leyendo la frase de arriba, ya está. Si subiste otro audio (hasta {{ max_referencia }} segundos), escribí acá exactamente lo que dice.</p>
 
     <div class="actions">
       <button type="submit" class="btn primary" data-clonar disabled>Clonar voz</button>

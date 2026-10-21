@@ -154,3 +154,67 @@ def test_si_el_permiso_no_queda_se_borra_la_voz(monkeypatch):
     with pytest.raises(voicestudio.VoiceStudioError):
         voicestudio.clonar("X", b"a", "r.wav", "texto", b"b", "c.wav", "permiso")
     assert vistos == [("POST", "/profiles"), ("POST", "/profiles/p1/consent"), ("DELETE", "/profiles/p1")]
+
+
+def _wav(segundos: float, rate: int = 8000) -> bytes:
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(b"\x01\x00" * int(rate * segundos))
+    return buf.getvalue()
+
+
+def test_una_grabacion_larga_se_rechaza_antes_de_llegar_a_la_placa(cliente, monkeypatch):
+    monkeypatch.setattr(voicestudio, "clonar", lambda *a: pytest.fail("no debía llamar a VoiceStudio"))
+    datos = {"nombre": "Lucía", "genero": "Mujer", "persona": "Lucía Benítez", "acepto": "si", "texto": voces.TEXTO_REFERENCIA}
+    r = cliente.post("/voices/clonar", data=datos, headers={**H, "Accept": "application/json"},
+                     files={"referencia": ("r.wav", _wav(12), "audio/wav"), "consentimiento": ("c.wav", _wav(3), "audio/wav")})
+    assert r.status_code == 400 and "12 segundos" in r.json()["error"] and "unos 5" in r.json()["error"]
+
+
+def test_una_grabacion_corta_pasa(cliente, monkeypatch):
+    monkeypatch.setattr(voicestudio, "clonar", lambda *a: {"id": "nuevo2", "name": "x"})
+    datos = {"nombre": "Lucía", "genero": "Mujer", "persona": "Lucía Benítez", "acepto": "si", "texto": voces.TEXTO_REFERENCIA}
+    r = cliente.post("/voices/clonar", data=datos, headers={**H, "Accept": "application/json"},
+                     files={"referencia": ("r.wav", _wav(5), "audio/wav"), "consentimiento": ("c.wav", _wav(9), "audio/wav")})
+    assert r.status_code == 200
+
+
+def test_la_frase_de_lectura_es_corta_y_el_tope_esta_en_la_pantalla(cliente):
+    assert len(voces.TEXTO_REFERENCIA.split()) <= 14
+    html = cliente.get("/voices").text
+    assert 'data-max="7"' in html and "unos 5 segundos" in html
+
+
+def test_si_la_voz_no_entra_en_la_placa_se_borra_y_se_explica(monkeypatch):
+    monkeypatch.setattr(settings, "voicestudio_url", "http://voicestudio:3900")
+    vistos = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        vistos.append((request.method, request.url.path))
+        if request.url.path == "/profiles":
+            return httpx.Response(200, json={"id": "p9", "name": "X"})
+        if request.url.path.endswith("/consent"):
+            return httpx.Response(200, json={"ok": True})
+        if request.url.path == "/v1/audio/speech":
+            return httpx.Response(500, json={"detail": "CUDA out of memory"})
+        return httpx.Response(200, json={"deleted": "p9"})
+
+    transporte = httpx.MockTransport(responder)
+    monkeypatch.setattr(httpx, "post", lambda *a, **kw: httpx.Client(transport=transporte).post(*a, **kw))
+    monkeypatch.setattr(httpx, "delete", lambda *a, **kw: httpx.Client(transport=transporte).delete(*a, **kw))
+    with pytest.raises(voicestudio.VoiceStudioError) as e:
+        voicestudio.clonar("X", b"a", "r.wav", "texto", b"b", "c.wav", "permiso")
+    assert "más corta" in str(e.value) and "memory" not in str(e.value).lower()  # no se le muestra el error técnico
+    assert vistos[-1] == ("DELETE", "/profiles/p9")
+    assert ("POST", "/v1/audio/speech") in vistos
+
+
+def test_duracion_wav():
+    assert voicestudio.duracion_wav(_wav(5)) == 5.0
+    assert voicestudio.duracion_wav(b"no es un wav") is None

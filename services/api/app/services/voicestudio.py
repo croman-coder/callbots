@@ -8,7 +8,9 @@ Las voces de VoiceStudio llevan el prefijo "vs:" en Callbot para no confundirse 
 
 from __future__ import annotations
 
+import io
 import logging
+import wave
 
 import httpx
 
@@ -53,6 +55,15 @@ def _fallo(accion: str, exc: Exception) -> VoiceStudioError:
 def _cabeceras() -> dict[str, str]:
     clave = settings.voicestudio_api_key
     return {"Authorization": f"Bearer {clave}"} if clave else {}
+
+
+def duracion_wav(contenido: bytes) -> float | None:
+    """Segundos de un WAV PCM, o None si no es un WAV que se pueda leer (se confía en la verificación)."""
+    try:
+        with wave.open(io.BytesIO(contenido), "rb") as w:
+            return w.getnframes() / float(w.getframerate()) if w.getframerate() else None
+    except (wave.Error, EOFError, ZeroDivisionError):
+        return None
 
 
 def id_callbot(perfil_id: str) -> str:
@@ -112,7 +123,33 @@ def clonar(
     except httpx.HTTPError as exc:
         borrar(perfil["id"], silencioso=True)
         raise _fallo("guardar el consentimiento", exc) from exc
+
+    # Se prueba la voz ahora, con una frase corta: es cuando el motor codifica la grabación (lo que más
+    # memoria de la placa pide) y lo que deja la voz lista. Si no entra, se descubre acá y no en una llamada.
+    try:
+        verificar(perfil["id"])
+    except VoiceStudioError as exc:
+        borrar(perfil["id"], silencioso=True)
+        raise VoiceStudioError(
+            "No se pudo preparar la voz con esa grabación. Probá con una más corta (unos 5 segundos), "
+            "clara y sin ruido de fondo."
+        ) from exc
     return perfil
+
+
+def verificar(perfil_id: str) -> None:
+    """Genera una frase corta con la voz: si anda, el perfil está listo para hablar en vivo."""
+    try:
+        r = httpx.post(
+            _url("/v1/audio/speech"),
+            json={"model": "omnivoice", "input": "Hola, buenas tardes.", "voice": perfil_id,
+                  "response_format": "wav", "language": "Spanish", "num_step": 12},
+            headers=_cabeceras(),
+            timeout=LENTO,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise _fallo("probar la voz", exc) from exc
 
 
 def borrar(perfil_id: str, silencioso: bool = False) -> None:

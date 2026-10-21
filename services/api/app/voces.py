@@ -25,13 +25,13 @@ MOTORES = {
 }
 GENERO_PRESET = {"ef_dora": "Mujer", "em_alex": "Hombre", "em_santa": "Hombre"}
 
-# Lo que lee en voz alta la persona cuya voz se clona. Tiene el tono de una llamada (saludo, pregunta,
-# agradecimiento) porque el clon copia también la forma de hablar, y dura unos 15 segundos.
-TEXTO_REFERENCIA = (
-    "Hola, buenas tardes. Le hablo de Santa Rosa Automotores. "
-    "Lo llamamos para contarle que su vehículo ya está listo y que puede pasar a retirarlo cuando guste. "
-    "¿Tiene alguna consulta? Con mucho gusto lo ayudo. ¡Muchas gracias y que tenga un excelente día!"
-)
+# Lo que lee en voz alta la persona cuya voz se clona. Tiene el tono de una llamada (saludo y pregunta) porque
+# el clon copia también la forma de hablar, y dura unos 5 segundos A PROPÓSITO: el audio de referencia se
+# codifica en la placa de video y la memoria que pide crece con cada segundo (medido en la RTX 5070 que
+# comparte con Whisper y gemma: 5 s dejan ~750 MB de margen, 7 s ~800 con gemma achicada y 8 s ya no entran).
+# Más largo no clona mejor: el propio modelo recomienda entre 3 y 10 segundos.
+TEXTO_REFERENCIA = "Hola, buenas tardes. Le hablo de Santa Rosa Automotores, ¿tiene un minutito?"
+MAX_REFERENCIA_SEGUNDOS = 7.0
 
 
 def frase_consentimiento(persona: str) -> str:

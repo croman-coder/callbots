@@ -1194,6 +1194,7 @@ def voices_page(
             "error_catalogo": error_catalogo,
             "puede_clonar": voicestudio.is_configured(),
             "texto_referencia": voces.TEXTO_REFERENCIA,
+            "max_referencia": int(voces.MAX_REFERENCIA_SEGUNDOS),
             "frase_permiso_plantilla": voces.frase_consentimiento("{persona}"),
             "error": error,
             "ok": ok,
@@ -1235,7 +1236,12 @@ async def clonar_voz(
     if not ref or not perm:
         return JSONResponse({"error": "Una de las grabaciones está vacía. Grabala de nuevo."}, 400)
     if len(ref) > MAX_AUDIO_BYTES or len(perm) > MAX_AUDIO_BYTES:
-        return JSONResponse({"error": "El audio es demasiado grande: alcanza con 10 a 20 segundos."}, 400)
+        return JSONResponse({"error": "El audio es demasiado grande: alcanza con unos 5 segundos."}, 400)
+    largo = voicestudio.duracion_wav(ref)
+    if largo is not None and largo > voces.MAX_REFERENCIA_SEGUNDOS + 0.5:
+        return JSONResponse(
+            {"error": f"La grabación dura {largo:.0f} segundos y para clonar alcanza con unos 5 (como mucho {voces.MAX_REFERENCIA_SEGUNDOS:.0f}). Grabala de nuevo, más corta."}, 400
+        )
     if not agentes.permitir(f"clonar:{usuario}"):
         return JSONResponse({"error": "Ya clonaste varias voces en la última hora. Probá más tarde."}, 429)
 
