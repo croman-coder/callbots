@@ -24,7 +24,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, conocimiento, datos_cliente, recepcion, revision, versiones, vocabulario, voces, webhooks
+from app import agentes, conocimiento, datos_cliente, fuentes, recepcion, revision, versiones, vocabulario, voces, webhooks
+from app.fuentes import cotizador
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
@@ -146,6 +147,9 @@ def _datos_configuracion(db: Session, campaign: Campaign) -> dict:
         "bases": db.scalars(select(Brain).order_by(Brain.nombre)).all(),
         "bases_elegidas": [int(i) for i in (campaign.brain_ids or [])],
         "max_bases": conocimiento.MAX_POR_AGENTE,
+        # Solo en recepción: consulta la base del Cotizador (con tope de 3 s) para mostrar si hay conexión.
+        "fuentes_elegidas": fuentes.elegidas(campaign),
+        "cotizador": cotizador.estado() if recepcion.es_recepcion(campaign) else None,
     }
 
 
@@ -525,6 +529,8 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     limites = texto("limites", 4000)
     if limites is not None:
         campaign.limites = limites or None
+    if "fu_enviado" in form:
+        campaign.fuentes = {"repuestos": "fu_repuestos" in form, "precios": "fu_precios" in form}
 
     versiones.registrar(db, campaign, antes, _usuario(request))
     db.commit()

@@ -60,6 +60,7 @@ CAMPOS: dict[str, str] = {
     "transfer_script": "Transferencia: frase",
     "areas": "Recepción: áreas y responsables",
     "limites": "Recepción: lo que no puede decir",
+    "fuentes": "Recepción: datos en vivo",
 }
 
 

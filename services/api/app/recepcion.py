@@ -18,6 +18,7 @@ prometer garantías) van en cada consulta. Lo que dice el cliente es dato, nunca
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -51,6 +52,9 @@ PENDIENTES = ("abierto",)
 ORIGENES = {"telefono": "Llamada", "prueba": "Prueba de voz", "chat": "Chat de prueba", "simulacion": "Simulación"}
 DE_PRUEBA = ("prueba", "chat", "simulacion")
 ACCIONES = ("seguir", "derivar", "transferir", "terminar")
+# «consultar»: el agente le dice al cliente que espere y se consulta un sistema (app/fuentes/); después contesta con
+# el dato (ver `continuar`). No es una acción que Claude elija: sale de pedir una consulta.
+FRASE_CONSULTANDO = "Ya lo busco en el sistema, un momento."
 
 PLAZO_POR_DEFECTO = 24
 MAX_AREAS = 12
@@ -317,7 +321,7 @@ Lo que no podés decir ni prometer:
 
 Áreas a las que podés derivar (clave: nombre. Qué atiende. Plazo para responder):
 {areas}
-{instrucciones}{conocimiento}{cliente}
+{instrucciones}{conocimiento}{cliente}{consultas}
 Respondé SOLO con un objeto JSON, sin texto antes ni después:
 {{"decir": "lo que le decís ahora al cliente",
  "accion": "seguir" | "derivar" | "transferir" | "terminar",
@@ -328,10 +332,26 @@ Respondé SOLO con un objeto JSON, sin texto antes ni después:
  "nombre": "nombre del cliente si lo dijo, o null",
  "datos": {{"modelo": "...", "chapa": "..."}} solo lo que dijo el cliente (también teléfono de contacto o sucursal \
 si los dijo); nunca completes con el nombre de la empresa ni con suposiciones,
- "resumen": "una línea: qué pide o de qué se queja el cliente"}}
+ "resumen": "una línea: qué pide o de qué se queja el cliente"{campo_consultar}}}
 
 «derivar» es el turno en que le decís a qué área pasa su caso. «terminar» es la despedida. «transferir» es pasarle \
 la llamada a una persona ahora mismo."""
+
+CONSULTAS_REPUESTOS = """
+Podés consultar en vivo el sistema de repuestos (el Cotizador):
+- «pedidos»: las solicitudes y cotizaciones de repuestos del cliente, línea por línea, con su disponibilidad y en \
+cuántos días llega lo que se encarga. Hace falta su número de cédula o RUC, o el teléfono con que lo registraron{tel}.
+- «stock»: si hay un repuesto en el inventario. Pasá el nombre del repuesto y el modelo del vehículo.
+Para consultar, completá «consultar» y en «decir» poné solo una frase corta para que espere («{espera}»). Después \
+vas a ver el resultado como «Sistema» en la conversación y le contestás con eso.
+Con lo que diga el sistema: las fechas de llegada son estimaciones, decilas como «aproximadamente»; si no hay plazo \
+cargado, no inventes uno y derivá a Repuestos. Contale solo lo de sus propios pedidos y no leas números de documento \
+ni teléfonos. {precios}
+"""
+CAMPO_CONSULTAR = (
+    ',\n "consultar": null, o {"que": "pedidos", "documento": "...", "telefono": "..."}, '
+    'o {"que": "stock", "texto": "repuesto y modelo"}'
+)
 
 PERSONA_CON_TRANSFERENCIA = (
     "Si pide hablar con una persona, decile que lo comunicás y usá la acción «transferir»."
@@ -352,7 +372,19 @@ def _areas_para_claude(areas: list[dict]) -> str:
     )
 
 
-def sistema(campaign: Campaign, *, conocimiento: str = "", cliente: str = "", transferir: bool = False) -> str:
+def bloque_consultas(*, telefono_conocido: bool = False, precios: bool = False) -> str:
+    """Las consultas en vivo que puede pedir el agente (hoy, el Cotizador de repuestos)."""
+    return CONSULTAS_REPUESTOS.format(
+        tel=" (el de esta llamada ya lo tenés: si no da otro dato, pedí «pedidos» sin documento)" if telefono_conocido
+        else "",
+        espera=FRASE_CONSULTANDO,
+        precios="Podés decir los precios que muestre el sistema, aclarando que son de lista." if precios
+        else "No digas precios: si pregunta, decile que se los pasa el área de Repuestos.",
+    )
+
+
+def sistema(campaign: Campaign, *, conocimiento: str = "", cliente: str = "", transferir: bool = False,
+            consultas: str = "") -> str:
     empresa = getattr(campaign, "empresa_nombre", None) or "Santa Rosa"
     limites = limites_de(campaign)
     instrucciones = (getattr(campaign, "conversation_prompt", None) or "").strip()
@@ -365,12 +397,19 @@ def sistema(campaign: Campaign, *, conocimiento: str = "", cliente: str = "", tr
         instrucciones=f"\nInstrucciones de la empresa para este agente:\n{instrucciones}\n" if instrucciones else "",
         conocimiento=f"\n{conocimiento}\n" if conocimiento else "",
         cliente=f"\n{cliente}\n" if cliente else "",
+        consultas=consultas,
+        campo_consultar=CAMPO_CONSULTAR if consultas else "",
     )
 
 
-def conversacion_texto(caso: Caso) -> str:
-    nombres = {"agente": "Agente", "cliente": "Cliente"}
-    return "\n".join(f"{nombres.get(l.get('quien'), '?')}: {l.get('texto', '')}" for l in caso.conversacion or [])
+def conversacion_texto(caso: Caso, *, con_sistema: bool = True) -> str:
+    """La conversación para Claude. Los resultados de las consultas («Sistema») los ve el agente, no el cliente."""
+    nombres = {"agente": "Agente", "cliente": "Cliente",
+               "sistema": "Sistema (resultado de tu consulta; el cliente no lo escuchó)"}
+    return "\n".join(
+        f"{nombres.get(l.get('quien'), '?')}: {l.get('texto', '')}"
+        for l in caso.conversacion or [] if con_sistema or l.get("quien") != "sistema"
+    )
 
 
 def pedido_a_claude(caso: Caso) -> str:
@@ -429,9 +468,38 @@ def aplicar(caso: Caso, salida: dict[str, Any], ahora: datetime | None = None) -
     return {"decir": texto, "accion": accion}
 
 
+def _consulta_valida(pedido: object) -> dict | None:
+    if not isinstance(pedido, dict) or pedido.get("que") not in ("pedidos", "stock"):
+        return None
+    limpio = {"que": pedido["que"]}
+    for campo in ("documento", "telefono", "texto"):
+        valor = _limpio(pedido.get(campo), 120)
+        if valor and valor.lower() not in ("null", "none", "..."):
+            limpio[campo] = valor
+    return limpio
+
+
+def consulta_pendiente(caso: Caso) -> dict | None:
+    """La consulta que pidió el agente y todavía no se corrió (queda en el recorrido del caso)."""
+    for e in reversed(caso.eventos or []):
+        if e.get("que") == "consulta al sistema":
+            return e.get("consulta") if e.get("pendiente") else None
+    return None
+
+
+def _describir(pedido: dict) -> str:
+    if pedido["que"] == "stock":
+        return f"Stock de «{pedido.get('texto', '')}» en el Cotizador"
+    por = "documento" if pedido.get("documento") else ("teléfono" if pedido.get("telefono") else "teléfono de la llamada")
+    return f"Pedidos de repuestos del cliente en el Cotizador (por {por})"
+
+
 async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str = "", transferir: bool = False,
-                ahora: datetime | None = None) -> dict[str, str]:
-    """Lo que el agente contesta a lo que acaba de decir el cliente. Nunca levanta: sin Claude, frases fijas."""
+                consultas: str = "", ahora: datetime | None = None) -> dict[str, str]:
+    """Lo que el agente contesta a lo que acaba de decir el cliente. Nunca levanta: sin Claude, frases fijas.
+
+    Con `consultas` (lo que puede consultar en vivo) Claude puede pedir una consulta: la acción vuelve como
+    «consultar», el agente dice que espere y quien llama corre `continuar` para que conteste con el dato."""
     dijo = _limpio(dijo, 1500)
     if dijo:
         decir(caso, "cliente", dijo, ahora)
@@ -444,10 +512,19 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
         respuesta = {"decir": FRASE_REGISTRADO, "accion": "terminar"}
     else:
         texto = await llm.complete(
-            sistema(campaign, conocimiento=conocimiento, cliente=cliente, transferir=transferir),
+            sistema(campaign, conocimiento=conocimiento, cliente=cliente, transferir=transferir, consultas=consultas),
             pedido_a_claude(caso), max_tokens=400,
         )
         salida = llm.parse_json_object(texto)
+        pedido = _consulta_valida(salida.get("consultar")) if (salida and consultas) else None
+        if pedido is not None:
+            # Se guarda lo demás que entendió (nombre, motivo…), sin derivar ni terminar: primero el dato.
+            aplicar(caso, {**salida, "accion": "seguir"}, ahora)
+            evento(caso, "consulta al sistema", _describir(pedido), ahora=ahora)
+            caso.eventos = [*caso.eventos[:-1], {**caso.eventos[-1], "consulta": pedido, "pendiente": True}]
+            respuesta = {"decir": _limpio(salida.get("decir"), 200) or FRASE_CONSULTANDO, "accion": "consultar"}
+            decir(caso, "agente", respuesta["decir"], ahora)
+            return respuesta
         if salida is None:
             log.warning("Caso %s: Claude no devolvió un JSON usable: %r", caso.id, (texto or "")[:120])
             ultimo = next((l["texto"] for l in reversed(caso.conversacion or []) if l.get("quien") == "agente"), "")
@@ -461,6 +538,27 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
         respuesta["accion"] = "seguir"
     decir(caso, "agente", respuesta["decir"], ahora)
     return respuesta
+
+
+async def continuar(caso: Caso, consultor, *, conocimiento: str = "", cliente: str = "",  # noqa: ANN001
+                    transferir: bool = False, ahora: datetime | None = None) -> dict[str, str]:
+    """Corre la consulta pendiente (`consultor(pedido) -> texto`, en un hilo: no frena la API) y Claude le contesta
+    al cliente con el resultado. Sin consulta pendiente no dice nada."""
+    pedido = consulta_pendiente(caso)
+    if pedido is None:
+        return {"decir": "", "accion": "seguir"}
+    try:
+        resultado = await asyncio.to_thread(consultor, pedido)
+    except Exception as exc:  # noqa: BLE001 - el conector no levanta; esto es por las dudas
+        log.warning("Caso %s: la consulta falló: %s", caso.id, exc)
+        resultado = "El sistema no respondió: no se pudo consultar."
+    caso.eventos = [
+        {**e, "pendiente": False} if e.get("que") == "consulta al sistema" and e.get("pendiente") else e
+        for e in caso.eventos or []
+    ]
+    decir(caso, "sistema", resultado, ahora)
+    # Sin el bloque de consultas: con el dato en la mano contesta, no vuelve a consultar en el mismo turno.
+    return await turno(caso, "", conocimiento=conocimiento, cliente=cliente, transferir=transferir, ahora=ahora)
 
 
 # ─────────────────────────────────────────────────────────── simulación
@@ -477,6 +575,9 @@ PERFILES = {
     "reclamo": ("Reclamo enojado",
                 "Retiró el auto del taller hace dos días y vuelve a hacer el mismo ruido que antes. Está muy enojado, "
                 "dice que perdió un día de trabajo y quiere hablar con un gerente. Se llama Marta Ríos."),
+    "stock": ("¿Tienen el repuesto?",
+              "Quiere saber si tienen pastillas de freno delanteras para su Renault Duster 2020 y cuánto salen. Si le "
+              "preguntan, el repuesto lo necesita esta semana."),
     "consulta": ("Consulta rápida",
                  "Quiere saber hasta qué hora atiende el taller el sábado. Si se lo contestan, agradece y corta."),
 }
@@ -495,7 +596,7 @@ async def cliente_simulado(caso: Caso, perfil: str) -> str | None:
     """Lo próximo que dice el cliente de la simulación, o None si la conversación terminó (o Claude no contestó)."""
     texto = await llm.complete(
         SIMULAR_CLIENTE.format(perfil=perfil),
-        f"Conversación hasta ahora:\n{conversacion_texto(caso)}\n\n¿Qué decís ahora?", max_tokens=150,
+        f"Conversación hasta ahora:\n{conversacion_texto(caso, con_sistema=False)}\n\n¿Qué decís ahora?", max_tokens=150,
     )
     texto = _limpio(texto, 600).strip('"«»')
     return None if not texto or texto.upper().startswith("FIN") else texto

@@ -84,6 +84,24 @@
       </p>
     </details>
 
+    <details class="bloque" open id="datos-en-vivo">
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>Datos en vivo</summary>
+      <p class="hint">El agente consulta el sistema mientras habla: le dice al cliente «ya lo busco en el sistema» y contesta con el dato. Solo lee: nunca cambia nada en el sistema consultado.</p>
+      <input type="hidden" name="fu_enviado" value="1">
+      <label class="check"><input type="checkbox" name="fu_repuestos" value="1" {% if fuentes_elegidas.repuestos %}checked{% endif %}>
+        <span><strong>Cotizador de repuestos</strong> · estado de las solicitudes y cotizaciones del cliente (por cédula, RUC o teléfono), en cuántos días llega lo que se encarga y stock del inventario</span></label>
+      {% if cotizador %}
+        {% if cotizador.conectado %}
+        <p class="hint"><span class="pill completed">conectado</span> {{ cotizador.inventario | miles }} repuestos en inventario (cargado el {{ cotizador.al_dia }}) y {{ cotizador.solicitudes | miles }} solicitudes.</p>
+        {% else %}
+        <p class="hint"><span class="pill no_answer">sin conexión</span> {{ cotizador.motivo }}</p>
+        {% endif %}
+      {% endif %}
+      <label class="check"><input type="checkbox" name="fu_precios" value="1" {% if fuentes_elegidas.precios %}checked{% endif %}>
+        <span>Puede decir precios <span class="hint">· apagado: si el cliente pregunta, le dice que se los pasa Repuestos</span></span></label>
+      <p class="hint">El Cotizador no guarda fechas de llegada ni embarques: el agente calcula una fecha aproximada con los días que cargó el área y lo dice como aproximado.</p>
+    </details>
+
     <details class="bloque" open id="limites">
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12h6"/></svg>Lo que no puede decir ni prometer</summary>
       <p class="hint">El marco del agente de cara al cliente. Una regla por línea; van en cada respuesta. Si queda vacío, usa las de siempre: no dar precios ni fechas que no estén en la base, no prometer garantías ni descuentos, no diagnosticar fallas, no hablar de otras marcas.</p>

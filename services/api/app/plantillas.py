@@ -83,6 +83,7 @@ def duracion(segundos) -> str:
 
 templates.env.filters["fecha"] = fecha
 templates.env.filters["dec"] = dec
+templates.env.filters["miles"] = lambda n: dec(n, 0) if n is not None else "—"
 templates.env.globals["datos_propios"] = variables.pares
 templates.env.globals["es_exitosa"] = revision.exitosa
 templates.env.filters["estado"] = etiqueta

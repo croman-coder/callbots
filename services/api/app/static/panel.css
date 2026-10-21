@@ -889,6 +889,9 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .transcripcion li.agente { align-self: flex-start; background: var(--active-soft); border-color: transparent; }
 .transcripcion li.cliente { align-self: flex-end; }
 .transcripcion.compacta { max-height: none; margin-top: var(--s2); font-size: var(--t-sm); }
+/* Resultado de una consulta en vivo: lo ve el agente, no el cliente. */
+.transcripcion li.sistema { align-self: center; max-width: 96%; background: var(--raised); border-style: dashed; font-size: var(--t-xs); }
+.transcripcion li.sistema p { white-space: pre-wrap; color: var(--ink-2); }
 .valorar { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); width: 100%; max-width: 420px; }
 .valorar .btn { display: flex; flex-direction: column; align-items: center; gap: var(--s2); padding: var(--s4); }
 .valorar .btn svg { width: 22px; height: 22px; }

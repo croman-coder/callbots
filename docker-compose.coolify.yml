@@ -117,6 +117,8 @@ services:
       VOICESTUDIO_API_KEY: ${VOICESTUDIO_API_KEY:-}
       ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
       ELEVENLABS_MODEL: ${ELEVENLABS_MODEL:-eleven_multilingual_v2}
+      # Base del Cotizador de repuestos, usuario de solo lectura (docs/datos-en-vivo.md). Vacía = sin datos en vivo.
+      REPUESTOS_DATABASE_URL: ${REPUESTOS_DATABASE_URL:-}
     volumes:
       - voices:/voices
       - recordings:/recordings
@@ -378,6 +380,15 @@ services:
       - asterisk-spool:/var/spool/asterisk
     depends_on:
       - voice-agent
+
+networks:
+  # Red interna con la base del Cotizador de repuestos (`srpy-postgres`), para los datos en vivo del agente de
+  # recepción (docs/datos-en-vivo.md). Se creó a mano en el servidor: `docker network create --internal
+  # callbot-cotizador` y `docker network connect callbot-cotizador srpy-postgres`. Coolify conecta toda red de acá a
+  # todos los servicios, además de la propia de la app. NO se usa la red `coolify`: ahí el nombre `postgres` también
+  # es la base de Coolify y la de srpy-infra, y Callbot podría conectarse a la equivocada.
+  callbot-cotizador:
+    external: true
 
 volumes:
   pgdata:

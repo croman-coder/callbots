@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, recepcion
+from app import agentes, fuentes, recepcion
 from app.db import get_db
 from app.deps import require_admin
 from app.models import Campaign, Caso
@@ -229,6 +229,22 @@ def _estado(caso: Caso) -> dict:
     }
 
 
+async def _turno_completo(db: Session, caso: Caso, texto: str, lineas: list[dict]) -> dict:
+    """Un turno del agente como en una llamada: si pide consultar el Cotizador, dice que espera, se consulta y
+    contesta con el dato. Suma a `lineas` lo que se ve en la prueba (también el resultado de la consulta)."""
+    r = await recepcion.turno(caso, texto, conocimiento=conocimiento_del_caso(db, caso, texto),
+                              consultas=fuentes.bloque(caso))
+    lineas.append({"quien": "agente", "texto": r["decir"]})
+    if r["accion"] != "consultar":
+        return r
+    r = await recepcion.continuar(caso, fuentes.consultor(caso), conocimiento=conocimiento_del_caso(db, caso, texto))
+    sistema = next((l for l in reversed(caso.conversacion or []) if l.get("quien") == "sistema"), None)
+    if sistema:
+        lineas.append({"quien": "sistema", "texto": sistema["texto"]})
+    lineas.append({"quien": "agente", "texto": r["decir"]})
+    return r
+
+
 def _permitir(request: Request) -> JSONResponse | None:
     if not llm.is_configured():
         return JSONResponse({"error": "La IA no está configurada en este servidor."}, 503)
@@ -250,8 +266,7 @@ async def chat(request: Request, campaign_id: int, caso_id: str = Form(""), text
         if (error := _permitir(request)) is not None:
             db.rollback()
             return error
-        r = await recepcion.turno(caso, texto, conocimiento=conocimiento_del_caso(db, caso, texto))
-        lineas.append({"quien": "agente", "texto": r["decir"]})
+        r = await _turno_completo(db, caso, texto, lineas)
         if r["accion"] == "terminar":
             recepcion.terminar_llamada(caso, "se despidió")
             fin = True
@@ -284,8 +299,7 @@ async def simular(request: Request, campaign_id: int, caso_id: str = Form(""), p
         return JSONResponse({"lineas": lineas, "fin": True, **_estado(caso)})
 
     lineas.append({"quien": "cliente", "texto": dice})
-    r = await recepcion.turno(caso, dice, conocimiento=conocimiento_del_caso(db, caso, dice))
-    lineas.append({"quien": "agente", "texto": r["decir"]})
+    r = await _turno_completo(db, caso, dice, lineas)
     fin = r["accion"] == "terminar"
     if fin:
         recepcion.terminar_llamada(caso, "se despidió")

@@ -19,8 +19,8 @@
   function pintarLineas(lista, lineas) {
     lineas.forEach(function (l) {
       var li = document.createElement("li"), b = document.createElement("b"), p = document.createElement("p");
-      li.className = l.quien === "agente" ? "agente" : "cliente";
-      b.textContent = l.quien === "agente" ? "Agente" : "Cliente";
+      li.className = l.quien === "agente" || l.quien === "sistema" ? l.quien : "cliente";
+      b.textContent = { agente: "Agente", sistema: "Consulta al sistema (no lo escucha el cliente)" }[l.quien] || "Cliente";
       p.textContent = l.texto;
       li.appendChild(b); li.appendChild(p); lista.appendChild(li);
     });

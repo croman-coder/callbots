@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import conocimiento, datos_cliente, pronunciaciones, recepcion, vocabulario
+from app import conocimiento, datos_cliente, fuentes, pronunciaciones, recepcion, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -687,9 +687,25 @@ async def recepcion_turno(caso_id: int, body: RecepcionTurno, db: Session = Depe
         caso, body.texto,
         conocimiento=conocimiento_del_caso(db, caso, body.texto),
         transferir=bool(caso.campaign.transfer_number) and caso.origen == "telefono",
+        consultas=fuentes.bloque(caso),
     )
     db.commit()
     log.info("Caso %s: %s -> %r", caso.id, respuesta["accion"], respuesta["decir"][:70])
+    return respuesta
+
+
+@router.post("/casos/{caso_id}/continuar")
+async def recepcion_continuar(caso_id: int, db: Session = Depends(get_db)) -> dict:
+    """Después de «consultar»: corre la consulta en vivo (Cotizador) y devuelve lo que el agente contesta con el dato.
+    El voice-agent la pide apenas recibe «consultar», mientras dice «ya lo busco», así la espera se tapa sola."""
+    caso = _caso(db, caso_id)
+    respuesta = await recepcion.continuar(
+        caso, fuentes.consultor(caso),
+        conocimiento=conocimiento_del_caso(db, caso, ""),
+        transferir=bool(caso.campaign.transfer_number) and caso.origen == "telefono",
+    )
+    db.commit()
+    log.info("Caso %s (consulta): %s -> %r", caso.id, respuesta["accion"], respuesta["decir"][:70])
     return respuesta
 
 

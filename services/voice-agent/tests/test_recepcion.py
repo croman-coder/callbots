@@ -98,3 +98,20 @@ def test_frases_de_recepcion_se_precalientan():
     script = recepcion()
     assert dialog.MULETILLA in script.all_prompts and "¿Sigue ahí?" in script.all_prompts
     assert "¿Del cero al diez?" not in script.all_prompts
+
+
+def test_consultar_dice_que_espera_y_contesta_con_el_dato(entorno):
+    entorno.escuchas += [habla(2)]
+    entorno.textos += ["Quiero saber si llegó mi repuesto, mi cédula es 1234567"]
+
+    class ApiConsulta(ApiRecepcion):
+        async def recepcion_continuar(self, caso_id):
+            self.turnos.append("(continuar)")
+            return {"decir": "Su espejo llega aproximadamente el 20 de octubre.", "accion": "terminar"}
+
+    api = ApiConsulta([{"decir": "Ya lo busco en el sistema, un momento.", "accion": "consultar"}])
+    d, _ = correr(recepcion(), api)
+    dicho = " ".join(entorno.dichas)
+    assert api.turnos[-1] == "(continuar)"
+    assert dicho.index("Ya lo busco en el sistema") < dicho.index("llega aproximadamente")
+    assert d.outcome == dialog.Outcome.COMPLETED

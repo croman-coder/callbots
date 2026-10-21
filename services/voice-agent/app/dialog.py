@@ -226,6 +226,15 @@ class SurveyDialog:
                 await self.socket.send_event("cliente", texto)
                 log.info("[%s] Recepción <- %r", self.session_uuid, texto[:80])
                 respuesta = await self._esperar_con_muletilla(self.api.recepcion_turno(caso, texto))
+                if respuesta.get("accion") == "consultar":
+                    # «Ya lo busco en el sistema»: la consulta arranca antes de decirlo, así la frase tapa la espera.
+                    pedido = asyncio.ensure_future(self.api.recepcion_continuar(caso))
+                    try:
+                        await _say(self.socket, respuesta.get("decir") or "", self._voz)
+                        respuesta = await pedido
+                    except BaseException:
+                        pedido.cancel()
+                        raise
                 accion = respuesta.get("accion")
                 await _say(self.socket, respuesta.get("decir") or frases.get("registrado", ""), self._voz)
 

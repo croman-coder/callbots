@@ -40,7 +40,7 @@
       <header><h2>Conversación</h2><span class="note">Tal como la escuchó y la dijo el agente</span></header>
       {% if caso.conversacion %}
       <ol class="transcripcion compacta">
-        {% for l in caso.conversacion %}<li class="{{ l.quien }}"><b>{{ "Agente" if l.quien == "agente" else "Cliente" }}</b><p>{{ l.texto }}</p></li>{% endfor %}
+        {% for l in caso.conversacion %}<li class="{{ l.quien }}"><b>{{ {"agente": "Agente", "sistema": "Consulta al sistema (no la escuchó el cliente)"}.get(l.quien, "Cliente") }}</b><p>{{ l.texto }}</p></li>{% endfor %}
       </ol>
       {% else %}<p class="muted">Sin conversación.</p>{% endif %}
     </section>

@@ -48,8 +48,8 @@ qué se contestó y qué se venció.
 - **Línea entrante**: una regla en Asterisk que mande las llamadas del número de posventa al agente de recepción.
   Está bloqueado por lo mismo que el audio saliente: el FortiGate no deja entrar la voz de Personal
   (`diagnostico-audio-2026-10-20.md`).
-- **Datos vivos** (repuestos con embarques, patentamiento, PDI, COMEX): hoy se cargan como base de conocimiento.
-  El paso siguiente es que el agente los consulte en vivo, como el Copiloto del Advisor.
+- **Datos vivos**: ✅ repuestos del Cotizador (pedidos, plazo aproximado y stock), ver `datos-en-vivo.md`. Faltan
+  embarques con fecha real (COMEX), patentamiento y PDI.
 - **Agendar turnos** con los tiempos por modelo y servicio.
 
 ## Archivos

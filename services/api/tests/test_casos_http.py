@@ -111,3 +111,29 @@ def test_el_voice_agent_abre_conversa_y_cierra_el_caso(cliente, base, claude):  
 
 def test_una_encuesta_no_acepta_la_recepcion(cliente):
     assert cliente.post("/campaigns/1/recepcion/chat", data={"texto": "hola"}, headers=H).status_code == 409
+
+
+def test_chat_con_consulta_al_cotizador(cliente, base, monkeypatch):  # noqa: F811
+    from app.fuentes import cotizador
+
+    respuestas = [
+        {"decir": "Ya lo busco en el sistema, un momento.", "accion": "seguir", "consultar": {"que": "stock", "texto": "pastillas duster"}},
+        {"decir": "Sí, hay cuatro juegos en stock. ¿Algo más?", "accion": "seguir"},
+    ]
+
+    async def complete(system, user, *, max_tokens=200):
+        return json.dumps(respuestas.pop(0), ensure_ascii=False)
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", complete)
+    monkeypatch.setattr(cotizador, "configurado", lambda: True)
+    monkeypatch.setattr(cotizador, "consultar", lambda pedido, **kw: "PASTILLA FRENO DUSTER: 4 en stock")
+    monkeypatch.setattr(cotizador, "estado", lambda: {"conectado": True, "inventario": 3457, "solicitudes": 310, "al_dia": "19/08"})
+    cid = _agente(cliente)
+    assert "3.457 repuestos en inventario" in cliente.get(f"/campaigns/{cid}?tab=configuracion").text
+    caso_id = cliente.post(f"/campaigns/{cid}/recepcion/chat", data={"texto": ""}, headers=H).json()["caso_id"]
+    j = cliente.post(f"/campaigns/{cid}/recepcion/chat", data={"caso_id": str(caso_id), "texto": "¿Tienen pastillas?"},
+                     headers=H).json()
+    assert [l["quien"] for l in j["lineas"]] == ["agente", "sistema", "agente"]
+    assert j["lineas"][-1]["texto"].startswith("Sí, hay cuatro")
+    assert "Consulta al sistema" in cliente.get(f"/casos/{caso_id}").text

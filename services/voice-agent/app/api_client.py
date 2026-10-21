@@ -243,6 +243,19 @@ class ApiClient:
             log.error("Caso %s: el turno falló: %s", caso_id, exc)
         return {"decir": "", "accion": "terminar"}
 
+    async def recepcion_continuar(self, caso_id: int | None) -> dict:
+        """Después de «consultar»: lo que el agente contesta con el dato del sistema. Ante una falla, la frase de
+        «ya registré su consulta» y se termina, como en un turno común."""
+        if caso_id is None:
+            return {"decir": "", "accion": "terminar"}
+        try:
+            datos = await self._post(f"/internal/casos/{caso_id}/continuar", {})
+            if isinstance(datos, dict) and datos.get("decir"):
+                return datos
+        except ApiError as exc:
+            log.error("Caso %s: la consulta en vivo falló: %s", caso_id, exc)
+        return {"decir": "", "accion": "terminar"}
+
     async def recepcion_fin(self, caso_id: int | None, causa: str | None) -> None:
         if caso_id is None:
             return

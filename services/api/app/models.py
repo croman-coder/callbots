@@ -125,6 +125,8 @@ class Campaign(Base):
     areas: Mapped[list | None] = mapped_column(JSON)
     # Lo que el agente no puede decir ni prometer («no dar precios», «no diagnosticar fallas»…), una regla por línea.
     limites: Mapped[str | None] = mapped_column(Text)
+    # Sistemas que consulta en vivo en cada turno (app/fuentes/): {"repuestos": bool, "precios": bool}.
+    fuentes: Mapped[dict | None] = mapped_column(JSON)
 
     # --- Voz del bot ---
     # Se mandan al voice-agent en el guion de cada llamada, así se ajustan

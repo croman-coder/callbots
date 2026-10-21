@@ -41,7 +41,8 @@ replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera
 - ✅ Bandeja de casos para Calidad, con vencidos, respondidos en plazo y recorrido.
 - ✅ Chat de texto y simulación (la IA hace de cliente) para probar sin teléfono.
 - ⬜ Línea entrante en Asterisk (depende del FortiGate).
-- ⬜ Datos vivos de repuestos, patentamiento, PDI y COMEX.
+- ✅ Datos vivos de repuestos: el agente consulta el Cotizador (pedidos, plazo aproximado, stock), `datos-en-vivo.md`.
+- ⬜ Datos vivos de embarques (COMEX), patentamiento y PDI.
 - ⬜ Agendar turnos de taller con tiempos por modelo.
 
 **Tanda 1. Sin claves ni decisiones (se construye ya):**

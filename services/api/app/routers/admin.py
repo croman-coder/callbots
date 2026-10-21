@@ -315,6 +315,7 @@ def create_campaign(
         campaign.modo = "recepcion"
         campaign.areas = recepcion.normalizar_areas(recepcion.AREAS_POR_DEFECTO)
         campaign.limites = recepcion.LIMITES_POR_DEFECTO
+        campaign.fuentes = {"repuestos": True, "precios": False}
     for posicion, q in enumerate(base.preguntas, start=1):
         campaign.questions.append(
             Question(

@@ -126,6 +126,11 @@ class Settings(BaseSettings):
     # El análisis corre después de colgar, sin apuro.
     llm_analysis_timeout_seconds: float = 60.0
 
+    # --- Datos en vivo (app/fuentes/) ---
+    # Base del Cotizador de repuestos (quote.santarosa.lat), con un usuario de SOLO LECTURA. Vacía = el agente de
+    # recepción no consulta repuestos. Llega por la red interna `callbot-cotizador` (ver docs/datos-en-vivo.md).
+    repuestos_database_url: str = Field("", validation_alias="REPUESTOS_DATABASE_URL")
+
 
     @field_validator("call_window_start", "call_window_end", mode="before")
     @classmethod
