@@ -22,8 +22,8 @@
     {% if not hay_waba %}<span class="hint">Falta el WABA ID: sin él no se puede pedir ni ver la aprobación de las plantillas.</span>{% endif %}
     {% if not hay_secreto %}<span class="hint">Falta el secreto del webhook: sin él no se sabe si cada aviso se entregó o falló.</span>{% endif %}</p>
   {% else %}
-  <div class="panel-form">
-    <p style="margin-top:0"><span class="pill no_answer">sin conectar</span> Nada sale todavía: cada aviso queda anotado abajo como «sin configurar», para ver qué se habría mandado.</p>
+  <div class="panel-form avisos-conexion">
+    <p style="margin-top:0"><span class="pill pending">sin conectar</span> Nada sale todavía: cada aviso queda anotado abajo como «sin configurar», para ver qué se habría mandado.</p>
     <p>Hace falta un número de WhatsApp Business <strong>propio de posventa</strong> en YCloud. No el de Botika: si el cliente responde un aviso, le contestaría el bot de ventas.</p>
     <p class="hint" style="margin-bottom:0">Para conectarlo, en una terminal: <code>ssh -t srpy-servidor ./poner-clave-ycloud.sh</code>. Pide la clave de API (sin mostrarla), el número y el WABA ID, y la guarda en el servidor. Después, en YCloud → Webhooks, apuntá <code>{{ webhook_url }}</code> al evento <code>whatsapp.message.updated</code>.</p>
   </div>
@@ -54,7 +54,7 @@
             <span class="pill {{ 'completed' if est == 'APPROVED' else ('failed' if est in ('REJECTED', 'DISABLED', 'PAUSED') else 'pending') }}">{{ {"APPROVED": "aprobada", "PENDING": "en revisión", "REJECTED": "rechazada"}.get(est, est | lower) }}</span>
             {% if enmeta.motivo %}<span class="sub-line err">{{ enmeta.motivo }}</span>{% endif %}
           {% elif configurado and hay_waba %}
-            <span class="pill no_answer">no existe en Meta</span>
+            <span class="pill">no existe en Meta</span>
             <button type="submit" class="btn mini" form="aprobar-{{ clave }}">Pedir aprobación</button>
           {% else %}<span class="hint">Estado en Meta: se ve al conectar el número</span>{% endif %}
         </div>
@@ -70,7 +70,7 @@
 
 <section class="section">
   <header><h2>Probar</h2><span class="note">Manda el aviso con los datos de ejemplo al número que pongas</span></header>
-  <form method="post" action="/avisos/prueba" class="fila-revision" autocomplete="off">
+  <form method="post" action="/avisos/prueba" class="fila-revision avisos-prueba" autocomplete="off">
     <label class="sr-only" for="p-evento">Aviso</label>
     <select id="p-evento" name="evento">{% for clave, e in eventos.items() %}<option value="{{ clave }}">{{ e.titulo }}</option>{% endfor %}</select>
     <label class="sr-only" for="p-tel">Celular</label>
@@ -94,7 +94,7 @@
             {% if v.caso_id %}<span class="sub-line"><a class="link" href="/casos/{{ v.caso_id }}">caso #{{ v.caso_id }}</a></span>{% endif %}</td>
           <td>{{ v.nombre or "—" }}<span class="sub-line tnum">{{ v.destino or "sin teléfono" }}</span></td>
           <td class="aviso-celda">{{ texto_con(v.evento, v.variables or []) if v.evento in eventos else "" }}</td>
-          <td><span class="pill {{ {'enviado':'pending','entregado':'completed','leido':'completed','fallo':'failed','pendiente':'calling'}.get(v.estado, 'no_answer') }}">{{ estados.get(v.estado, v.estado) }}</span>
+          <td><span class="pill {{ {'enviado':'pending','entregado':'completed','leido':'completed','fallo':'failed','pendiente':'calling'}.get(v.estado, '') }}">{{ estados.get(v.estado, v.estado) }}</span>
             {% if v.error %}<span class="sub-line err">{{ v.error }}</span>{% endif %}</td>
         </tr>
         {% endfor %}

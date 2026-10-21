@@ -31,7 +31,7 @@ FILTROS = {
     "pendientes": "Pendientes",
     "vencidos": "Vencidos",
     "respondidos": "Respondidos",
-    "resueltos": "Resueltos por el agente",
+    "resueltos": "Resueltos",
     "cerrados": "Cerrados",
     "todos": "Todos",
 }

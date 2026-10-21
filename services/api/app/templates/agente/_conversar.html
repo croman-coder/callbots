@@ -50,7 +50,7 @@
           <td><a class="link" href="/casos/{{ c.id }}">#{{ c.id }} · {{ c.resumen or c.nombre or "sin resumen" }}</a></td>
           <td>{{ {"prueba": "Voz", "chat": "Chat", "simulacion": "Simulación"}.get(c.origen, c.origen) }}</td>
           <td>{{ c.area_nombre or "—" }}</td>
-          <td><span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed','cerrado':'neutral'}.get(c.estado, 'neutral') }}">{{ {"en_llamada": "En curso", "abierto": "Derivado", "resuelto": "Resuelto", "vacio": "Sin datos"}.get(c.estado, c.estado) }}</span></td>
+          <td><span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed'}.get(c.estado, '') }}">{{ {"en_llamada": "En curso", "abierto": "Derivado", "resuelto": "Resuelto", "vacio": "Sin datos"}.get(c.estado, c.estado) }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

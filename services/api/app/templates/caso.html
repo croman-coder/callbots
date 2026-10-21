@@ -12,8 +12,8 @@
   </div>
   <div class="right">
     {% if caso.urgente %}<span class="pill failed">urgente</span>{% endif %}
-    <span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed','cerrado':'neutral'}.get(caso.estado, 'neutral') }}">{{ estados.get(caso.estado, caso.estado) }}</span>
-    {% if resta %}<span class="pill {{ {'ok':'completed','warn':'partial','bad':'failed'}[resta[1]] }}">{{ resta[0] }}</span>{% endif %}
+    <span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed'}.get(caso.estado, '') }}">{{ estados.get(caso.estado, caso.estado) }}</span>
+    {% if resta %}<span class="pill {{ {'ok':'','warn':'partial','bad':'failed'}[resta[1]] }}">{{ resta[0] }}</span>{% endif %}
   </div>
 </div>
 {% endblock %}
@@ -71,11 +71,13 @@
       <form method="post" action="/casos/{{ caso.id }}/responder" class="panel-form" autocomplete="off">
         <label for="c-respuesta">Qué se le respondió al cliente</label>
         <textarea id="c-respuesta" name="respuesta" rows="3" maxlength="4000" required placeholder="Ej.: el repuesto llega el 15/12; lo llamamos y quedó conforme."></textarea>
-        <div class="actions"><button type="submit" class="btn primary">Marcar respondido</button></div>
+        <div class="actions">
+          <button type="submit" class="btn primary">Marcar respondido</button>
+          <button type="submit" class="btn quiet" form="cerrar-caso">Cerrar sin respuesta</button>
+        </div>
       </form>
-      <form method="post" action="/casos/{{ caso.id }}/cerrar" class="en-linea" style="margin-top:var(--s2)">
+      <form id="cerrar-caso" method="post" action="/casos/{{ caso.id }}/cerrar" hidden>
         <input type="hidden" name="texto" value="Cerrado sin respuesta">
-        <button type="submit" class="btn mini quiet">Cerrar sin respuesta</button>
       </form>
       {% else %}
       {% if caso.respuesta %}<p class="statement">{{ caso.respuesta }}</p>{% elif caso.estado == "resuelto" %}<p class="statement">Lo contestó el agente en la llamada con la información de la empresa.</p>{% else %}<p class="muted">Sin respuesta registrada.</p>{% endif %}

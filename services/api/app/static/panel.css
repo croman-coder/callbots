@@ -786,6 +786,8 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .icono.copiado { color: var(--ok); border-color: var(--ok); }
 .fila-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--s3); margin: var(--s3) 0; }
 .fila-campos label { display: flex; flex-direction: column; gap: var(--s1); font-size: var(--t-sm); font-weight: 600; }
+/* Una casilla dentro de una fila de campos va al lado de su texto, alineada con la base de los demás. */
+.fila-campos label.check { flex-direction: row; align-items: center; align-self: end; margin: 0; min-height: 44px; }
 .dias { border: 0; padding: 0; margin: var(--s3) 0; display: flex; flex-wrap: wrap; gap: var(--s2); }
 .dias legend { padding: 0; margin-bottom: var(--s2); }
 .dia { position: relative; cursor: pointer; }
@@ -900,7 +902,7 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .valorar .btn.elegido { border-color: var(--brand); background: var(--active-soft); }
 
 /* Registro y métrica */
-.filtros-seg { display: inline-flex; gap: var(--s2); }
+.filtros-seg { display: inline-flex; gap: var(--s2); max-width: 100%; }
 .filtros-seg a { padding: 8px 14px; border: 1px solid var(--line-2); border-radius: var(--r-sm); font-size: var(--t-sm); font-weight: 600; color: var(--ink-2); text-decoration: none; }
 .filtros-seg a[aria-current="page"] { border-color: var(--brand); background: var(--active-soft); color: var(--ink); }
 .paginador { color: var(--ink-3); font-size: var(--t-sm); margin-top: var(--s3); text-align: center; }
@@ -1162,7 +1164,7 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 
 /* Prueba sin micrófono: chat y simulación lado a lado. */
 .conversar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s5); margin-top: var(--s6); }
-.conversar-panel { display: flex; flex-direction: column; gap: var(--s3); min-height: 420px; padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.conversar-panel { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
 .conversar-panel header h2 { margin: 0 0 var(--s1); font-size: var(--t-md); }
 .conversar-panel header p { margin: 0; }
 .conversar-panel .transcripcion { min-height: 160px; max-height: 46vh; }
@@ -1172,7 +1174,12 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .conversar-estado { margin: 0; font-size: var(--t-sm); color: var(--ink-2); min-height: 1.4em; }
 .conversar-panel .actions { margin: 0; }
 .perfiles { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: var(--s2); }
-@media (max-width: 900px) { .conversar { grid-template-columns: 1fr; } }
+/* Lado a lado los dos paneles miden lo mismo; apilados, cada uno mide lo que tiene. */
+@media (min-width: 901px) { .conversar-panel { min-height: 420px; } }
+@media (max-width: 900px) {
+  .conversar { grid-template-columns: 1fr; }
+  .conversar-panel .transcripcion { flex: 0 1 auto; min-height: 0; }
+}
 
 /* Detalle de un caso: lo que pasó a la izquierda, qué hacer a la derecha. */
 .caso-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: var(--s6); align-items: start; }
@@ -1189,7 +1196,7 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .recorrido p { margin: 2px 0 0; color: var(--ink-2); overflow-wrap: anywhere; }
 table.casos .col-caso { min-width: 280px; }
 table.casos td .pill { margin-left: var(--s1); white-space: nowrap; }
-table.casos td:nth-child(n+2) { white-space: nowrap; }
+table.casos .celda-plazo, table.casos .celda-estado { white-space: nowrap; }
 @media (max-width: 960px) { .caso-grid { grid-template-columns: 1fr; } }
 
 /* Agenda del taller */
@@ -1217,3 +1224,48 @@ tr.atenuada td { color: var(--ink-3); }
 .aviso-texto { margin: var(--s2) 0 var(--s3); padding: var(--s3); border-radius: 12px; background: var(--active-soft); color: var(--ink); max-width: 65ch; font-size: var(--t-sm); }
 .aviso-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); align-self: end; }
 .aviso-celda { max-width: 46ch; font-size: var(--t-sm); color: var(--ink-2); }
+
+/* Filtros: en pantallas angostas se deslizan de costado; un botón nunca se parte en dos líneas. */
+@media (max-width: 640px) {
+  .filtros-seg { display: flex; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; padding-bottom: 2px; }
+  .filtros-seg::-webkit-scrollbar { display: none; }
+  .filtros-seg a, .filtros-seg button { flex: none; white-space: nowrap; }
+}
+
+/* Tablas que en el celular pasan a una ficha por fila: lo importante (plazo, estado) a la vista, sin deslizar. */
+@media (max-width: 640px) {
+  .tabla-apilada thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .tabla-apilada, .tabla-apilada tbody { display: block; width: 100%; }
+  .tabla-apilada tr { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); }
+  .tabla-apilada tbody tr:last-child { border-bottom: 0; }
+  .tabla-apilada td { display: block; border: 0; padding: 0; white-space: normal; font-size: var(--t-sm); }
+  .tabla-apilada td:first-child { flex: 1 1 100%; font-size: var(--t-base); }
+  .tabla-apilada td[data-titulo]::before { content: attr(data-titulo) ": "; color: var(--ink-3); font-weight: 600; }
+  .tabla-apilada td .sub-line { display: inline; margin: 0 0 0 var(--s1); }
+  .tabla-apilada td:first-child .sub-line { display: block; margin: 2px 0 0; }
+  /* Casos: plazo y estado juntos, arriba del motivo y el área. */
+  table.casos.tabla-apilada .celda-plazo, table.casos.tabla-apilada .celda-estado { order: 1; }
+  table.casos.tabla-apilada td[data-titulo] { order: 2; flex: 1 1 100%; }
+  /* Agenda: hora y cliente en la misma línea; el estado, a todo el ancho para tocarlo fácil. */
+  table.turnos.tabla-apilada .celda-hora { flex: 0 0 auto; }
+  table.turnos.tabla-apilada .celda-hora .sub-line { display: block; margin: 0; }
+  table.turnos.tabla-apilada .celda-cliente { flex: 1 1 0; }
+  table.turnos.tabla-apilada td[data-titulo] { flex: 1 1 100%; }
+  table.turnos.tabla-apilada .celda-estado { flex: 1 1 100%; margin-top: var(--s1); }
+  table.turnos.tabla-apilada .celda-estado select { width: 100%; }
+  .scroll:has(> .tabla-apilada) { overflow-x: visible; }
+}
+
+/* Talleres: en el celular cada campo a todo el ancho y el horario sin salirse de la tarjeta. */
+@media (max-width: 560px) {
+  .taller .fila-campos { grid-template-columns: 1fr; }
+  .taller .fila-campos .check { margin-top: 0; }
+  .horario-semana { grid-template-columns: 1fr; }
+  .horario-dia { grid-template-columns: 70px minmax(0, 1fr) auto minmax(0, 1fr); }
+}
+
+/* Avisos: los comandos y direcciones largas cortan donde haga falta; el selector de prueba, a su medida. */
+.avisos-conexion code { overflow-wrap: anywhere; }
+.avisos-prueba select { width: auto; flex: 0 1 240px; min-width: 0; }
+.avisos-prueba input { width: auto; flex: 0 1 220px; min-width: 0; }
+@media (max-width: 560px) { .avisos-prueba select, .avisos-prueba input { flex: 1 1 100%; } }

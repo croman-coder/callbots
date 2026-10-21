@@ -63,7 +63,7 @@
 <div class="tablewrap">
   {% if casos %}
   <div class="scroll">
-    <table class="casos">
+    <table class="casos tabla-apilada">
       <thead>
         <tr>
           <th scope="col" class="col-caso">Caso</th>
@@ -84,17 +84,17 @@
             <span class="sub-line">{{ c.resumen or "Sin resumen todavía" }}</span>
             <span class="sub-line tnum">#{{ c.id }} · {{ c.created_at | fecha("%d/%m %H:%M") }}</span>
           </td>
-          <td>{{ motivos.get(c.motivo, "Sin clasificar") if c.motivo else "Sin clasificar" }}</td>
-          <td>
+          <td data-titulo="Motivo">{{ motivos.get(c.motivo, "Sin clasificar") if c.motivo else "Sin clasificar" }}</td>
+          <td data-titulo="Área">
             {% if c.area_nombre %}{{ c.area_nombre }}{% else %}<span class="muted">sin área</span>{% endif %}
             {% if c.responsable %}<span class="sub-line">{{ c.responsable }}</span>{% endif %}
           </td>
-          <td class="tnum">
-            {% if resta %}<span class="pill {{ {'ok':'completed','warn':'partial','bad':'failed'}[resta[1]] }}">{{ resta[0] }}</span>
+          <td class="tnum celda-plazo">
+            {% if resta %}<span class="pill {{ {'ok':'','warn':'partial','bad':'failed'}[resta[1]] }}">{{ resta[0] }}</span>
             {% elif c.respondido_at %}<span class="muted">respondido {{ c.respondido_at | fecha("%d/%m %H:%M") }}</span>
             {% else %}<span class="muted">—</span>{% endif %}
           </td>
-          <td><span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed','cerrado':'neutral'}.get(c.estado, 'neutral') }}">{{ estados.get(c.estado, c.estado) }}</span></td>
+          <td class="celda-estado"><span class="pill {{ {'abierto':'pending','en_llamada':'calling','respondido':'completed','resuelto':'completed'}.get(c.estado, '') }}">{{ estados.get(c.estado, c.estado) }}</span></td>
         </tr>
         {% endfor %}
       </tbody>

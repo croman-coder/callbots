@@ -96,7 +96,7 @@
         {% if cotizador.conectado %}
         <p class="hint"><span class="pill completed">conectado</span> {{ cotizador.inventario | miles }} repuestos en inventario (cargado el {{ cotizador.al_dia }}) y {{ cotizador.solicitudes | miles }} solicitudes.</p>
         {% else %}
-        <p class="hint"><span class="pill no_answer">sin conexión</span> {{ cotizador.motivo }}</p>
+        <p class="hint"><span class="pill pending">sin conexión</span> {{ cotizador.motivo }}</p>
         {% endif %}
       {% endif %}
       <label class="check"><input type="checkbox" name="fu_precios" value="1" {% if fuentes_elegidas.precios %}checked{% endif %}>

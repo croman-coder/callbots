@@ -46,20 +46,20 @@
 <div class="tablewrap">
   {% if turnos %}
   <div class="scroll">
-    <table>
+    <table class="turnos tabla-apilada">
       <thead>
         <tr><th scope="col">Hora</th><th scope="col">Cliente</th><th scope="col">Vehículo</th><th scope="col">Servicio</th><th scope="col">Retira</th><th scope="col">Estado</th></tr>
       </thead>
       <tbody>
         {% for t in turnos %}
         <tr {% if t.estado in ("cancelado", "no_vino") %}class="atenuada"{% endif %}>
-          <td class="tnum strong">{{ hora(t.inicio) }}<span class="sub-line">bahía {{ t.bahia }}</span></td>
-          <td>{{ t.cliente_nombre or "Sin nombre" }}{% if t.telefono %}<span class="sub-line tnum">{{ t.telefono }}</span>{% endif %}</td>
-          <td>{{ [t.marca, t.modelo] | select | join(" ") or "—" }}{% if t.chapa or t.km %}<span class="sub-line">{{ t.chapa or "" }}{% if t.chapa and t.km %} · {% endif %}{% if t.km %}{{ t.km | miles }} km{% endif %}</span>{% endif %}</td>
-          <td>{{ t.servicio_nombre }}
+          <td class="tnum strong celda-hora">{{ hora(t.inicio) }}<span class="sub-line">bahía {{ t.bahia }}</span></td>
+          <td class="celda-cliente">{{ t.cliente_nombre or "Sin nombre" }}{% if t.telefono %}<span class="sub-line tnum">{{ t.telefono }}</span>{% endif %}</td>
+          <td data-titulo="Vehículo">{{ [t.marca, t.modelo] | select | join(" ") or "—" }}{% if t.chapa or t.km %}<span class="sub-line">{{ t.chapa or "" }}{% if t.chapa and t.km %} · {% endif %}{% if t.km %}{{ t.km | miles }} km{% endif %}</span>{% endif %}</td>
+          <td data-titulo="Servicio">{{ t.servicio_nombre }}
             <span class="sub-line">{% if t.origen != "panel" %}por el agente{% if t.caso_id %} · <a class="link" href="/casos/{{ t.caso_id }}">caso #{{ t.caso_id }}</a>{% endif %}{% else %}cargado a mano{% endif %}</span></td>
-          <td class="tnum">{{ hora(t.retiro_estimado) if t.retiro_estimado else "—" }}</td>
-          <td>
+          <td class="tnum" data-titulo="Retira">{{ hora(t.retiro_estimado) if t.retiro_estimado else "—" }}</td>
+          <td class="celda-estado">
             <form method="post" action="/agenda/turnos/{{ t.id }}/estado" class="fila-revision">
               <label class="sr-only" for="e-{{ t.id }}">Estado del turno de las {{ hora(t.inicio) }}</label>
               <select id="e-{{ t.id }}" name="estado" data-autoenviar {% if t.estado == "prueba" %}disabled{% endif %}>

@@ -43,7 +43,7 @@ ESTADOS = {
     "en_llamada": "En curso",
     "abierto": "Abierto",
     "respondido": "Respondido",
-    "resuelto": "Resuelto por el agente",
+    "resuelto": "Resuelto",
     "cerrado": "Cerrado",
     "vacio": "Sin datos",
 }
