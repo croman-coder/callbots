@@ -344,7 +344,40 @@ def finalize_call(call_id: int) -> dict:
             # También entra acá el buzón de voz (outcome VOICEMAIL): no se habló con nadie, se reintenta.
             _schedule_retry_or_finish(target, TargetStatus.NO_ANSWER)
 
-        return {"call_id": call_id, "target_status": target.status.value}
+        resultado = {"call_id": call_id, "target_status": target.status.value}
+        campaign = getattr(target, "campaign", None)
+        hay_webhooks = any(w.get("activo", True) for w in (getattr(campaign, "webhooks", None) or []))
+
+    # Fuera de la sesión: el análisis ya quedó guardado y el envío no traba el cierre de la llamada.
+    if hay_webhooks:
+        enviar_webhooks.delay(call_id)
+    return resultado
+
+
+@shared_task(name="callbot.enviar_webhooks")
+def enviar_webhooks(call_id: int) -> dict:
+    """Manda la llamada terminada a los webhooks activos de su agente y deja registrado cada envío."""
+    from app import webhooks
+    from app.models import WebhookEnvio
+
+    enviados = 0
+    with session_scope() as db:
+        call = db.get(CallAttempt, call_id)
+        if call is None or call.target is None:
+            return {"error": "llamada inexistente"}
+        campaign = call.target.campaign
+        activos = [w for w in (campaign.webhooks or []) if w.get("activo", True) and w.get("url")]
+        if not activos:
+            return {"enviados": 0}
+        if not campaign.webhook_secreto:
+            campaign.webhook_secreto = webhooks.nuevo_secreto()
+        datos = webhooks.payload(call, campaign)
+        for w in activos:
+            estado, error, ms = webhooks.enviar(w["url"], datos, campaign.webhook_secreto)
+            db.add(WebhookEnvio(campaign_id=campaign.id, call_id=call.id, url=w["url"][:500], estado=estado,
+                                error=(error or None) and error[:300], duracion_ms=ms, prueba=False))
+            enviados += 1
+    return {"enviados": enviados}
 
 
 # ---------------------------------------------------------------------------

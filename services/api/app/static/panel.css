@@ -978,6 +978,17 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .en-linea { display: inline; margin: 0 0 0 var(--s2); }
 .clonar h3 { margin: var(--s5) 0 var(--s2); font-size: var(--t-md, 1rem); }
 .clonar h3:first-child { margin-top: 0; }
+/* Webhooks de resultados. */
+.webhooks { margin-top: var(--s6); }
+.lista-webhooks { list-style: none; margin: var(--s3) 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.lista-webhooks li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--surface); }
+.url-webhook { flex: 1 1 260px; overflow-wrap: anywhere; font-size: var(--t-sm); }
+.acciones-webhook { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.resultado-webhook { flex-basis: 100%; }
+.resultado-webhook:empty { display: none; }
+.secreto-webhook { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: var(--s3) 0; font-size: var(--t-sm); color: var(--ink-2); }
+.secreto-webhook code { overflow-wrap: anywhere; }
+.titulo-chico { font-size: var(--t-md); margin: var(--s4) 0 var(--s2); }
 /* Variables del guion: chips que suman {{clave}} al texto. */
 .chips-variables { display: flex; flex-wrap: wrap; gap: var(--s1); margin: var(--s2) 0 var(--s3); }
 .chips-variables .chip-dato { border: 0; cursor: pointer; font: inherit; font-size: var(--t-xs); font-family: var(--mono, ui-monospace, monospace); }

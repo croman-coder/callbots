@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, conocimiento, datos_cliente, versiones, vocabulario, voces
+from app import agentes, conocimiento, datos_cliente, versiones, vocabulario, voces, webhooks
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
@@ -32,6 +32,7 @@ from app.deps import principal_ws, require_admin
 from app.models import (
     AgentVersion,
     Brain,
+    WebhookEnvio,
     Answer,
     CallAnalysis,
     CallAttempt,
@@ -169,6 +170,14 @@ def _datos_registro(db: Session, campaign: Campaign, filtro: str, page: int) -> 
         "page": page,
         "paginas": paginas,
     }
+
+
+def _datos_webhooks(db: Session, campaign: Campaign) -> dict:
+    envios = db.scalars(
+        select(WebhookEnvio).where(WebhookEnvio.campaign_id == campaign.id).order_by(WebhookEnvio.id.desc()).limit(10)
+    ).all()
+    return {"webhooks": campaign.webhooks or [], "webhook_secreto": campaign.webhook_secreto, "envios": envios,
+            "max_webhooks": webhooks.MAX_WEBHOOKS}
 
 
 def _datos_versiones(db: Session, campaign: Campaign) -> dict:
@@ -324,6 +333,8 @@ def ficha(
         ctx.update(_datos_metrica(db, campaign, dias))
     elif tab == "versiones":
         ctx.update(_datos_versiones(db, campaign))
+    elif tab == "analisis":
+        ctx.update(_datos_webhooks(db, campaign))
     return templates.TemplateResponse(request, "agente.html", ctx)
 
 
@@ -494,6 +505,92 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     versiones.registrar(db, campaign, antes, _usuario(request))
     db.commit()
     return _volver(campaign_id, tab, ok="Cambios guardados")
+
+
+def _volver_webhooks(campaign_id: int, **extra: str) -> RedirectResponse:
+    r = _volver(campaign_id, "analisis", **extra)
+    r.headers["location"] += "#webhooks"
+    return r
+
+
+@router.post("/campaigns/{campaign_id}/webhooks")
+def sumar_webhook(campaign_id: int, url: str = Form(""), db: Session = Depends(get_db)) -> RedirectResponse:
+    campaign = _agente(db, campaign_id)
+    lista = list(campaign.webhooks or [])
+    if len(lista) >= webhooks.MAX_WEBHOOKS:
+        return _volver_webhooks(campaign_id, error=f"Como mucho {webhooks.MAX_WEBHOOKS} webhooks por agente")
+    try:
+        url = webhooks.validar_url(url)
+    except webhooks.WebhookInvalido as exc:
+        return _volver_webhooks(campaign_id, error=str(exc))
+    if any(w.get("url") == url for w in lista):
+        return _volver_webhooks(campaign_id, error="Ese webhook ya está cargado")
+    campaign.webhooks = lista + [{"url": url, "activo": True}]
+    if not campaign.webhook_secreto:
+        campaign.webhook_secreto = webhooks.nuevo_secreto()
+    db.commit()
+    return _volver_webhooks(campaign_id, ok="Webhook cargado. Probalo con la última llamada")
+
+
+def _webhook(campaign: Campaign, indice: int) -> dict:
+    lista = campaign.webhooks or []
+    if not 0 <= indice < len(lista):
+        raise HTTPException(404, "Ese webhook no existe")
+    return lista[indice]
+
+
+@router.post("/campaigns/{campaign_id}/webhooks/{indice}/activar")
+def activar_webhook(campaign_id: int, indice: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    campaign = _agente(db, campaign_id)
+    _webhook(campaign, indice)
+    lista = [dict(w) for w in campaign.webhooks]
+    lista[indice]["activo"] = not lista[indice].get("activo", True)
+    campaign.webhooks = lista
+    db.commit()
+    return _volver_webhooks(campaign_id, ok="Webhook activado" if lista[indice]["activo"] else "Webhook pausado")
+
+
+@router.post("/campaigns/{campaign_id}/webhooks/{indice}/borrar")
+def borrar_webhook(campaign_id: int, indice: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    campaign = _agente(db, campaign_id)
+    _webhook(campaign, indice)
+    lista = [dict(w) for i, w in enumerate(campaign.webhooks) if i != indice]
+    campaign.webhooks = lista or None
+    db.commit()
+    return _volver_webhooks(campaign_id, ok="Webhook borrado")
+
+
+@router.post("/campaigns/{campaign_id}/webhooks/secreto")
+def rotar_secreto(campaign_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
+    campaign = _agente(db, campaign_id)
+    campaign.webhook_secreto = webhooks.nuevo_secreto()
+    db.commit()
+    return _volver_webhooks(campaign_id, ok="Secreto nuevo: actualizalo en el sistema que recibe los webhooks")
+
+
+@router.post("/campaigns/{campaign_id}/webhooks/{indice}/probar")
+async def probar_webhook(campaign_id: int, indice: int, db: Session = Depends(get_db)) -> JSONResponse:
+    """Manda la última llamada del agente (o un ejemplo si no hay ninguna) a este webhook y dice qué respondió."""
+    campaign = _agente(db, campaign_id)
+    w = _webhook(campaign, indice)
+    ultima = db.scalar(
+        select(CallAttempt).join(SurveyTarget, CallAttempt.target_id == SurveyTarget.id)
+        .where(SurveyTarget.campaign_id == campaign.id, CallAttempt.ended_at.is_not(None))
+        .order_by(CallAttempt.id.desc()).limit(1)
+    )
+    if not campaign.webhook_secreto:
+        campaign.webhook_secreto = webhooks.nuevo_secreto()
+    if ultima is not None:
+        datos = webhooks.payload(ultima, campaign)
+        datos["evento"] = "prueba"
+        con = "la última llamada"
+    else:
+        datos, con = webhooks.ejemplo(campaign), "un ejemplo (el agente todavía no hizo llamadas)"
+    estado, error, ms = await asyncio.to_thread(webhooks.enviar, w["url"], datos, campaign.webhook_secreto)
+    db.add(WebhookEnvio(campaign_id=campaign.id, call_id=ultima.id if ultima else None, url=w["url"][:500],
+                        estado=estado, error=(error or None) and error[:300], duracion_ms=ms, prueba=True))
+    db.commit()
+    return JSONResponse({"ok": error is None, "estado": estado, "error": error, "ms": ms, "con": con})
 
 
 def _usuario(request: Request) -> str | None:

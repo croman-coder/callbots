@@ -61,6 +61,8 @@
       <div class="destino"><strong>Excel</strong><span>Descarga desde Reportes o el registro</span><span class="pill completed">activo</span></div>
       <div class="destino"><strong>Bitrix24</strong><span>Comentario en el negocio</span>
         {% if bitrix_comentario %}<span class="pill completed">activo</span>{% else %}<span class="pill no_answer">apagado</span>{% endif %}</div>
+      <div class="destino"><strong>Webhooks</strong><span>Un JSON por llamada a otro sistema</span>
+        {% if webhooks | selectattr("activo") | list %}<span class="pill completed">{{ webhooks | selectattr("activo") | list | length }} activo{{ "s" if (webhooks | selectattr("activo") | list | length) != 1 }}</span>{% else %}<a class="btn mini" href="#webhooks">Configurar</a>{% endif %}</div>
       <div class="destino off"><strong>Google Sheets</strong><span>Una fila por llamada</span><span class="chip-pronto">Pronto</span></div>
     </div>
   </details>
@@ -73,3 +75,56 @@
     </ul>
   </details>
 </form>
+
+<section class="columna-unica webhooks" id="webhooks">
+  <h2 class="titulo-seccion">Webhooks</h2>
+  <p class="hint">Después de cada llamada se manda un JSON con todo lo que pasó (cliente y sus datos, respuestas, análisis y variables propias) a estas direcciones: sirve para n8n, Make, una planilla o un CRM. Va firmado: <code>X-Callbot-Firma: sha256=…</code> es el HMAC-SHA256 del cuerpo con el secreto de abajo, para que quien recibe sepa que es de Callbot. Solo direcciones públicas.</p>
+  {% if webhooks %}
+  <ul class="lista-webhooks">
+    {% for w in webhooks %}
+    <li>
+      <span class="pill {{ 'completed' if w.activo else 'no_answer' }}">{{ "activo" if w.activo else "pausado" }}</span>
+      <code class="url-webhook">{{ w.url }}</code>
+      <span class="acciones-webhook">
+        <button type="button" class="btn mini" data-probar-webhook="/campaigns/{{ campaign.id }}/webhooks/{{ loop.index0 }}/probar">Probar con la última llamada</button>
+        <form method="post" action="/campaigns/{{ campaign.id }}/webhooks/{{ loop.index0 }}/activar" class="en-linea"><button type="submit" class="btn mini quiet">{{ "Pausar" if w.activo else "Activar" }}</button></form>
+        <form method="post" action="/campaigns/{{ campaign.id }}/webhooks/{{ loop.index0 }}/borrar" class="en-linea" data-confirmar="¿Borrar este webhook? Deja de recibir las llamadas."><button type="submit" class="btn mini quiet danger">Borrar</button></form>
+      </span>
+      <span class="hint resultado-webhook" data-resultado role="status" aria-live="polite"></span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if webhooks | length < max_webhooks %}
+  <form method="post" action="/campaigns/{{ campaign.id }}/webhooks" class="fila-pron nueva-pron" autocomplete="off">
+    <div><label for="w-url">Dirección del webhook</label><input id="w-url" type="url" name="url" required placeholder="https://ejemplo.com/webhook/callbot"></div>
+    <button type="submit" class="btn">Agregar</button>
+  </form>
+  {% endif %}
+  {% if webhook_secreto %}
+  <div class="secreto-webhook">
+    <span>Secreto para verificar la firma:</span>
+    <code data-secreto>{{ webhook_secreto }}</code>
+    <button type="button" class="btn mini quiet" data-copiar-texto="{{ webhook_secreto }}">Copiar</button>
+    <form method="post" action="/campaigns/{{ campaign.id }}/webhooks/secreto" class="en-linea" data-confirmar="¿Generar un secreto nuevo? El sistema que recibe va a rechazar los envíos hasta que lo actualices."><button type="submit" class="btn mini quiet">Generar otro</button></form>
+  </div>
+  {% endif %}
+  {% if envios %}
+  <h3 class="titulo-chico">Últimos envíos</h3>
+  <div class="tablewrap"><div class="scroll">
+    <table>
+      <thead><tr><th scope="col">Cuándo</th><th scope="col">A dónde</th><th scope="col">Resultado</th><th scope="col">Tiempo</th></tr></thead>
+      <tbody>
+        {% for e in envios %}
+        <tr>
+          <td class="tnum nowrap">{{ e.created_at | fecha("%d/%m/%y %H:%M") if e.created_at else "" }}{% if e.prueba %} <span class="chip-dato">prueba</span>{% endif %}</td>
+          <td><span class="sub-line">{{ e.url }}</span></td>
+          <td>{% if e.error %}<span class="pill failed">{{ e.error }}</span>{% else %}<span class="pill completed">{{ e.estado }}</span>{% endif %}</td>
+          <td class="tnum">{{ e.duracion_ms or 0 }} ms</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+  {% endif %}
+</section>

@@ -223,6 +223,22 @@
     if (window.callbotMarcarSucio) window.callbotMarcarSucio();
   });
 
+  // Webhooks: probar con la última llamada y decir qué respondió.
+  $$("[data-probar-webhook]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var salida = b.closest("li").querySelector("[data-resultado]");
+      b.disabled = true; salida.textContent = "Enviando…";
+      fetch(b.dataset.probarWebhook, { method: "POST", credentials: "same-origin" })
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (j) {
+          if (j.ok) salida.textContent = "Recibido (" + j.estado + ", " + j.ms + " ms), con " + j.con + ".";
+          else salida.textContent = "No llegó: " + (j.error || "error desconocido") + (j.con ? " (con " + j.con + ")" : "") + ".";
+        })
+        .catch(function () { salida.textContent = "No se pudo probar. Probá de nuevo."; })
+        .then(function () { b.disabled = false; });
+    });
+  });
+
   // Acciones que no se deshacen con un clic (volver a una versión): se confirman antes.
   $$("form[data-confirmar]").forEach(function (f) {
     f.addEventListener("submit", function (e) { if (!confirm(f.dataset.confirmar)) e.preventDefault(); });
