@@ -16,15 +16,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
     && ln -sf /usr/bin/python3.10 /usr/local/bin/python \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /models/piper /models/huggingface /recordings
 
 COPY requirements.txt .
 RUN python -m pip install --no-cache-dir --upgrade pip \
     && python -m pip install --no-cache-dir -r requirements.txt
 
+# (las carpetas se crean en el primer RUN: cada RUN de más agranda el comando de deploy de Coolify)
 COPY . .
-
-RUN mkdir -p /models/piper /models/huggingface /recordings
 
 EXPOSE 8090
 
