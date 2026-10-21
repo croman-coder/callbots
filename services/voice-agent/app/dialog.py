@@ -329,6 +329,14 @@ class SurveyDialog:
                 await _say(self.socket, FRASE_TRANSFERENCIA_FALLIDA, self._voz)
                 return True
 
+            if verdict.should_retry and not transcript.strip():
+                # No dijo nada (o no se entendió ni una palabra): no hay qué contestarle. Se repite con la frase
+                # fija, sin «déjeme ver» —antes de «no lo escuché» suena a que el bot pensó en el silencio— y sin
+                # esperar a Claude.
+                respuesta_libre = None
+                retries_used += 1
+                continue
+
             if verdict.should_retry:
                 # Solo acá se llama al LLM: si la respuesta se entendió, la
                 # llamada sigue sin pagar un segundo de latencia extra.

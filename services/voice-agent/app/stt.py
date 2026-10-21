@@ -65,7 +65,24 @@ def load_model() -> None:
         else:
             raise
 
+    _calentar()
     log.info("Whisper listo")
+
+
+def _calentar() -> None:
+    """Una transcripción de prueba al arrancar. En la GPU la primera inferencia prepara los kernels de CUDA y tarda
+    unos 11 s (medido el 21/10/2026): sin esto, el primer cliente después de cada reinicio esperaba eso en silencio.
+    Va sin el filtro de voz a propósito: con él, un audio sin voz se descarta y no se calienta nada."""
+    import time
+
+    inicio = time.monotonic()
+    try:
+        ruido = (np.random.default_rng(0).standard_normal(WHISPER_SAMPLE_RATE * 2) * 0.01).astype(np.float32)
+        segmentos, _ = _model.transcribe(ruido, language=config.whisper_language, beam_size=5, vad_filter=False)
+        list(segmentos)  # el decodificador corre recién al recorrer los segmentos
+        log.info("Whisper calentado en %.1f s", time.monotonic() - inicio)
+    except Exception as exc:  # noqa: BLE001 - calentar es una mejora: si falla, se atiende igual
+        log.warning("No se pudo calentar Whisper (%s): la primera respuesta va a tardar más", exc)
 
 
 def _pcm_to_float32(pcm: bytes) -> np.ndarray:
