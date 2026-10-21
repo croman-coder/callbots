@@ -139,13 +139,17 @@ class SurveyDialog:
 
     # ------------------------------------------------------------------
     async def run(self) -> None:
-        log.info(
-            "[%s] Encuesta '%s': %d preguntas%s",
-            self.session_uuid,
-            self.script.campaign_name,
-            len(self.script.questions),
-            " (DEMO)" if self.script.demo else "",
-        )
+        if self.script.es_recepcion:
+            log.info("[%s] Recepción '%s'%s", self.session_uuid, self.script.campaign_name,
+                     " (DEMO)" if self.script.demo else "")
+        else:
+            log.info(
+                "[%s] Encuesta '%s': %d preguntas%s",
+                self.session_uuid,
+                self.script.campaign_name,
+                len(self.script.questions),
+                " (DEMO)" if self.script.demo else "",
+            )
 
         try:
             if self.script.es_recepcion:
