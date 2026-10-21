@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app import cuentas, log_redaction, sso
 from app.config import settings
 from app.deps import IrALogin, SesionRequerida
-from app.routers import acceso, admin, agente, internal, simulator
+from app.routers import acceso, admin, agente, internal, simulator, usuarios
 from app.seguridad import CabecerasSeguras, frame_ancestors, origenes_descartados
 
 # Las tareas se declaran con @shared_task, que resuelve el broker recién al
@@ -54,6 +54,7 @@ app.include_router(agente.router)
 app.include_router(agente.ws_router)
 app.include_router(admin.router)
 app.include_router(simulator.router)
+app.include_router(usuarios.router)
 
 
 @app.exception_handler(SesionRequerida)

@@ -25,9 +25,9 @@ def _entra_como(monkeypatch, rol="admin"):
     def falso(email, clave, *, cliente=None, origen=""):
         if clave != "buena":
             raise cuentas.LoginRechazado("Correo o clave incorrectos.")
-        return Principal(email.strip().lower(), rol, "dashboards")
+        return Principal(email.strip().lower(), rol, "dashboards"), "jwt-de-prueba", 3600
 
-    monkeypatch.setattr(cuentas, "iniciar_sesion", falso)
+    monkeypatch.setattr(cuentas, "iniciar_sesion_con_token", falso)
 
 
 def test_navegador_sin_sesion_va_al_formulario_con_el_destino(cli):
@@ -95,7 +95,7 @@ def test_supabase_caido_responde_503_y_lo_dice(cli, monkeypatch):
     def caido(*a, **k):
         raise cuentas.LoginRechazado("No se pudo verificar tu cuenta. Intentá de nuevo en un momento.", transitorio=True)
 
-    monkeypatch.setattr(cuentas, "iniciar_sesion", caido)
+    monkeypatch.setattr(cuentas, "iniciar_sesion_con_token", caido)
     r = cli.post("/login", data={"correo": "a@santarosa.com.py", "clave": "x"})
     assert r.status_code == 503 and "Intentá de nuevo" in r.text
 

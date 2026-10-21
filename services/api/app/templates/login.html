@@ -9,49 +9,102 @@
 <link rel="preload" href="/static/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/static/fonts/plus-jakarta-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
 <script>
-/* Mismo criterio de tema que el panel: se resuelve antes de pintar. */
+/* Antes de pintar: el tema (igual que el panel) y si corresponde animar la entrada. Con
+   «reducir movimiento» o sin este script no se oculta nada, así que no hay destello ni contenido invisible. */
 (function () {
   var d = document.documentElement, t = "light";
   try { t = localStorage.getItem("callbot-tema") || "light"; } catch (e) {}
   d.setAttribute("data-theme", t === "light" ? "light" : "dark");
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && t !== "light") meta.setAttribute("content", "#0f1412");
+  try { if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) d.classList.add("entrada-js"); } catch (e) {}
 })();
 </script>
 <title>Ingresar · Callbot</title>
 <link rel="stylesheet" href="/static/panel.css?v={{ css_v }}">
+<link rel="stylesheet" href="/static/campos.css?v={{ campos_css_v }}">
+<link rel="stylesheet" href="/static/entrada.css?v={{ entrada_css_v }}">
 </head>
 <body class="entrada">
-<aside class="entrada-hero">
-  <div class="entrada-marca">{% include "_marca.html" %}<span translate="no">Callbot</span></div>
-  <div>
-    <h2>La voz del taller, con las respuestas de cada cliente.</h2>
-    <p>Quién hay que volver a llamar, cómo viene la satisfacción y cómo suena el bot, en un solo lugar.</p>
+<a class="skip" href="#main">Saltar al formulario</a>
+
+<aside class="entrada-hero" aria-label="Qué es Callbot">
+  <div class="hero-luz" aria-hidden="true"></div>
+  <div class="entrada-marca" data-entra="hero">
+    <span class="marca-ondas" aria-hidden="true"><i></i><i></i><i></i>{% with marca_id = "ent" %}{% include "_marca.html" %}{% endwith %}</span>
+    <span translate="no">Callbot</span>
   </div>
-  <small>Santa Rosa Paraguay S.A.</small>
+  <div class="hero-texto">
+    <h2>
+      <span class="linea"><span>La voz del taller,</span></span>
+      <span class="linea"><span>con las respuestas</span></span>
+      <span class="linea"><span>de cada cliente.</span></span>
+    </h2>
+    <p data-entra="hero">Quién hay que volver a llamar, cómo viene la satisfacción y cómo suena el bot, en un solo lugar.</p>
+  </div>
+  <small data-entra="hero">Santa Rosa Paraguay S.A.</small>
 </aside>
-<main class="entrada-caja" id="main">
-  <h1>Ingresá a Callbot</h1>
-  <p class="entrada-sub">Usá la misma cuenta de los dashboards de Santa Rosa.</p>
 
-  {% if error %}
-  <div class="notice bad" role="alert">{{ error }}</div>
-  {% endif %}
+<div class="entrada-lado">
+  <button type="button" class="entrada-tema" aria-pressed="false" aria-label="Cambiar a tema oscuro" data-entra="forma">
+    <svg class="sol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"/></svg>
+    <svg class="luna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>
+  </button>
 
-  <form method="post" action="/login" class="entrada-form">
-    <input type="hidden" name="next" value="{{ next }}">
-    <label for="correo">Correo</label>
-    <input id="correo" name="correo" type="email" inputmode="email" autocomplete="username"
-           autocapitalize="none" spellcheck="false" required autofocus
-           placeholder="nombre@santarosa.com.py" value="{{ correo }}">
-    <label for="clave">Clave</label>
-    <input id="clave" name="clave" type="password" autocomplete="current-password" required>
-    <div class="actions">
-      <button type="submit" class="primary" style="width:100%">Ingresar</button>
+  <main class="entrada-caja" id="main">
+    <h1 data-entra="forma">Ingresá a Callbot</h1>
+    <p class="entrada-sub" data-entra="forma">Usá la misma cuenta de los dashboards de Santa Rosa.</p>
+
+    {% if error %}
+    <div class="aviso-error" role="alert" data-error data-entra="forma">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2v.1"/></svg>
+      <span>{{ error }}</span>
     </div>
-  </form>
+    {% endif %}
 
-  {% if con_crm %}
-  <p class="entrada-pie">Si sos de Calidad, abrí la pestaña <strong>Calidad</strong> desde el CRM: ahí no hace falta ingresar.</p>
-  {% endif %}
-</main>
+    <form method="post" action="/login" class="entrada-form">
+      <input type="hidden" name="next" value="{{ next }}">
+
+      <div class="campo-ent" data-entra="forma">
+        <label for="correo">Correo</label>
+        <div class="campo-ico">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3.5 7.5l8.5 6 8.5-6"/></svg>
+          <input class="campo-ico__input" id="correo" name="correo" type="email" inputmode="email" autocomplete="username"
+                 autocapitalize="none" spellcheck="false" required {% if not error %}autofocus{% endif %}
+                 placeholder="nombre@santarosa.com.py" value="{{ correo }}">
+        </div>
+      </div>
+
+      <div class="campo-ent" data-entra="forma">
+        <label for="clave">Clave</label>
+        <div class="campo-ico">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+          <input class="campo-ico__input" id="clave" name="clave" type="password" autocomplete="current-password" required
+                 aria-describedby="clave-ayuda">
+          {% include "_ojo.html" %}
+        </div>
+        <p class="ayuda-ent" id="clave-ayuda" role="status" aria-live="polite" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 4l8 9h-5v7H9v-7H4z"/></svg>
+          Tenés las mayúsculas activadas.
+        </p>
+      </div>
+
+      <div data-entra="forma">
+        <button type="submit" class="entrada-btn" aria-busy="false">
+          <span class="btn-texto">Ingresar</span>
+          <span class="btn-carga" aria-hidden="true"><i class="giro"></i>Ingresando</span>
+        </button>
+      </div>
+    </form>
+
+    <div class="entrada-pie" data-entra="forma">
+      {% if recuperar_url %}<p>¿Olvidaste tu clave? <a href="{{ recuperar_url }}" target="_blank" rel="noopener noreferrer">Se cambia desde el dashboard</a>.</p>{% endif %}
+      {% if con_crm %}<p>Si sos de Calidad, abrí la pestaña <strong>Calidad</strong> desde el CRM: ahí no hace falta ingresar.</p>{% endif %}
+    </div>
+  </main>
+</div>
+
+<script src="/static/vendor/motion.min.js?v={{ motion_v }}" defer></script>
+<script src="/static/entrada.js?v={{ entrada_js_v }}" defer></script>
 </body>
 </html>

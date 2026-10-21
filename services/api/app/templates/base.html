@@ -29,6 +29,7 @@
 </script>
 <title>{% block title %}Callbot{% endblock %}</title>
 <link rel="stylesheet" href="/static/panel.css?v={{ css_v }}">
+{% block head_extra %}{% endblock %}
 </head>
 <body>
 <a class="skip" href="#main">Saltar al contenido</a>
@@ -70,6 +71,9 @@
     <a class="it" href="/reportes" {% if nav=='reportes' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 3v18h18M7 15l4-4 3 3 5-6"/></svg>Reportes</a>
     <a class="it" href="/voices" {% if nav=='voices' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Voces</a>
     <a class="it" href="/simulador" {% if nav=='simulador' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z"/></svg>Simulador</a>
+    {% if not es_calidad %}
+    <a class="it" href="/usuarios" {% if nav=='usuarios' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Usuarios</a>
+    {% endif %}
 
     {#- calidad no ve Diagnóstico (la ruta le responde 403): el grupo no se muestra. -#}
     {% if not es_calidad %}
@@ -77,6 +81,7 @@
       <summary class="it"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></svg>Centro de ayuda<svg class="chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 9l6 6 6-6"/></svg></summary>
       <div class="sub">
         <a href="/health-detail" {% if nav=='health' %}aria-current="page"{% endif %}>Diagnóstico</a>
+      <a href="/usuarios" {% if nav=='usuarios' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8 3.2-3.6"/></svg>Usuarios</a>
       </div>
     </details>
     {% endif %}

@@ -1,0 +1,141 @@
+/* Ingreso al panel. Solo la carga la página de login; los tokens (colores, espacios, tipografía) vienen de panel.css.
+
+   Movimiento: UNA entrada ensayada (hero y formulario, menos de un segundo) y, después, solo movimiento que
+   dice algo: el ojito, el botón mientras verifica, el error, el aviso de mayúsculas y el tema. Lo ambiental
+   (ondas del logo, luz que sigue al cursor) es lento y bajo. Todo se apaga con prefers-reduced-motion.
+
+   Estado inicial de la entrada: la clase `entrada-js` la pone un script en el <head> ANTES de pintar, así no hay
+   un destello del contenido. `entro` la anula cuando termina. Si el script de movimiento no carga, un respaldo
+   en CSS lo muestra todo a los 1,6 s: nada queda invisible. */
+
+.entrada {
+  --ease-salida: cubic-bezier(0.22, 1, 0.36, 1);
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  background: var(--paper);
+}
+
+/* ───────────────────────────────────────────── hero */
+.entrada-hero {
+  position: relative; overflow: hidden; isolation: isolate;
+  background-color: var(--entrada-hero); color: var(--sobre-marca);
+  padding: var(--s8) var(--s7);
+  display: flex; flex-direction: column; justify-content: space-between; gap: var(--s6);
+  border-radius: 0 56px 56px 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .045) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+/* La luz sigue al cursor, con retraso: da profundidad al azul sin competir con el texto. */
+.hero-luz {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  --mx: 28%; --my: 22%;
+  background: radial-gradient(560px circle at var(--mx) var(--my), rgba(132, 124, 255, .26), transparent 62%);
+}
+.entrada-marca { display: flex; align-items: center; gap: var(--s3); font-weight: 800; font-size: var(--t-lg); letter-spacing: -0.025em; }
+.entrada-hero .entrada-marca { color: var(--sobre-marca); }
+.entrada-hero .marca-svg { width: 34px; height: 34px; position: relative; z-index: 1; }
+
+/* Ondas circulares que salen del logo: el bot llamando. Lentas y finas. */
+.marca-ondas { position: relative; display: block; width: 34px; height: 34px; flex: none; }
+.marca-ondas > i {
+  position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .5);
+  opacity: 0; transform: scale(1);
+  animation: entrada-onda 5.4s var(--ease-salida) infinite;
+}
+.marca-ondas > i:nth-child(2) { animation-delay: 1.8s; }
+.marca-ondas > i:nth-child(3) { animation-delay: 3.6s; }
+@keyframes entrada-onda {
+  0% { opacity: 0.5; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(5.2); }
+}
+
+.hero-texto h2 {
+  font-size: clamp(30px, 3.6vw, 48px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.06;
+  margin: 0 0 var(--s4); text-wrap: balance;
+}
+/* Cada línea del título sube desde una máscara. El padding evita cortar las colas de g, y, p. */
+.hero-texto h2 .linea { display: block; overflow: hidden; padding-bottom: 0.08em; }
+.hero-texto h2 .linea > span { display: block; }
+.hero-texto p { margin: 0; color: #d6d6f5; max-width: 40ch; font-size: var(--t-md); line-height: 1.55; }
+.entrada-hero small { color: #c9c8f2; }
+
+/* ───────────────────────────────────────────── lado del formulario */
+.entrada-lado { position: relative; display: grid; place-items: center; padding: var(--s7) var(--s6); }
+.entrada-caja { width: min(100%, 400px); }
+.entrada h1 { font-size: var(--t-xl); font-weight: 800; letter-spacing: -0.03em; margin: 0 0 var(--s2); text-wrap: balance; }
+.entrada-sub { color: var(--ink-3); margin: 0 0 var(--s5); font-size: var(--t-sm); }
+.entrada-form { display: block; }
+
+.entrada-tema {
+  position: absolute; top: var(--s5); right: var(--s5);
+  width: 42px; height: 42px; display: grid; place-items: center; padding: 0;
+  border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); cursor: pointer;
+  transition: background .18s, color .18s, border-color .18s, transform .12s;
+}
+.entrada-tema:hover { background: var(--active-soft); color: var(--ink); }
+.entrada-tema:active { transform: scale(.94); }
+.entrada-tema svg { grid-area: 1 / 1; width: 19px; height: 19px; }
+.entrada-tema .luna { display: none; }
+:root[data-theme="dark"] .entrada-tema .luna { display: block; }
+:root[data-theme="dark"] .entrada-tema .sol { display: none; }
+
+
+/* ───────────────────────────────────────────── botón */
+.entrada-btn {
+  position: relative; width: 100%; min-height: 50px; margin-top: var(--s5); padding: 0 var(--s5);
+  display: grid; place-items: center; overflow: hidden;
+  border: 0; border-radius: var(--r-pill); background: var(--tinta); color: var(--tinta-texto);
+  font: inherit; font-weight: 700; cursor: pointer;
+  transition: transform .14s var(--ease-salida), background-color .18s, box-shadow .22s;
+}
+.entrada-btn:hover { background: var(--tinta-hover); transform: translateY(-1px); box-shadow: 0 10px 22px -12px color-mix(in oklch, var(--ink) 60%, transparent); }
+.entrada-btn:active { transform: translateY(0) scale(.985); box-shadow: none; }
+.entrada-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.entrada-btn > span { grid-area: 1 / 1; transition: opacity .18s, transform .22s var(--ease-salida); }
+.entrada-btn .btn-carga { display: inline-flex; align-items: center; gap: 9px; opacity: 0; transform: translateY(10px); }
+.entrada-btn[aria-busy="true"] { cursor: progress; }
+.entrada-btn[aria-busy="true"] .btn-texto { opacity: 0; transform: translateY(-10px); }
+.entrada-btn[aria-busy="true"] .btn-carga { opacity: 1; transform: none; }
+
+.entrada-pie { color: var(--ink-3); font-size: var(--t-sm); margin: var(--s5) 0 0; padding-top: var(--s4); border-top: 1px solid var(--line); line-height: 1.55; }
+.entrada-pie a { color: var(--link); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.entrada-pie a:hover { text-decoration-color: currentColor; }
+.entrada-pie p { margin: 0; }
+.entrada-pie p + p { margin-top: var(--s2); }
+
+/* ───────────────────────────────────────────── entrada (estado inicial) */
+.entrada-js:not(.entro) [data-entra] { opacity: 0; }
+.entrada-js:not(.entro) .hero-texto h2 .linea > span { transform: translateY(108%); }
+.entrada-js:not(.entro) .entrada-hero { clip-path: inset(0 100% 0 0); }
+/* Respaldo: si el movimiento no arranca, a los 1,6 s se muestra todo. */
+.entrada-js:not(.entro) [data-entra],
+.entrada-js:not(.entro) .hero-texto h2 .linea > span,
+.entrada-js:not(.entro) .entrada-hero { animation: entrada-seguro .01s 1.6s forwards; }
+@keyframes entrada-seguro { to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
+
+/* ───────────────────────────────────────────── celular */
+@media (max-width: 860px) {
+  .entrada { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .entrada-hero { border-radius: 0 0 32px 32px; padding: var(--s6) var(--s5) var(--s6); gap: var(--s5); }
+  .entrada-hero .marca-svg, .marca-ondas { width: 30px; height: 30px; }
+  .hero-texto h2 { font-size: clamp(26px, 7.4vw, 34px); margin-bottom: var(--s3); }
+  .entrada-hero small { display: none; }
+  .entrada-lado { align-items: start; padding: var(--s6) var(--s5) var(--s7); }
+  .entrada-tema { top: var(--s4); right: var(--s4); width: 38px; height: 38px; }
+}
+@media (max-width: 560px) {
+  .hero-texto p { display: none; }
+  .entrada-hero { padding-block: var(--s5); gap: var(--s4); }
+}
+
+/* ───────────────────────────────────────────── sin movimiento */
+@media (prefers-reduced-motion: reduce) {
+  .marca-ondas > i { animation: none; opacity: 0; }
+  .entrada-js:not(.entro) [data-entra],
+  .entrada-js:not(.entro) .hero-texto h2 .linea > span,
+  .entrada-js:not(.entro) .entrada-hero { opacity: 1; transform: none; clip-path: none; animation: none; }
+  .entrada-btn, .entrada-btn > span, .entrada-tema { transition: none; }
+}

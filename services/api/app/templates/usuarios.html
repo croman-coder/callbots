@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% set nav = "usuarios" %}
+{% block title %}Usuarios · Callbot{% endblock %}
+
+{% block head_extra %}<link rel="stylesheet" href="/static/campos.css?v={{ campos_css_v }}">{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Usuarios</h1>
+    <p class="lede">Son las cuentas de los dashboards: una persona, una sola clave. Quien tiene rol Super admin o Manager entra a Callbot.</p>
+  </div>
+  {% if modo == "lista" %}
+  <div class="right">
+    <button type="button" class="btn primary" data-abrir-nuevo aria-expanded="false" aria-controls="nuevo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false" width="17" height="17"><path d="M12 5v14M5 12h14"/></svg>Nuevo usuario
+    </button>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+
+{% if modo == "apagado" %}
+<section class="section">
+  <div class="panel-form">
+    <p style="margin-top:0"><strong>El ingreso con cuentas de los dashboards no está activado en este servidor.</strong></p>
+    <p class="hint">Hace falta configurar <code>SUPABASE_URL</code> y <code>SUPABASE_ANON_KEY</code>. Mientras tanto se entra con la credencial de operación.</p>
+  </div>
+</section>
+
+{% elif modo == "sin_cuenta" %}
+<section class="section">
+  <div class="panel-form">
+    <p style="margin-top:0"><strong>Para administrar usuarios entrá con tu cuenta de los dashboards.</strong></p>
+    <p class="hint">Estás usando la credencial de operación, que no tiene una cuenta ahí: la pantalla le habla a los dashboards en tu nombre y necesita tu cuenta de super admin. Salí y volvé a ingresar con tu correo de Santa Rosa.</p>
+  </div>
+</section>
+
+{% elif modo == "confirmar" %}
+<section class="section">
+  <header><h2>Confirmá tu clave</h2><span class="note">Para administrar usuarios</span></header>
+  <form method="post" action="/usuarios/acceso" class="panel-form confirmar" autocomplete="off">
+    <p style="margin-top:0">Acá se crean cuentas, se cambian roles y se dan de baja personas <strong>en todos los dashboards</strong>. Por seguridad te pedimos la clave de nuevo; dura unos minutos.</p>
+    <div class="campo-ent">
+      <label for="u-clave">Tu clave</label>
+      <div class="campo-ico">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+        <input class="campo-ico__input" id="u-clave" name="clave" type="password" autocomplete="current-password" required autofocus>
+        {% include "_ojo.html" %}
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn primary">Confirmar</button>
+      <span class="hint">Entrás como {{ yo }}.</span>
+    </div>
+  </form>
+</section>
+
+{% elif modo == "error" %}
+<section class="section"><div class="panel-form"><p style="margin:0"><a class="link" href="/usuarios">Volver a intentar</a></p></div></section>
+
+{% else %}
+{# ───────────────────────────────────────── nuevo usuario #}
+<section class="section nuevo" id="nuevo" hidden>
+  <header><h2>Nuevo usuario</h2><span class="note">Se crea en los dashboards y entra a Callbot según su rol</span></header>
+  <form class="panel-form" data-form="crear" autocomplete="off">
+    <p class="aviso-error" data-aviso role="alert" hidden></p>
+    <div class="row">
+      <div><label for="n-correo">Correo</label>
+        <input id="n-correo" name="correo" type="email" inputmode="email" autocapitalize="none" spellcheck="false" required placeholder="nombre@{{ dominio }}"></div>
+      <div><label for="n-nombre">Nombre</label>
+        <input id="n-nombre" name="nombre" type="text" maxlength="60" placeholder="Cómo se muestra"></div>
+    </div>
+    <label for="n-rol">Rol en los dashboards</label>
+    <select id="n-rol" name="rol" data-rol required>
+      <option value="">Elegí un rol</option>
+      {% for clave, (nombre, detalle) in roles.items() %}<option value="{{ clave }}" data-detalle="{{ detalle }}">{{ nombre }}</option>{% endfor %}
+    </select>
+    <p class="hint" data-detalle-rol aria-live="polite">&nbsp;</p>
+    <fieldset class="marcas">
+      <legend>Marcas <span class="hint">· un Manager sin marcas las ve todas</span></legend>
+      <div class="dias">
+        {% for m in marcas %}<label class="dia"><input type="checkbox" name="marcas" value="{{ m }}"><span>{{ m.title() }}</span></label>{% endfor %}
+      </div>
+    </fieldset>
+    <label class="check"><input type="checkbox" name="invitar" checked data-invitar> Mandarle una invitación por correo: la persona elige su propia clave</label>
+    <div class="campo-ent" data-clave-inicial hidden>
+      <label for="n-clave">Clave inicial (al menos {{ min_clave }} caracteres)</label>
+      <div class="campo-ico">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+        <input class="campo-ico__input" id="n-clave" name="clave" type="password" autocomplete="new-password" minlength="{{ min_clave }}">
+        {% include "_ojo.html" %}
+      </div>
+      <p class="acciones-clave"><button type="button" class="btn mini" data-generar>Generar una</button> <button type="button" class="btn mini quiet" data-copiar>Copiar</button> <span class="hint" data-copiada aria-live="polite"></span></p>
+      <p class="hint">Tendrá que cambiarla en su primer ingreso.</p>
+    </div>
+    <div class="actions">
+      <button type="submit" class="btn primary" data-enviar>Crear usuario</button>
+      <button type="button" class="btn quiet" data-cerrar-nuevo>Cancelar</button>
+    </div>
+  </form>
+</section>
+
+{# ───────────────────────────────────────── lista #}
+<section class="section">
+  <div class="herramientas">
+    <label class="buscar">
+      <span class="sr-only">Buscar usuarios</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="buscar-usuarios" type="search" placeholder="Buscar por nombre o correo…" autocomplete="off" spellcheck="false">
+    </label>
+    <nav class="filtros-seg" aria-label="Qué personas ver" data-filtros>
+      <button type="button" data-filtro="todos" aria-pressed="true">Todos</button>
+      <button type="button" data-filtro="acceso" aria-pressed="false">Entran a Callbot</button>
+      <button type="button" data-filtro="baja" aria-pressed="false">De baja</button>
+    </nav>
+    <p class="hint" data-cuenta aria-live="polite" style="margin:0 0 0 auto"></p>
+  </div>
+
+  <div class="tablewrap"><div class="scroll">
+    <table id="tabla-usuarios" class="tabla-usuarios">
+      <thead><tr>
+        <th scope="col">Persona</th><th scope="col">Rol en los dashboards</th><th scope="col">En Callbot</th>
+        <th scope="col">Marcas</th><th scope="col">Último ingreso</th><th scope="col"><span class="sr-only">Acciones</span></th>
+      </tr></thead>
+      <tbody>
+        {% for p in gente %}
+        {% set es_yo = p.correo | lower == yo | lower %}
+        <tr class="persona{% if p.baja %} de-baja{% endif %}" data-id="{{ p.id }}" data-baja="{{ '1' if p.baja else '' }}" data-acceso="{{ '1' if p.acceso else '' }}"
+            data-buscar="{{ (p.nombre ~ ' ' ~ p.correo) | lower }}">
+          <td>
+            <div class="quien-usr">
+              <span class="avatar-usr" style="background:{{ p.color }};color:{{ p.texto_sobre_color }}" aria-hidden="true">{{ p.inicial }}</span>
+              <span><strong>{{ p.nombre }}</strong>{% if es_yo %} <span class="chip-dato">vos</span>{% endif %}<span class="sub-line" translate="no">{{ p.correo }}</span></span>
+            </div>
+          </td>
+          <td>{{ p.rol_nombre }}</td>
+          <td>
+            {% if p.baja %}<span class="pill failed">de baja</span>
+            {% elif p.acceso %}<span class="pill completed">{{ p.acceso_nombre }}</span>
+            {% else %}<span class="pill no_answer">Sin acceso</span>{% endif %}
+          </td>
+          <td>{% if p.marcas %}<span class="marcas-lista">{{ p.marcas | map("title") | join(", ") }}</span>{% elif p.rol == "brand" %}<span class="muted">ninguna</span>{% else %}<span class="muted">todas</span>{% endif %}</td>
+          <td class="tnum nowrap">{{ p.ultimo_ingreso | fecha("%d/%m/%y %H:%M") if p.ultimo_ingreso else "Nunca" }}</td>
+          <td class="num nowrap">
+           <div class="acciones-usr">
+            <button type="button" class="btn mini quiet" data-panel="editar" aria-expanded="false">Editar</button>
+            {% if not es_yo %}
+            <button type="button" class="btn mini quiet" data-panel="clave" aria-expanded="false">Nueva clave</button>
+            {% if p.baja %}<button type="button" class="btn mini quiet" data-accion="reactivar" data-id="{{ p.id }}">Reactivar</button>
+            {% else %}<button type="button" class="btn mini quiet danger" data-panel="baja" aria-expanded="false">Dar de baja</button>{% endif %}
+            {% endif %}
+           </div>
+          </td>
+        </tr>
+        <tr class="detalle" data-detalle-de="{{ p.id }}" hidden>
+          <td colspan="6">
+            <form class="panel-fila" data-panel-id="editar" data-id="{{ p.id }}" hidden autocomplete="off">
+              <p class="aviso-error" data-aviso role="alert" hidden></p>
+              <div class="row">
+                <div><label>Nombre<input name="nombre" type="text" maxlength="60" value="{{ p.nombre }}"></label></div>
+                <div><label>Rol en los dashboards
+                  <select name="rol" data-rol {% if es_yo %}disabled title="No podés cambiar tu propio rol"{% endif %}>
+                    {% for clave, (nombre, detalle) in roles.items() %}<option value="{{ clave }}" data-detalle="{{ detalle }}" {% if clave == p.rol %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+                    {% if p.rol not in roles %}<option value="{{ p.rol }}" selected>{{ p.rol_nombre }}</option>{% endif %}
+                  </select></label></div>
+              </div>
+              <p class="hint" data-detalle-rol>{{ roles[p.rol][1] if p.rol in roles else "" }}</p>
+              <fieldset class="marcas">
+                <legend>Marcas <span class="hint">· un Manager sin marcas las ve todas</span></legend>
+                <div class="dias">
+                  {% for m in marcas %}<label class="dia"><input type="checkbox" name="marcas" value="{{ m }}" {% if m in p.marcas %}checked{% endif %}><span>{{ m.title() }}</span></label>{% endfor %}
+                </div>
+              </fieldset>
+              <div class="actions"><button type="submit" class="btn primary mini" data-enviar>Guardar</button><button type="button" class="btn quiet mini" data-cerrar-panel>Cancelar</button></div>
+            </form>
+
+            <form class="panel-fila" data-panel-id="clave" data-id="{{ p.id }}" hidden autocomplete="off">
+              <p class="aviso-error" data-aviso role="alert" hidden></p>
+              <div class="campo-ent">
+                <label for="c-{{ p.id }}">Nueva clave para {{ p.nombre }} (al menos {{ min_clave }} caracteres)</label>
+                <div class="campo-ico">
+                  <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="4.5" y="10.5" width="15" height="10" rx="3"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>
+                  <input class="campo-ico__input" id="c-{{ p.id }}" name="clave" type="password" autocomplete="new-password" minlength="{{ min_clave }}" required>
+                  {% include "_ojo.html" %}
+                </div>
+                <p class="acciones-clave"><button type="button" class="btn mini" data-generar>Generar una</button> <button type="button" class="btn mini quiet" data-copiar>Copiar</button> <span class="hint" data-copiada aria-live="polite"></span></p>
+                <p class="hint">Se cierran sus sesiones abiertas y tendrá que elegir otra clave al volver a ingresar.</p>
+              </div>
+              <div class="actions"><button type="submit" class="btn primary mini" data-enviar>Cambiar clave</button><button type="button" class="btn quiet mini" data-cerrar-panel>Cancelar</button></div>
+            </form>
+
+            <div class="panel-fila" data-panel-id="baja" data-id="{{ p.id }}" hidden>
+              <p class="aviso-error" data-aviso role="alert" hidden></p>
+              <p style="margin:0 0 var(--s3)"><strong>¿Dar de baja a {{ p.nombre }}?</strong> No va a poder ingresar a ningún dashboard ni a Callbot, y se le cierran las sesiones. No se borra nada: se puede reactivar cuando quieras.</p>
+              <div class="actions" style="margin-top:0"><button type="button" class="btn primary mini peligro" data-accion="baja" data-id="{{ p.id }}" data-enviar>Dar de baja</button><button type="button" class="btn quiet mini" data-cerrar-panel>Cancelar</button></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="vacio" hidden><td colspan="6"><p class="empty"><strong>Nadie coincide</strong>Probá con otro nombre o cambiá el filtro.</p></td></tr>
+      </tbody>
+    </table>
+  </div></div>
+  <p class="hint" style="margin-top:var(--s3)">Borrar una cuenta la borra de todos los dashboards: eso se hace desde el dashboard, no desde acá.</p>
+</section>
+{% endif %}
+
+<script src="/static/usuarios.js?v={{ usuarios_js_v }}" defer></script>
+{% endblock %}

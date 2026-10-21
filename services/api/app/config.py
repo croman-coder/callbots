@@ -110,6 +110,9 @@ class Settings(BaseSettings):
     # Qué rol de los dashboards entra a Callbot y con qué rol. Lo que no figura, no entra:
     # las encuestas llevan teléfonos de clientes, así que `brand` y `administracion` quedan fuera.
     login_roles: str = Field("super_admin:admin,manager:calidad", validation_alias="LOGIN_ROLES")
+    # Los dashboards de Santa Rosa: de ahí sale la cuenta (ver app/cuentas.py), ahí se recupera la clave y su API
+    # de administración de usuarios es la que usa la pantalla Usuarios (ver app/usuarios.py).
+    dashboards_url: str = Field("https://dashboardmeta.santarosa.lat", validation_alias="DASHBOARDS_URL")
 
     # --- Claude (Anthropic) ---
     # El mismo modelo y la misma clave que usan Santa Rosa Ads, el asistente de los

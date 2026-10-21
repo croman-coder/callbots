@@ -30,6 +30,11 @@ templates = Jinja2Templates(directory=str(_AQUI / "templates"))
 templates.env.globals["css_v"] = _version("panel.css")
 templates.env.globals["js_v"] = _version("agente.js")
 templates.env.globals["voces_js_v"] = _version("voces.js")
+templates.env.globals["entrada_css_v"] = _version("entrada.css")
+templates.env.globals["campos_css_v"] = _version("campos.css")
+templates.env.globals["usuarios_js_v"] = _version("usuarios.js")
+templates.env.globals["entrada_js_v"] = _version("entrada.js")
+templates.env.globals["motion_v"] = _version("vendor/motion.min.js")
 
 
 def fecha(valor, formato: str = "%d/%m/%Y %H:%M") -> str:

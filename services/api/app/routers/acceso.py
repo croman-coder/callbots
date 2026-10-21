@@ -12,7 +12,8 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from app import cuentas, sso
+from app import cuentas, sso, usuarios
+from app.config import settings
 from app.plantillas import templates
 
 log = logging.getLogger(__name__)
@@ -86,7 +87,8 @@ def _abrir_sesion(respuesta: Response, principal: sso.Principal) -> None:
 def _pagina_login(request: Request, destino: str, *, error: str = "", correo: str = "", status: int = 200) -> Response:
     return templates.TemplateResponse(
         request, "login.html",
-        {"next": destino, "error": error, "correo": correo, "con_crm": sso.habilitado()},
+        {"next": destino, "error": error, "correo": correo, "con_crm": sso.habilitado(),
+         "recuperar_url": settings.dashboards_url.strip() or None},
         status_code=status, headers={"Cache-Control": "no-store"},
     )
 
@@ -117,7 +119,7 @@ def hacer_login(
     destino = destino_seguro(next)
     origen = (request.headers.get("cf-connecting-ip") or (request.client.host if request.client else ""))
     try:
-        principal = cuentas.iniciar_sesion(correo, clave, origen=origen)
+        principal, token, vence = cuentas.iniciar_sesion_con_token(correo, clave, origen=origen)
     except cuentas.LoginRechazado as e:
         return _pagina_login(
             request, destino, error=e.motivo, correo=correo.strip(),
@@ -125,6 +127,10 @@ def hacer_login(
         )
     respuesta = RedirectResponse(destino, status_code=303)
     _abrir_sesion(respuesta, principal)
+    if principal.rol == "admin":
+        # Quien entra como administrador ya confirmó su clave: el token le sirve para la pantalla Usuarios, sin
+        # volver a pedírsela (ver app/usuarios.py). Solo viaja a /usuarios.
+        usuarios.poner_cookie(respuesta, token, vence)
     return respuesta
 
 
@@ -134,5 +140,6 @@ def salir(request: Request) -> Response:
         raise HTTPException(status_code=403)
     respuesta = RedirectResponse("/login" if cuentas.habilitado() else "/", status_code=303)
     respuesta.delete_cookie(sso.COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+    usuarios.borrar_cookie(respuesta)
     respuesta.headers["Cache-Control"] = "no-store"
     return respuesta

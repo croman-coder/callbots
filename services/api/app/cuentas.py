@@ -98,6 +98,15 @@ def _dominio_permitido(email: str) -> bool:
 def iniciar_sesion(
     email: str, clave: str, *, cliente: httpx.Client | None = None, origen: str = ""
 ) -> Principal:
+    return iniciar_sesion_con_token(email, clave, cliente=cliente, origen=origen)[0]
+
+
+def iniciar_sesion_con_token(
+    email: str, clave: str, *, cliente: httpx.Client | None = None, origen: str = ""
+) -> tuple[Principal, str, int]:
+    """Lo mismo que `iniciar_sesion`, y además devuelve el token de Supabase de quien entró y cuántos segundos
+    le quedan. El token solo lo usa la pantalla Usuarios (ver app/usuarios.py) para hablar con la API de
+    administración de los dashboards en nombre de esa persona; no se guarda en la sesión."""
     email = email.strip().lower()
     if not email or not clave:
         raise LoginRechazado("Escribí tu correo y tu clave.")
@@ -157,7 +166,11 @@ def iniciar_sesion(
         with _cerrojo:  # un ingreso correcto borra los fallos previos de esa cuenta
             _fallos.pop(f"correo:{email}", None)
         log.info("Login: %s entró como %s", email, rol)
-        return Principal(email, rol, VIA)
+        try:
+            vence = int(datos.get("expires_in") or 0)
+        except (TypeError, ValueError):
+            vence = 0
+        return Principal(email, rol, VIA), token, vence
     finally:
         if propio:
             http.close()
