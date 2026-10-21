@@ -45,9 +45,9 @@ def test_ningun_agente_atiende(base):  # noqa: F811
 
 def test_asterisk_avisa_y_el_voice_agent_atiende(cliente, base):  # noqa: F811
     cid = _recepcion(base, "Recepción")
-    sesion = uuid.uuid4()
-    r = cliente.post("/internal/entrantes", data={"uuid": str(sesion), "de": "0981222333", "a": "400022"}, headers=INTERNO)
-    assert r.status_code == 200 and r.text == "ok"
+    r = cliente.post("/internal/entrantes", data={"de": "0981222333", "a": "400022"}, headers=INTERNO)
+    assert r.status_code == 200 and r.text.startswith("ok:")
+    sesion = uuid.UUID(r.text.split(":", 1)[1])  # la sesión la crea la API: Asterisk la usa para el AudioSocket
     caso = base().scalars(__import__("sqlalchemy").select(Caso)).one()
     assert caso.campaign_id == cid and caso.telefono == "0981222333" and caso.origen == "telefono"
     assert caso.conversacion[0] == {**caso.conversacion[0], "quien": "agente", "texto": "Posventa, ¿en qué lo ayudo?"}
@@ -58,15 +58,13 @@ def test_asterisk_avisa_y_el_voice_agent_atiende(cliente, base):  # noqa: F811
     assert cliente.post(f"/internal/sessions/{sesion}/recepcion", json={}, headers=INTERNO).json() == {"caso_id": caso.id}
     assert cliente.post(f"/internal/sessions/{sesion}/started", json={}, headers=INTERNO).json() == {"entrante": True}
     assert cliente.post(f"/internal/sessions/{sesion}/transfer", headers=INTERNO).json()["ok"] is False  # sin asesor
-    # Asterisk reintenta con la misma sesión: tampoco se duplica.
-    cliente.post("/internal/entrantes", data={"uuid": str(sesion), "de": "0981222333", "a": "400022"}, headers=INTERNO)
-    assert len(base().scalars(__import__("sqlalchemy").select(Caso)).all()) == 1
+    assert caso.session_uuid == sesion
 
 
 def test_sin_agente_contesta_no_y_sin_token_no_entra(cliente, base):  # noqa: F811
-    r = cliente.post("/internal/entrantes", data={"uuid": str(uuid.uuid4()), "de": "1", "a": "2"}, headers=INTERNO)
+    r = cliente.post("/internal/entrantes", data={"de": "1", "a": "2"}, headers=INTERNO)
     assert r.text == "no"
-    r = cliente.post("/internal/entrantes", data={"uuid": str(uuid.uuid4()), "de": "1", "a": "2"})
+    r = cliente.post("/internal/entrantes", data={"de": "1", "a": "2"})
     assert r.status_code in (401, 403)
 
 

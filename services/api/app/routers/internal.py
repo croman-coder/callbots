@@ -690,18 +690,19 @@ def conocimiento_del_caso(db: Session, caso: Caso, dijo: str) -> str:
 
 
 @router.post("/entrantes", response_class=PlainTextResponse)
-def llamada_entrante(uuid: uuid_mod.UUID = Form(...), de: str = Form(""), a: str = Form(""),
-                     db: Session = Depends(get_db)) -> PlainTextResponse:
-    """Asterisk avisa que entró una llamada (contexto `callbot-entrante`, por CURL). «ok» = la atiende un agente de
-    recepción (el caso queda abierto con esta sesión); «no» = ningún agente atiende ese número y Asterisk la pasa al
-    número de respaldo o da ocupado. Texto plano: es lo que lee el dialplan."""
-    caso = entrantes.abrir(db, uuid, de, a)
+def llamada_entrante(de: str = Form(""), a: str = Form(""), db: Session = Depends(get_db)) -> PlainTextResponse:
+    """Asterisk avisa que entró una llamada (contexto `callbot-entrante`, por CURL). «ok:<sesión>» = la atiende un
+    agente de recepción: el caso queda abierto con esa sesión, que es la que Asterisk le pasa al AudioSocket. «no» =
+    ningún agente atiende ese número y Asterisk la pasa al número de respaldo o da ocupado. La sesión la crea la API
+    porque el Asterisk 18 de la imagen no tiene UUID(). Texto plano: es lo que lee el dialplan."""
+    sesion = uuid_mod.uuid4()
+    caso = entrantes.abrir(db, sesion, de, a)
     if caso is None:
         log.warning("Llamada entrante de %s al %s: ningún agente atiende ese número", de or "?", a or "?")
         return PlainTextResponse("no")
     db.commit()
     log.info("Llamada entrante de %s al %s: caso %s (%s)", de or "?", a or "?", caso.id, caso.campaign.name)
-    return PlainTextResponse("ok")
+    return PlainTextResponse(f"ok:{sesion}")
 
 
 @router.post("/sessions/{session_uuid}/recepcion")

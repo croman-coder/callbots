@@ -8,10 +8,11 @@ agenda el turno o deriva el caso al área con su plazo.
 
 ```
 Personal (troncal 400022) ──INVITE──▶ Asterisk, contexto callbot-entrante
-    │  CURL POST /internal/entrantes  (uuid de la sesión, quién llama, a qué número; con el token interno)
+    │  CURL POST /internal/entrantes  (quién llama y a qué número; con el token interno)
     ▼
 API: ¿algún agente de recepción atiende ese número?
-    ├─ sí → abre el caso con esa sesión y contesta «ok»
+    ├─ sí → crea la sesión, abre el caso con ella y contesta «ok:<sesión>»
+    │        (la sesión la crea la API: el Asterisk 18 de la imagen no tiene UUID())
     │        Asterisk atiende y conecta el bot (AudioSocket, en un canal Local para poder transferir)
     │        el voice-agent pide el guion de esa sesión → modo recepción, con el teléfono de quien llama
     └─ no (o la API no responde) → número de respaldo (ENTRANTE_RESPALDO) o ocupado
