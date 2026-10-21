@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, conocimiento, datos_cliente, versiones, vocabulario, voces, webhooks
+from app import agentes, conocimiento, datos_cliente, revision, versiones, vocabulario, voces, webhooks
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
@@ -147,7 +147,7 @@ def _datos_registro(db: Session, campaign: Campaign, filtro: str, page: int) -> 
     if filtro == "conectadas":
         condiciones.append(CallAttempt.answered_at.is_not(None))
     elif filtro == "exitosas":
-        condiciones.append(CallAttempt.outcome == CallOutcome.COMPLETED)
+        condiciones.append(revision.condicion_exitosas())
     base = select(CallAttempt).join(SurveyTarget, SurveyTarget.id == CallAttempt.target_id).where(*condiciones)
     total = db.scalar(select(func.count()).select_from(base.subquery())) or 0
     paginas = max(1, (total + POR_PAGINA - 1) // POR_PAGINA)

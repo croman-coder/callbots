@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, pronunciaciones, versiones, voces
+from app import agentes, pronunciaciones, revision, versiones, voces
 from app.config import settings
 from app.etiquetas import etiqueta
 from app.plantillas import templates
@@ -36,6 +36,7 @@ from app.models import (
     Answer,
     CallAnalysis,
     CallAttempt,
+    CallComment,
     CallOutcome,
     Campaign,
     Question,
@@ -660,11 +661,20 @@ def call_detail(
     if call is None:
         raise HTTPException(404, "Llamada inexistente")
 
+    comentarios = db.scalars(select(CallComment).where(CallComment.call_id == call_id).order_by(CallComment.id)).all()
+    principal = getattr(request.state, "principal", None)
     return templates.TemplateResponse(
         request,
         "call_detail.html",
         {
             "call": call,
+            "exitosa": revision.exitosa(call),
+            "revisiones": revision.REVISIONES,
+            "comentarios": comentarios,
+            "yo": principal.usuario if principal else None,
+            "soy_admin": bool(principal and principal.rol == "admin"),
+            "ok": request.query_params.get("ok"),
+            "error": request.query_params.get("error"),
             "settings_tz": settings.timezone,
             "QuestionType": QuestionType,
             "satisfactory_min": SATISFACTORY_MIN,
@@ -733,6 +743,74 @@ def cerrar_seguimiento(
     # Solo se vuelve a una pantalla de este mismo sitio (nunca a una URL que venga del formulario).
     destino = f"/calls/{call_id}" if volver != "inicio" else "/"
     return _redirect(destino)
+
+
+def _quien(request: Request) -> str | None:
+    principal = getattr(request.state, "principal", None)
+    return (principal.usuario if principal else "")[:160] or None
+
+
+@router.post("/calls/{call_id}/revision")
+def revisar_llamada(call_id: int, request: Request, veredicto: str = Form(""), motivo: str = Form(""),
+                    db: Session = Depends(get_db)) -> RedirectResponse:
+    """Corrige a mano si la llamada fue exitosa o no (o la vuelve a como la calificó el sistema)."""
+    call = db.get(CallAttempt, call_id)
+    if call is None:
+        raise HTTPException(404, "Llamada inexistente")
+    try:
+        revision.revisar(call, veredicto, motivo, _quien(request))
+    except revision.RevisionError as exc:
+        return _redirect(f"/calls/{call_id}?error={quote_plus(str(exc))}#revision")
+    db.commit()
+    return _redirect(f"/calls/{call_id}?ok={quote_plus('Revisión guardada')}#revision")
+
+
+@router.post("/calls/{call_id}/answers/{answer_id}/corregir")
+def corregir_respuesta(call_id: int, answer_id: int, request: Request, valor: str = Form(""),
+                       db: Session = Depends(get_db)) -> RedirectResponse:
+    """Corrige el valor de una respuesta mal transcrita y recalcula el análisis (y lo vuelve a mandar a Bitrix)."""
+    from app.scheduler.tasks import reanalyze_call
+    from app.services.analysis import compute_satisfaction
+
+    answer = db.get(Answer, answer_id)
+    if answer is None or answer.call_id != call_id:
+        raise HTTPException(404, "Respuesta inexistente")
+    try:
+        revision.corregir(answer, revision.valor_de(valor, answer.question.qtype), _quien(request))
+    except revision.RevisionError as exc:
+        return _redirect(f"/calls/{call_id}?error={quote_plus(str(exc))}#respuestas")
+    call = answer.call
+    if call.analysis is not None:
+        call.analysis.satisfaction_score = compute_satisfaction(call.answers)
+    db.commit()
+    reanalyze_call.delay(call_id)
+    return _redirect(f"/calls/{call_id}?ok={quote_plus('Respuesta corregida: se recalcula el análisis y se vuelve a mandar a Bitrix')}#respuestas")
+
+
+@router.post("/calls/{call_id}/comentarios")
+def comentar(call_id: int, request: Request, texto: str = Form(""), db: Session = Depends(get_db)) -> RedirectResponse:
+    if db.get(CallAttempt, call_id) is None:
+        raise HTTPException(404, "Llamada inexistente")
+    texto = (texto or "").strip()[:2000]
+    if not texto:
+        return _redirect(f"/calls/{call_id}?error={quote_plus('Escribí el comentario')}#comentarios")
+    db.add(CallComment(call_id=call_id, autor=_quien(request) or "operación", texto=texto))
+    db.commit()
+    return _redirect(f"/calls/{call_id}#comentarios")
+
+
+@router.post("/calls/{call_id}/comentarios/{comentario_id}/borrar")
+def borrar_comentario(call_id: int, comentario_id: int, request: Request, db: Session = Depends(get_db)) -> RedirectResponse:
+    """Cada uno borra los suyos; un administrador, cualquiera."""
+    c = db.get(CallComment, comentario_id)
+    if c is None or c.call_id != call_id:
+        raise HTTPException(404, "Comentario inexistente")
+    principal = getattr(request.state, "principal", None)
+    if not principal or (principal.rol != "admin" and c.autor != principal.usuario):
+        raise HTTPException(403, "Solo podés borrar tus comentarios")
+    db.delete(c)
+    db.commit()
+    return _redirect(f"/calls/{call_id}#comentarios")
 
 
 @router.post("/calls/{call_id}/reanalyze")

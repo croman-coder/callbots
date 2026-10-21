@@ -43,6 +43,34 @@
   </div>
 </div>
 
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+
+<section class="section" id="revision">
+  <header>
+    <h2>Resultado</h2>
+    <span class="note">El sistema la da por exitosa si el cliente completó la encuesta; se puede corregir a mano</span>
+  </header>
+  <div class="panel-form revision">
+    <p style="margin-top:0">
+      <span class="pill {{ 'completed' if exitosa else 'no_answer' }}">{{ "Exitosa" if exitosa else "No exitosa" }}</span>
+      {% if call.revision %}
+        <span class="hint">Revisada a mano por {{ call.revision_por or "el equipo" }}{% if call.revision_at %} el {{ call.revision_at | fecha("%d/%m/%y %H:%M") }}{% endif %}: «{{ call.revision_motivo }}».</span>
+      {% else %}<span class="hint">Calificación del sistema.</span>{% endif %}
+    </p>
+    <form method="post" action="/calls/{{ call.id }}/revision" class="fila-revision" autocomplete="off">
+      <label for="r-veredicto" class="sr-only">Corregir el resultado</label>
+      <select id="r-veredicto" name="veredicto">
+        <option value="sistema" {% if not call.revision %}selected{% endif %}>Como la calificó el sistema</option>
+        {% for clave, nombre in revisiones.items() %}<option value="{{ clave }}" {% if call.revision == clave %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+      </select>
+      <label for="r-motivo" class="sr-only">Motivo</label>
+      <input id="r-motivo" type="text" name="motivo" maxlength="1000" value="{{ call.revision_motivo or '' }}" placeholder="Motivo (queda registrado)">
+      <button type="submit" class="btn">Guardar</button>
+    </form>
+  </div>
+</section>
+
 {% if calidad.puntaje is not none %}
 <section class="section">
   <header>
@@ -56,7 +84,7 @@
 </section>
 {% endif %}
 
-<section class="section">
+<section class="section" id="respuestas">
   <header>
     <h2>Respuestas</h2>
     <span class="note">Se guarda la transcripción además del valor: sin ella no se puede auditar una interpretación dudosa</span>
@@ -90,7 +118,21 @@
                 {%- set ok = a.value_numeric >= satisfactory_min -%}
                 <span {% if not ok %}class="score-bad"{% else %}class="strong"{% endif %}>{{ a.value_numeric | round(0) | int }}</span><span class="muted"> / 10</span>
               {% else %}{{ a.value_numeric | dec }}{% endif %}
-              {% if a.value_source %}<span class="sub-line">{{ a.value_source }}</span>{% endif %}
+              {% if a.value_source == "manual" %}<span class="sub-line">corregida por {{ a.corregido_por or "el equipo" }}{% if a.valor_original is not none %} (era {{ a.valor_original | dec(0) }}){% endif %}</span>
+              {% elif a.value_source %}<span class="sub-line">{{ a.value_source }}</span>{% endif %}
+              {% if a.question.qtype.value != "open" %}
+              <details class="corregir">
+                <summary>Corregir</summary>
+                <form method="post" action="/calls/{{ call.id }}/answers/{{ a.id }}/corregir" class="fila-revision">
+                  {% if a.question.qtype.value == "yes_no" %}
+                  <select name="valor" aria-label="Valor correcto"><option value="si">Sí</option><option value="no">No</option></select>
+                  {% else %}
+                  <input type="number" name="valor" min="{{ 1 if a.question.qtype.value == 'scale_1_5' else 0 }}" max="{{ 5 if a.question.qtype.value == 'scale_1_5' else 10 }}" step="1" required aria-label="Valor correcto" style="width:80px">
+                  {% endif %}
+                  <button type="submit" class="btn mini">Guardar</button>
+                </form>
+              </details>
+              {% endif %}
             </td>
             <td class="num">
               {% if a.asr_confidence is not none %}
@@ -208,5 +250,27 @@
       </table>
     </div>
   </div>
+</section>
+<section class="section" id="comentarios">
+  <header><h2>Comentarios</h2><span class="note">Del equipo, sobre esta llamada</span></header>
+  {% if comentarios %}
+  <ul class="comentarios">
+    {% for c in comentarios %}
+    <li>
+      <p class="comentario-cab"><strong>{{ c.autor }}</strong> <span class="hint">{{ c.created_at | fecha("%d/%m/%y %H:%M") if c.created_at else "" }}</span>
+        {% if soy_admin or c.autor == yo %}
+        <form method="post" action="/calls/{{ call.id }}/comentarios/{{ c.id }}/borrar" class="en-linea"><button type="submit" class="btn mini quiet danger">Borrar</button></form>
+        {% endif %}
+      </p>
+      <p class="comentario-texto">{{ c.texto }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  <form method="post" action="/calls/{{ call.id }}/comentarios" class="panel-form" autocomplete="off">
+    <label for="c-texto" class="sr-only">Comentario</label>
+    <textarea id="c-texto" name="texto" rows="2" maxlength="2000" required placeholder="Ej.: le devolví la llamada, ya le agendamos turno."></textarea>
+    <div class="actions"><button type="submit" class="btn">Comentar</button></div>
+  </form>
 </section>
 {% endblock %}

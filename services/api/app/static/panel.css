@@ -978,6 +978,18 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .en-linea { display: inline; margin: 0 0 0 var(--s2); }
 .clonar h3 { margin: var(--s5) 0 var(--s2); font-size: var(--t-md, 1rem); }
 .clonar h3:first-child { margin-top: 0; }
+/* Detalle de llamada: revisión del resultado, corregir respuestas y comentarios. */
+.fila-revision { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin: 0; }
+.fila-revision input[type="text"] { flex: 1 1 260px; min-width: 0; }
+.corregir { margin-top: var(--s1); }
+.corregir > summary { cursor: pointer; font-size: var(--t-xs); color: var(--link); list-style: none; }
+.corregir > summary::-webkit-details-marker { display: none; }
+.corregir[open] > summary { margin-bottom: var(--s1); }
+.comentarios { list-style: none; margin: 0 0 var(--s3); padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.comentarios li { padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.comentario-cab { margin: 0 0 var(--s1); display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; }
+.comentario-cab form { margin-left: auto; }
+.comentario-texto { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* Webhooks de resultados. */
 .webhooks { margin-top: var(--s6); }
 .lista-webhooks { list-style: none; margin: var(--s3) 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }

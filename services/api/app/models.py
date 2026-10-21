@@ -350,6 +350,11 @@ class CallAttempt(Base):
     # ID que devuelve telephony.externalcall.register, para cerrar la llamada después
     bitrix_call_id: Mapped[str | None] = mapped_column(String(80))
     recording_path: Mapped[str | None] = mapped_column(String(400))
+    # Revisión a mano del resultado (app/revision.py): "exitosa" | "no_exitosa"; vacío = como la calificó el sistema.
+    revision: Mapped[str | None] = mapped_column(String(12))
+    revision_motivo: Mapped[str | None] = mapped_column(Text)
+    revision_por: Mapped[str | None] = mapped_column(String(160))
+    revision_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -387,8 +392,12 @@ class Answer(Base):
     # Valor normalizado. Para scale_1_5 / scale_1_10 / numeric -> número.
     # Para yes_no -> 1.0 / 0.0. Para open -> None.
     value_numeric: Mapped[float | None] = mapped_column(Float)
-    # Cómo se obtuvo value_numeric: "rules" (regex/palabras clave) o "llm"
+    # Cómo se obtuvo value_numeric: "rules" (regex/palabras clave), "llm" o "manual" (corregido en el panel)
     value_source: Mapped[str | None] = mapped_column(String(20))
+    # Si alguien corrigió el valor a mano: el que había antes, quién y cuándo (app/revision.py).
+    valor_original: Mapped[float | None] = mapped_column(Float)
+    corregido_por: Mapped[str | None] = mapped_column(String(160))
+    corregido_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     retries_used: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(
@@ -509,4 +518,16 @@ class WebhookEnvio(Base):
     error: Mapped[str | None] = mapped_column(String(300))
     duracion_ms: Mapped[int | None] = mapped_column(Integer)
     prueba: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class CallComment(Base):
+    """Un comentario del equipo sobre una llamada («le devolví la llamada», «el ASR entendió mal»…)."""
+
+    __tablename__ = "call_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    call_id: Mapped[int] = mapped_column(ForeignKey("call_attempts.id", ondelete="CASCADE"), nullable=False, index=True)
+    autor: Mapped[str] = mapped_column(String(160), nullable=False)
+    texto: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

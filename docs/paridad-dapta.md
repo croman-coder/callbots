@@ -21,7 +21,7 @@ replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera
 | **Acciones en la llamada**: terminar, transferir (fría, cálida, con screening), marcar dígitos, plantilla de WhatsApp, agendar, acción a una API | 🟡 terminar y transferir en frío | ⬜ horario hábil para transferir · ⬜ acción a una API (webhook en vivo) · ⬜ agendar · ⬜ WhatsApp en la llamada · ⬜ transferencia cálida |
 | **Telefonía**: números, troncal SIP propia, entrantes, llamadas simultáneas | 🟡 troncal por variables, solo salientes | ⬜ entrantes (depende del FortiGate / Personal) |
 | **Secuencias de voz**: intentos, días y franjas, fechas, A/B de agentes, fuentes (Excel, Sheets, webhook, CRM), WhatsApp si no atiende | 🟡 Excel y Bitrix, horario, intentos | ⬜ entrada por webhook (llamar al lead apenas llega) · ⬜ varias franjas y fechas · ⬜ A/B de agentes · ⬜ WhatsApp si no atiende |
-| **Análisis**: objetivo, variables propias, destinos (Sheets, CRM, flow), avisos, reporte diario, corrección manual, comentarios | 🟡 objetivo, variables, Panel/Excel/Bitrix | ✅ webhook de destino con «probar con la última llamada» (21/10) · ⬜ corregir el resultado a mano · ⬜ comentarios · ⬜ aviso por correo/WhatsApp · ⬜ reporte diario · ⬜ Google Sheets |
+| **Análisis**: objetivo, variables propias, destinos (Sheets, CRM, flow), avisos, reporte diario, corrección manual, comentarios | 🟡 objetivo, variables, Panel/Excel/Bitrix | ✅ webhook de destino con «probar con la última llamada» (21/10) · ✅ corregir el resultado a mano y comentarios, más corregir una respuesta mal transcrita (21/10) · ⬜ aviso por correo/WhatsApp · ⬜ reporte diario · ⬜ Google Sheets |
 | **Brains** (base de conocimiento: archivos, web, texto) | ✅ 21/10 (PDF, Word, TXT, CSV, web y texto; hasta 5 por agente) | ⬜ OCR de PDF escaneados · ⬜ leer un sitio entero por sitemap |
 | **Asistente (Dapti)** | 🟡 «Preguntale a tus llamadas» | ⬜ crear y editar agentes desde el chat |
 | **Historial de versiones** | ✅ 21/10 | |
@@ -40,7 +40,7 @@ replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera
 2. ✅ Base de conocimiento: documentos y texto que el agente usa para responder con datos.
 3. ✅ Variables con los campos del destinatario (Bitrix / Excel) en el guion.
 4. ✅ Webhook de resultados con «probar con la última llamada».
-5. Corrección manual del resultado y comentarios en cada llamada.
+5. ✅ Corrección manual del resultado, de respuestas mal transcritas y comentarios en cada llamada.
 6. Corte por silencio, duración máxima y horario hábil para transferir, configurables por agente.
 7. Simulación: la IA hace de cliente y se ve cómo responde el agente, sin llamar a nadie.
 

@@ -93,7 +93,7 @@ def build_comment(call: CallAttempt) -> str:
     propios = [
         (nombre, valor)
         for nombre, valor in variables.pares(
-            target.campaign.analysis_fields if target and target.campaign else None,
+            getattr(getattr(target, "campaign", None), "analysis_fields", None),
             analysis.extras if analysis else None,
         )
         if valor != "—"
@@ -112,6 +112,11 @@ def build_comment(call: CallAttempt) -> str:
 
     if target and target.phone:
         lines.append(f"[I]Teléfono: {target.phone}[/I]")
+
+    corregidas = [a for a in call.answers if getattr(a, "value_source", None) == "manual"]
+    if corregidas:
+        quien = next((a.corregido_por for a in corregidas if getattr(a, "corregido_por", None)), None)
+        lines.append(f"[I]Corregido a mano en el panel{f' por {quien}' if quien else ''}: reemplaza al comentario anterior.[/I]")
 
     return "\n".join(lines)
 

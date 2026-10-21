@@ -31,7 +31,7 @@
           <td class="nowrap">{{ c.target.contact_name or "—" }}</td>
           <td>{% if c.outcome %}<span class="tag {{ c.outcome.value }}">{{ c.outcome | estado }}</span>{% else %}<span class="tag calling">en curso</span>{% endif %}</td>
           <td class="muted">{{ c.hangup_cause | estado("corte") if c.hangup_cause else "—" }}</td>
-          <td>{{ "Cumplido" if c.outcome and c.outcome.value == "completed" else "No cumplido" }}</td>
+          <td>{{ "Cumplido" if es_exitosa(c) else "No cumplido" }}{% if c.revision %} <span class="chip-dato" title="Revisada a mano por {{ c.revision_por or 'el equipo' }}: {{ c.revision_motivo }}">revisada</span>{% endif %}</td>
           <td class="num tnum">{% if a and a.satisfaction_score is not none %}{{ a.satisfaction_score | dec }}{% else %}—{% endif %}</td>
           <td>Saliente</td>
           <td class="num"><a class="link" href="/calls/{{ c.id }}" aria-label="Ver la llamada de {{ c.target.contact_name or c.target.phone or c.id }}">Ver</a></td>

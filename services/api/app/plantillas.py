@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import settings
 from app.etiquetas import etiqueta
+from app import revision
 from app.services import variables
 
 _AQUI = Path(__file__).resolve().parent
@@ -75,6 +76,7 @@ def duracion(segundos) -> str:
 templates.env.filters["fecha"] = fecha
 templates.env.filters["dec"] = dec
 templates.env.globals["datos_propios"] = variables.pares
+templates.env.globals["es_exitosa"] = revision.exitosa
 templates.env.filters["estado"] = etiqueta
 templates.env.filters["duracion"] = duracion
 templates.env.filters["corto"] = corto
