@@ -245,9 +245,10 @@ async def _voicestudio_synthesize(text: str, timeout: float, perfil: str, speed:
         "speed": min(max(speed, 0.5), 2.0),
         "num_step": config.voicestudio_pasos,
     }
+    cabeceras = {"Authorization": f"Bearer {config.voicestudio_api_key}"} if config.voicestudio_api_key else {}
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
-            f"{config.voicestudio_url.rstrip('/')}/v1/audio/speech", json=payload
+            f"{config.voicestudio_url.rstrip('/')}/v1/audio/speech", json=payload, headers=cabeceras
         )
         response.raise_for_status()
         return _wav_to_telephony(response.content)

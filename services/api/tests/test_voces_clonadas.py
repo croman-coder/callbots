@@ -136,9 +136,11 @@ def test_un_agente_puede_elegir_una_voz_clonada(cliente, Sesion):
 
 def test_si_el_permiso_no_queda_se_borra_la_voz(monkeypatch):
     monkeypatch.setattr(settings, "voicestudio_url", "http://voicestudio:3900")
+    monkeypatch.setattr(settings, "voicestudio_api_key", "clave-larga")
     vistos = []
 
     def responder(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer clave-larga"
         vistos.append((request.method, request.url.path))
         if request.url.path == "/profiles":
             return httpx.Response(200, json={"id": "p1", "name": "X"})

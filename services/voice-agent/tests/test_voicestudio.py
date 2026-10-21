@@ -29,7 +29,7 @@ def _aislar(monkeypatch, tmp_path):
     monkeypatch.setattr(tts, "_en_cola", {})
     monkeypatch.setattr(tts, "_tarea", None)
     monkeypatch.setattr(tts, "_engines", {"dora": "kokoro"})
-    antes = {k: getattr(config, k) for k in ("tts_cache_dir", "voicestudio_url", "voicebox_profile_id", "voicestudio_vivo_timeout")}
+    antes = {k: getattr(config, k) for k in ("tts_cache_dir", "voicestudio_url", "voicebox_profile_id", "voicestudio_vivo_timeout", "voicestudio_api_key")}
     object.__setattr__(config, "tts_cache_dir", str(tmp_path))
     object.__setattr__(config, "voicestudio_url", "http://voicestudio:3900")
     object.__setattr__(config, "voicebox_profile_id", "dora")
@@ -104,7 +104,10 @@ def _wav(rate=24000, segundos=0.1) -> bytes:
 def test_pide_el_audio_como_openai_y_lo_pasa_a_8_khz(monkeypatch):
     pedidos = []
 
+    object.__setattr__(config, "voicestudio_api_key", "clave-larga")
+
     def responder(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer clave-larga"
         pedidos.append((str(request.url), json.loads(request.content)))
         return httpx.Response(200, content=_wav())
 

@@ -54,6 +54,7 @@ class Config:
     # VoiceStudio (OmniVoice): voces clonadas que hablan en vivo, pero solo con GPU (en CPU una
     # frase tarda ~25 s). Las campañas lo eligen con un perfil "vs:<id>".
     voicestudio_url: str = os.getenv("VOICESTUDIO_URL", "")
+    voicestudio_api_key: str = os.getenv("VOICESTUDIO_API_KEY", "")
     voicestudio_language: str = os.getenv("VOICESTUDIO_LANGUAGE", "Spanish")
     voicestudio_vivo_timeout: float = float(os.getenv("VOICESTUDIO_VIVO_TIMEOUT", "4"))
     # Pasos de difusión: menos es más rápido y algo menos fino. Medido en la notebook (RTX 5060), una

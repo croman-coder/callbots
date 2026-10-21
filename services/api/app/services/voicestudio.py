@@ -50,6 +50,11 @@ def _fallo(accion: str, exc: Exception) -> VoiceStudioError:
     return VoiceStudioError(f"El motor de voz no respondió al {accion}. Probá de nuevo en un rato.")
 
 
+def _cabeceras() -> dict[str, str]:
+    clave = settings.voicestudio_api_key
+    return {"Authorization": f"Bearer {clave}"} if clave else {}
+
+
 def id_callbot(perfil_id: str) -> str:
     return f"{PREFIJO}{perfil_id}"
 
@@ -63,7 +68,7 @@ def id_estudio(voice_profile_id: str) -> str | None:
 
 def list_profiles() -> list[dict]:
     try:
-        r = httpx.get(_url("/profiles"), timeout=RAPIDO)
+        r = httpx.get(_url("/profiles"), headers=_cabeceras(), timeout=RAPIDO)
         r.raise_for_status()
         datos = r.json()
     except httpx.HTTPError as exc:
@@ -87,6 +92,7 @@ def clonar(
             _url("/profiles"),
             data={"name": nombre, "ref_text": referencia_texto, "language": "Spanish", "kind": "clone"},
             files={"ref_audio": (referencia_archivo, referencia, "application/octet-stream")},
+            headers=_cabeceras(),
             timeout=LENTO,
         )
         r.raise_for_status()
@@ -99,6 +105,7 @@ def clonar(
             _url(f"/profiles/{perfil['id']}/consent"),
             data={"consent_text": consentimiento_texto},
             files={"consent_audio": (consentimiento_archivo, consentimiento, "audio/wav")},
+            headers=_cabeceras(),
             timeout=RAPIDO,
         )
         r.raise_for_status()
@@ -110,7 +117,7 @@ def clonar(
 
 def borrar(perfil_id: str, silencioso: bool = False) -> None:
     try:
-        httpx.delete(_url(f"/profiles/{perfil_id}"), timeout=RAPIDO).raise_for_status()
+        httpx.delete(_url(f"/profiles/{perfil_id}"), headers=_cabeceras(), timeout=RAPIDO).raise_for_status()
     except httpx.HTTPError as exc:
         if not silencioso:
             raise _fallo("borrar la voz", exc) from exc
@@ -129,6 +136,7 @@ def muestra(perfil_id: str, texto: str) -> bytes:
                 "response_format": "wav",
                 "language": "Spanish",
             },
+            headers=_cabeceras(),
             timeout=LENTO,
         )
         r.raise_for_status()

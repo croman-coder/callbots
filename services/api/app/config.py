@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     voces_con_gpu: bool = Field(False, validation_alias="VOCES_CON_GPU")
     # VoiceStudio (OmniVoice): clonar voces desde el panel y hacerlas hablar en vivo. Necesita GPU.
     voicestudio_url: str = ""
+    # La instalación de servidor de VoiceStudio pide OMNIVOICE_API_KEY como «Authorization: Bearer».
+    voicestudio_api_key: str = ""
 
     # --- Login con la cuenta de los dashboards (Supabase) ---
     # Es la misma cuenta que usan Meta Ads y el tablero comercial: una persona, un
