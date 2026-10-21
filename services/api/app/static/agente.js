@@ -165,6 +165,12 @@
     window.callbotMarcarSucio = function () { sucio = true; };
   }
 
+  // ------------------------------------------------------------ Buzón de voz: el mensaje solo se pide si se elige dejarlo
+  $$("[data-buzon]").forEach(function (b) {
+    var sel = $("[data-buzon-accion]", b), msg = $("[data-buzon-mensaje]", b);
+    if (sel && msg) sel.addEventListener("change", function () { msg.hidden = sel.value !== "mensaje"; });
+  });
+
   // ------------------------------------------------------------ Detalles chicos
   $$("[data-copiar-texto]").forEach(function (b) { b.addEventListener("click", function () { copiar(b.dataset.copiarTexto, b); }); });
   $$("input[type=range][data-salida]").forEach(function (r) {

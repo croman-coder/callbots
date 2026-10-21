@@ -44,6 +44,12 @@ class SurveyScript(BaseModel):
     voice_expressiveness: float = 0.667
     voice_volume: float = 1.0
     voice_profile_id: str | None = None
+    # Buzón de voz: None = no se detecta; "colgar" o "mensaje" (ver Campaign.voicemail_action).
+    voicemail_action: str | None = None
+    voicemail_script: str = ""
+    # Transferencia: solo se ofrece si el agente tiene un teléfono de asesor cargado.
+    transfer_enabled: bool = False
+    transfer_script: str = ""
     questions: list[QuestionOut]
 
 
@@ -80,6 +86,8 @@ class AnswerResult(BaseModel):
     is_silence: bool = False
     should_retry: bool = False
     saved: bool = True
+    # El cliente pidió hablar con una persona y el agente tiene a quién pasarle la llamada.
+    wants_transfer: bool = False
 
 
 class SessionFinished(BaseModel):

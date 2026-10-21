@@ -45,6 +45,7 @@ from app.schemas import (
 )
 from app.services import conversation
 from app.services.scoring import interpret
+from app.services.transferir import pide_persona
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +77,24 @@ def _load_call(db: Session, session_uuid: uuid_mod.UUID) -> CallAttempt:
     if call is None:
         raise HTTPException(404, f"No hay llamada para la sesión {session_uuid}")
     return call
+
+
+# La dice el agente si el cliente pidió un asesor y la transferencia no se pudo hacer. Va fija acá
+# (y también en el voice-agent) para precalentarla con la voz de la campaña.
+FRASE_TRANSFERENCIA_FALLIDA = (
+    "Disculpe, ahora no puedo comunicarlo con un asesor. Tomo nota para que lo llamen. "
+    "Si le parece, sigamos con la encuesta."
+)
+
+
+def _opciones_de_llamada(campaign: Campaign) -> dict:
+    """Buzón de voz y transferencia, para el guion (igual en una llamada real y en una de prueba)."""
+    return {
+        "voicemail_action": campaign.voicemail_action or None,
+        "voicemail_script": campaign.voicemail_script or "",
+        "transfer_enabled": bool(campaign.transfer_number),
+        "transfer_script": campaign.transfer_script or "",
+    }
 
 
 def _active_questions(campaign: Campaign) -> list[Question]:
@@ -118,6 +137,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             voice_expressiveness=campaign.voice_expressiveness,
             voice_volume=campaign.voice_volume,
             voice_profile_id=campaign.voice_profile_id,
+            **_opciones_de_llamada(campaign),
             questions=[QuestionOut.model_validate(q) for q in _active_questions(campaign)],
         )
 
@@ -149,6 +169,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
         voice_expressiveness=campaign.voice_expressiveness,
         voice_volume=campaign.voice_volume,
         voice_profile_id=campaign.voice_profile_id,
+        **_opciones_de_llamada(campaign),
         questions=[QuestionOut.model_validate(q) for q in questions],
     )
 
@@ -196,6 +217,14 @@ def submit_answer(
         and payload.retries_used < question.max_retries
     )
 
+    # Pidió una persona y hay a quién pasarle la llamada. Pedir no seguir (optout) manda: quien dice
+    # «no quiero hablar con nadie» no quiere un asesor.
+    quiere_asesor = (
+        not result.is_optout
+        and bool(question.campaign.transfer_number)
+        and pide_persona(payload.transcript)
+    )
+
     if es_demo(session_uuid):
         return AnswerResult(
             understood=result.understood,
@@ -204,6 +233,7 @@ def submit_answer(
             is_silence=result.is_silence,
             should_retry=should_retry,
             saved=False,
+            wants_transfer=quiere_asesor,
         )
 
     call = _load_call(db, session_uuid)
@@ -243,6 +273,7 @@ def submit_answer(
         is_silence=result.is_silence,
         should_retry=should_retry,
         saved=True,
+        wants_transfer=quiere_asesor,
     )
 
 
@@ -284,6 +315,11 @@ def session_finished(
     else:
         call.outcome = payload.outcome
 
+    # Un contestador atiende, pero no es un cliente: no cuenta como llamada atendida. Sin esto, la tasa
+    # de conexión, «Conectadas» y la mejor hora para llamar se inflan con máquinas.
+    if call.outcome is CallOutcome.VOICEMAIL:
+        call.answered_at = None
+
     db.commit()
 
     log.info(
@@ -302,6 +338,38 @@ def session_finished(
         finalize_call.delay(call.id)
 
     return {"call_id": call.id, "outcome": call.outcome.value if call.outcome else None}
+
+
+# ---------------------------------------------------------------------------
+@router.post("/sessions/{session_uuid}/transfer")
+def transfer(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> dict:
+    """El cliente pidió un asesor: le avisa al dialplan a quién marcar cuando el audio termine.
+
+    El voice-agent maneja el audio, no el canal. Acá se deja en Asterisk (por ARI) una variable global
+    TRANSFER_<sesión> con el destino; el agente cierra el AudioSocket y el dialplan, al seguir, la lee y
+    marca al asesor uniendo las dos puntas. Devuelve `ok: false` (nunca error) si no se pudo: del otro
+    lado hay una persona esperando y el agente decide qué decirle.
+    """
+    if es_demo(session_uuid):
+        return {"ok": True, "demo": True}
+
+    call = _load_call(db, session_uuid)
+    campaign = call.target.campaign
+    if not campaign.transfer_number:
+        return {"ok": False, "motivo": "el agente no tiene un teléfono de asesor"}
+
+    from app.services.asterisk_ari import AriClient, AriError
+
+    try:
+        with AriClient(timeout=5.0) as ari:
+            endpoint = ari.build_endpoint(campaign.transfer_number)
+            ari.set_global(f"TRANSFER_{session_uuid}", endpoint)
+    except AriError as exc:
+        log.error("Sesión %s: no se pudo preparar la transferencia: %s", session_uuid, exc)
+        return {"ok": False, "motivo": "Asterisk no respondió"}
+
+    log.info("Sesión %s: transferida a %s", session_uuid, campaign.transfer_number)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -408,6 +476,12 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
             campaign.optout_script,
         ]
         textos += [q.text for q in campaign.questions if q.is_active]
+        # Lo que se dice si atiende un contestador o si el cliente pide un asesor: tiene que salir con
+        # la voz buena y sin espera, igual que el resto del guion.
+        if campaign.voicemail_action == "mensaje":
+            textos.append(campaign.voicemail_script)
+        if campaign.transfer_number:
+            textos += [campaign.transfer_script, FRASE_TRANSFERENCIA_FALLIDA]
         variantes: list[str] = []
         for t in textos:
             if t and "{nombre}" in t:

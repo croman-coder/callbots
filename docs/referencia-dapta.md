@@ -60,7 +60,7 @@ Pestañas:
 |---|---|---|
 | **Contexto** | Izq.: Contexto de la empresa (nombre, descripción) y del agente (idioma, nombre, propósito, zona horaria, instrucciones importantes, **identificador de llamadas** = número que ve el cliente, ID para flujos). Der.: **editor de instrucciones** (Vista previa/Markdown, barra H1-H4, negrita, listas, código, cita; copiar; «Mejorar con IA»; ~tokens) | ✅ todo, con «Generar contexto» desde el sitio (rechaza direcciones internas). Identificador de llamadas solo lectura (lo da la troncal) |
 | **Probar agente** | Instrucciones + llamada web con transcripción y valoración | ✅ permiso del micrófono → llamando → transcripción en vivo → Bien/Malo, y «Pruebas anteriores» |
-| **Configuración** | Voz (lista de voces), Modelo de LLM; Configuración de llamadas (enlace público de la grabación, **detección de buzón de voz**: colgar o dejar mensaje); **Acciones del agente** (end_call, agregar); **Brains** (base de conocimiento); «Configuraciones avanzadas» | ✅ selector de voces (filtros, escuchar, voces clonadas), Claude como modelo, horario, días, intentos, guion, preguntas, origen de los clientes (Bitrix) y acción «terminar llamada» · 🟡 buzón de voz, enlace público, transferir, agendar y base de conocimiento en «Pronto» |
+| **Configuración** | Voz (lista de voces), Modelo de LLM; Configuración de llamadas (enlace público de la grabación, **detección de buzón de voz**: colgar o dejar mensaje); **Acciones del agente** (end_call, agregar); **Brains** (base de conocimiento); «Configuraciones avanzadas» | ✅ selector de voces (filtros, escuchar, voces clonadas), Claude como modelo, horario, días, intentos, guion, preguntas, origen de los clientes (Bitrix), acción «terminar llamada», **detección de buzón de voz (colgar o dejar mensaje)** y **transferir a un asesor** (ver `docs/buzon-y-transferencia.md`) · 🟡 enlace público, agendar y base de conocimiento en «Pronto» |
 | **Análisis de llamadas** | Objetivo de la llamada (qué es una llamada exitosa, «Mejorar con IA»); Recuperación de datos (variables: call_summary, texto/selector/booleano/número); Destinos (Google Sheets, HubSpot, Flujo); Notificaciones | ✅ objetivo, 5 datos fijos (satisfacción, sentimiento, resumen, temas, seguimiento), destinos Panel/Excel/Bitrix, lista de seguimiento · 🟡 variables propias, Google Sheets y aviso por correo/WhatsApp en «Pronto» · — HubSpot, Flujo |
 | **Registro de llamadas** | Buscar; Conectadas / Exitosas / Todas; descargar; columnas; Fecha, Duración, Créditos, Calidad, Nº origen, Nº destino, Contacto, Estado, Desconexión, Llamada exitosa, Dirección | ✅ buscar, Conectadas/Exitosas/Todas, Excel, actualizar, 20 por página · ⬜ créditos (sin tarifa), columnas a elección, grabación |
 | **Métrica** | Rango de fechas; tarjetas: créditos, total de llamadas, contactos llamados, tasa de conexión, duración promedio; gráfico de llamadas por día; embudo (contactos → conectados → metas) | ✅ período, 6 tarjetas, llamadas por día, embudo y «dónde se cae el puntaje» · 🟡 créditos (sin tarifa) |
@@ -71,8 +71,8 @@ Pestañas:
 - Columnas: Fecha · Agente · Duración · Créditos · Calidad · Número de origen · Número de destino ·
   Nombre de contacto · Estado · Desconexión · Llamada exitosa · Dirección de llamada · Calificaciones ·
   Funciones · Grabación.
-- Callbot: ✅ Conectadas/Exitosas/Todas (21/10/2026), fechas, agente, resultado, solo advertencias, Excel,
-  paginado · ⬜ grabación en la fila, columnas a elección.
+- Callbot: ✅ Conectadas/Exitosas/Todas (21/10/2026), fechas, agente, resultado (incluye «buzón de voz» y
+  «transferida»), solo advertencias, Excel, paginado · ⬜ grabación en la fila, columnas a elección.
 
 ### Números telefónicos (`/agents-studio/phone-numbers`)
 - Pestañas: Verificados · Comprados · Cumplimiento · Usuarios finales.

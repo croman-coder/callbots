@@ -24,6 +24,7 @@ from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app import agentes, voces
+from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
 from app.deps import principal_ws, require_admin
@@ -384,6 +385,33 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     ):
         if reales[campo] is not None:
             setattr(campaign, campo, _entre(reales[campo], minimo, maximo))
+
+    # Buzón de voz: "" = no detectar. Solo se tocan los campos que llegaron (cada pestaña manda los suyos).
+    accion = texto("voicemail_action", 10)
+    if accion is not None:
+        if accion not in ("", "colgar", "mensaje"):
+            return _volver(campaign_id, tab, error="Elegí qué hacer con el buzón de voz de la lista")
+        campaign.voicemail_action = accion or None
+    mensaje = texto("voicemail_script", 600)
+    if mensaje is not None:
+        if not mensaje and campaign.voicemail_action == "mensaje":
+            return _volver(campaign_id, tab, error="Escribí el mensaje que se deja en el buzón de voz")
+        if mensaje:
+            campaign.voicemail_script = mensaje
+
+    # Transferencia a un asesor: el número se guarda normalizado (+595…); vacío = sin transferencia.
+    asesor = texto("transfer_number", 30)
+    if asesor is not None:
+        if asesor:
+            normal = normalize_phone_py(asesor)
+            if not normal or not re.fullmatch(r"\+\d{9,15}", normal):
+                return _volver(campaign_id, tab, error="El teléfono del asesor no parece válido: probá con 0981 123 456")
+            campaign.transfer_number = normal
+        else:
+            campaign.transfer_number = None
+    frase = texto("transfer_script", 400)
+    if frase:
+        campaign.transfer_script = frase
 
     db.commit()
     return _volver(campaign_id, tab, ok="Cambios guardados")

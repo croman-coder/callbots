@@ -14,6 +14,8 @@ RESULTADO = {
     "busy": "ocupado",
     "rejected": "rechazada",
     "failed": "error técnico",
+    "voicemail": "buzón de voz",
+    "transferred": "transferida",
 }
 
 # Estado de un destinatario en la cola (TargetStatus): habla de la persona, no de una llamada.
@@ -37,6 +39,11 @@ CORTE = {
     "rejected": "rechazada",
     "congestion": "red saturada",
     "failed": "error técnico",
+    # Lo que reporta el voice-agent cuando él decide cortar (ver dialog.py).
+    "buzon_colgo": "buzón de voz, cortó",
+    "buzon_mensaje": "buzón de voz, dejó mensaje",
+    "transferida": "transferida a un asesor",
+    "transferencia_fallida": "no se pudo transferir",
 }
 
 _TABLAS = {"resultado": RESULTADO, "destinatario": DESTINATARIO, "corte": CORTE}

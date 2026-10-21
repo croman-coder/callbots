@@ -1011,3 +1011,9 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .sim-log { margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; font-size: var(--t-sm); }
 .sim-log:empty::before { content: attr(data-vacio); color: var(--ink-3); font-family: var(--font); }
 @media (prefers-reduced-motion: reduce) { .barra-nivel .relleno { transition: none; } }
+
+/* Buzón de voz y transferencia (Configuración del agente) */
+.opcion-campos { padding: var(--s3) 0; border-top: 1px solid var(--line); }
+.opcion-campos > label:first-child { margin-top: 0; }
+.opcion-campos textarea { min-height: 64px; }
+.opcion-campos [hidden] { display: none; }

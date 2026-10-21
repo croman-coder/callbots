@@ -18,8 +18,8 @@ import uuid as uuid_mod
 import wave
 from datetime import datetime, timezone
 
-from app import stt, tts
-from app.api_client import ApiClient, ApiError, Question, Script
+from app import buzon, stt, tts
+from app.api_client import FRASE_TRANSFERENCIA_FALLIDA, ApiClient, ApiError, Question, Script
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
 from app.guion import partir_frases, personalizar
@@ -39,6 +39,8 @@ class Outcome:
     COMPLETED = "completed"
     PARTIAL = "partial"
     FAILED = "failed"
+    VOICEMAIL = "voicemail"
+    TRANSFERRED = "transferred"
 
 
 _personalize = personalizar
@@ -133,22 +135,99 @@ class SurveyDialog:
         )
 
         try:
-            await self._greet()
-
-            for question in self.script.questions:
-                keep_going = await self._ask(question)
-                if not keep_going:
-                    break
+            if self._detecta_buzon and await self._es_buzon():
+                await self._atender_buzon()
             else:
-                # Recorrió todas las preguntas sin cortes
-                self.outcome = Outcome.COMPLETED
-                await _say(self.socket, self.script.outro_script, self._voz)
+                await self._conducir_encuesta()
 
         except AudioSocketClosed as exc:
             self.hangup_cause = str(exc)
             log.info("[%s] El cliente cortó: %s", self.session_uuid, exc)
 
         await self._report()
+
+    @property
+    def _detecta_buzon(self) -> bool:
+        # En una prueba desde el navegador o el softphone no hay contestador: quien prueba habla de
+        # corrido y se lo tomaría por una máquina.
+        return bool(self.script.voicemail_action) and not self.script.demo
+
+    async def _conducir_encuesta(self) -> None:
+        await self._greet()
+
+        for question in self.script.questions:
+            keep_going = await self._ask(question)
+            if not keep_going:
+                break
+        else:
+            # Recorrió todas las preguntas sin cortes
+            self.outcome = Outcome.COMPLETED
+            await _say(self.socket, self.script.outro_script, self._voz)
+
+    # ------------------------------------------------------------------
+    # Buzón de voz
+    # ------------------------------------------------------------------
+    async def _es_buzon(self) -> bool:
+        """Escucha los primeros segundos, antes de saludar, y decide si es un contestador."""
+        grabacion = await listen(
+            self.socket,
+            max_seconds=buzon.SONDEO_SEGUNDOS,
+            silence_ms=buzon.SILENCIO_MS,
+            no_speech_timeout=buzon.ESPERA_VOZ_SEGUNDOS,
+        )
+        if grabacion.result is ListenResult.HANGUP:
+            raise AudioSocketClosed("cortó antes de empezar")
+
+        texto = ""
+        if grabacion.has_audio and grabacion.speech_ms >= buzon.MIN_VOZ_MS:
+            texto = (await stt.transcribe(grabacion.pcm)).text
+        es = buzon.es_buzon(grabacion.result.value, texto)
+        log.info(
+            "[%s] Sondeo de buzón: %s %dms %r -> %s",
+            self.session_uuid, grabacion.result.value, grabacion.speech_ms, texto[:80],
+            "BUZÓN" if es else "persona",
+        )
+        return es
+
+    async def _atender_buzon(self) -> None:
+        """Cuelga o deja el mensaje. Nunca sigue con la encuesta: no hay nadie para contestarla."""
+        self.outcome = Outcome.VOICEMAIL
+        if self.script.voicemail_action != "mensaje" or not self.script.voicemail_script.strip():
+            self.hangup_cause = "buzon_colgo"
+            log.info("[%s] Buzón de voz: se corta", self.session_uuid)
+            return
+
+        await self._esperar_el_tono()
+        await _say(
+            self.socket, _personalize(self.script.voicemail_script, self.script.contact_name), self._voz
+        )
+        await self.socket.play_silence(500)
+        self.hangup_cause = "buzon_mensaje"
+        log.info("[%s] Buzón de voz: mensaje dejado", self.session_uuid)
+
+    async def _esperar_el_tono(self) -> None:
+        """Deja pasar el saludo del contestador: el mensaje se graba recién después del tono.
+
+        Se escucha hasta que haya una pausa larga, que es donde suena el tono, y se espera un poco más.
+        Con un tope: un contestador que no calla no puede tener la línea abierta para siempre.
+        """
+        transcurrido = float(buzon.SONDEO_SEGUNDOS)
+        while transcurrido < buzon.ESPERA_MAXIMA_SEGUNDOS:
+            grabacion = await listen(
+                self.socket,
+                max_seconds=10,
+                silence_ms=buzon.SILENCIO_FIN_SALUDO_MS,
+                no_speech_timeout=3,
+            )
+            if grabacion.result is ListenResult.HANGUP:
+                raise AudioSocketClosed("cortó el contestador")
+            if grabacion.result is ListenResult.SILENCE:
+                transcurrido += 3
+                break  # ya pasaron 3 s de silencio: el saludo terminó, el tono es ahora
+            transcurrido += grabacion.duration_seconds + buzon.SILENCIO_FIN_SALUDO_MS / 1000
+            if grabacion.result is ListenResult.SPEECH:
+                break  # habló y terminó con una pausa larga: el saludo terminó
+        await self.socket.play_silence(buzon.ESPERA_TONO_MS)
 
     # ------------------------------------------------------------------
     async def _greet(self) -> None:
@@ -242,6 +321,14 @@ class SurveyDialog:
                 self.outcome = Outcome.PARTIAL
                 return False
 
+            if verdict.wants_transfer and self.script.transfer_enabled:
+                if await self._transferir():
+                    return False
+                # No se pudo: se le explica y se sigue con la encuesta, que es lo menos malo.
+                self.hangup_cause = "transferencia_fallida"
+                await _say(self.socket, FRASE_TRANSFERENCIA_FALLIDA, self._voz)
+                return True
+
             if verdict.should_retry:
                 # Solo acá se llama al LLM: si la respuesta se entendió, la
                 # llamada sigue sin pagar un segundo de latencia extra.
@@ -272,6 +359,24 @@ class SurveyDialog:
                 self.questions_answered += 1
 
             return True
+
+    # ------------------------------------------------------------------
+    async def _transferir(self) -> bool:
+        """Le avisa al cliente, le pide a la API que prepare el canal y deja que el audio termine:
+        al cerrarse el AudioSocket el dialplan sigue y marca al asesor (ver extensions.conf)."""
+        log.info("[%s] El cliente pidió un asesor", self.session_uuid)
+        await _say(self.socket, self.script.transfer_script or "Un momento, lo comunico.", self._voz)
+
+        if self.script.demo:
+            # Probando desde el navegador o el softphone no hay a quién marcar.
+            await self.socket.send_event("agente", "(En una llamada real, acá se le pasa la llamada al asesor)")
+            return True
+
+        if not await self.api.transfer(self.session_uuid):
+            return False
+        self.outcome = Outcome.TRANSFERRED
+        self.hangup_cause = "transferida"
+        return True
 
     # ------------------------------------------------------------------
     async def _report(self) -> None:

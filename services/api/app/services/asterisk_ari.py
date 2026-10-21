@@ -77,6 +77,7 @@ class AriClient:
         caller_id: str | None = None,
         timeout: int | None = None,
         extra_variables: dict[str, str] | None = None,
+        extension: str | None = None,
     ) -> str:
         """Lanza la llamada. Devuelve el channel id de Asterisk.
 
@@ -96,7 +97,7 @@ class AriClient:
         body = {
             "endpoint": endpoint,
             "context": settings.asterisk_context,
-            "extension": settings.asterisk_extension,
+            "extension": extension or settings.asterisk_extension,
             "priority": 1,
             "callerId": caller_id or settings.asterisk_callerid,
             "timeout": timeout or settings.asterisk_dial_timeout,
@@ -120,6 +121,16 @@ class AriClient:
         except AriError as exc:
             # 404 es lo normal si el canal ya se cerró solo
             log.debug("Hangup de %s sin efecto: %s", channel_id, exc)
+
+    def set_global(self, nombre: str, valor: str) -> None:
+        """Pone una variable GLOBAL de Asterisk.
+
+        Sirve para avisarle al dialplan qué hacer cuando el AudioSocket termine (por ejemplo, marcar a un
+        asesor). Tiene que ser global y no del canal: ARI solo deja tocar variables de canales que están
+        en una aplicación Stasis, y los nuestros entran directo al dialplan (se probó: HTTP 409 «Channel
+        not in Stasis application»). El nombre lleva la sesión, así que cada llamada lee la suya.
+        """
+        self._request("POST", "/asterisk/variable", params={"variable": nombre, "value": valor})
 
     def channel_state(self, channel_id: str) -> str | None:
         try:

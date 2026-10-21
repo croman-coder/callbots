@@ -68,6 +68,8 @@ class CallOutcome(str, enum.Enum):
     BUSY = "busy"
     REJECTED = "rejected"
     FAILED = "failed"
+    VOICEMAIL = "voicemail"      # atendió un contestador, no una persona
+    TRANSFERRED = "transferred"  # el cliente pidió un asesor y se le pasó la llamada
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +123,26 @@ class Campaign(Base):
     # Qué voz usa esta campaña. Vacío = la del servidor (VOICEBOX_PROFILE_ID, o Piper si no
     # hay); "piper" = Piper a propósito; otro valor = el id de un perfil de Voicebox.
     voice_profile_id: Mapped[str | None] = mapped_column(String(64))
+
+    # --- Buzón de voz ---
+    # None = no se detecta (la llamada sigue como siempre). "colgar" = si atiende un contestador se
+    # corta; "mensaje" = se espera el tono y se deja `voicemail_script`.
+    voicemail_action: Mapped[str | None] = mapped_column(String(10))
+    voicemail_script: Mapped[str] = mapped_column(
+        Text,
+        default=(
+            "Hola, le hablamos de Santa Rosa por una breve encuesta sobre su visita al taller. "
+            "Lo vamos a volver a llamar. Muchas gracias."
+        ),
+    )
+
+    # --- Transferir a un asesor ---
+    # Teléfono (E.164) al que se pasa la llamada cuando el cliente pide hablar con una persona.
+    # Vacío = no se transfiere.
+    transfer_number: Mapped[str | None] = mapped_column(String(30))
+    transfer_script: Mapped[str] = mapped_column(
+        Text, default="Claro, un momento que lo comunico con un asesor."
+    )
 
     # --- Guion ---
     intro_script: Mapped[str] = mapped_column(

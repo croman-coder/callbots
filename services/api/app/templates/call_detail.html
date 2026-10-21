@@ -195,7 +195,7 @@
           <tr><th scope="row">CALL_ID de Bitrix</th><td class="mono">{{ call.bitrix_call_id or "—" }}</td></tr>
           <tr><th scope="row">Iniciada</th><td class="tnum">{{ call.started_at | fecha("%d/%m/%Y %H:%M:%S") }}</td></tr>
           <tr><th scope="row">Atendida</th>
-              <td class="tnum">{% if call.answered_at %}{{ call.answered_at | fecha("%d/%m/%Y %H:%M:%S") }}{% else %}<span class="muted">no atendió</span>{% endif %}</td></tr>
+              <td class="tnum">{% if call.answered_at %}{{ call.answered_at | fecha("%d/%m/%Y %H:%M:%S") }}{% elif call.outcome and call.outcome.value == "voicemail" %}<span class="muted">lo atendió un contestador</span>{% else %}<span class="muted">no atendió</span>{% endif %}</td></tr>
           <tr><th scope="row">Finalizada</th><td class="tnum">{{ call.ended_at | fecha("%d/%m/%Y %H:%M:%S") }}</td></tr>
           <tr><th scope="row">Causa de corte</th><td>{{ call.hangup_cause | estado("corte") if call.hangup_cause else "—" }}</td></tr>
           <tr><th scope="row">Ingreso al taller</th>

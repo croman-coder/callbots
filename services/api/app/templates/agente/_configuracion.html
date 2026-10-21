@@ -68,9 +68,19 @@
         <label class="dia"><input type="checkbox" name="dias" value="{{ d }}" {% if d in dias_activos %}checked{% endif %}><span>{{ dias_semana[d] }}</span></label>
         {% endfor %}
       </fieldset>
-      <div class="opcion-off">
-        <div><strong>Detección de buzón de voz</strong><p class="hint">Colgar o dejar un mensaje si atiende el contestador.</p></div>
-        <span class="chip-pronto">Pronto</span>
+      <div class="opcion-campos" data-buzon>
+        <label for="c-buzon">Detección de buzón de voz</label>
+        <select id="c-buzon" name="voicemail_action" data-buzon-accion aria-describedby="ayuda-buzon">
+          <option value="" {% if not campaign.voicemail_action %}selected{% endif %}>No detectar (sigue como siempre)</option>
+          <option value="colgar" {% if campaign.voicemail_action == "colgar" %}selected{% endif %}>Colgar si atiende un contestador</option>
+          <option value="mensaje" {% if campaign.voicemail_action == "mensaje" %}selected{% endif %}>Dejar un mensaje en el buzón</option>
+        </select>
+        <p class="hint" id="ayuda-buzon">Escucha los primeros segundos. Si habla largo o dice «deje su mensaje después del tono», no es una persona: la llamada queda como «buzón de voz» y se vuelve a intentar. Con la detección encendida el saludo arranca unos 2 segundos más tarde.</p>
+        <div data-buzon-mensaje {% if campaign.voicemail_action != "mensaje" %}hidden{% endif %}>
+          <label for="c-buzon-msg">Mensaje para el buzón</label>
+          <textarea id="c-buzon-msg" name="voicemail_script" rows="3" maxlength="600">{{ campaign.voicemail_script }}</textarea>
+          <p class="hint">Se dice después del tono. Corto: 15 segundos como mucho.</p>
+        </div>
       </div>
       <div class="opcion-off">
         <div><strong>Enlace público de la llamada</strong><p class="hint">Compartir la grabación y la transcripción con un enlace.</p></div>
@@ -143,9 +153,17 @@
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14.2H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>Acciones del agente</summary>
       <ul class="acciones-agente">
         <li><span><strong>Terminar la llamada</strong> · cuando el cliente se despide o pide no seguir</span><span class="pill completed">activa</span></li>
-        <li><span><strong>Transferir a una persona</strong> · pasar la llamada a un asesor</span><span class="chip-pronto">Pronto</span></li>
+        <li><span><strong>Transferir a una persona</strong> · pasar la llamada a un asesor si el cliente lo pide</span>{% if campaign.transfer_number %}<span class="pill completed">activa</span>{% else %}<span class="pill no_answer">apagada</span>{% endif %}</li>
         <li><span><strong>Agendar en el calendario</strong> · reservar un turno</span><span class="chip-pronto">Pronto</span></li>
       </ul>
+      <div class="opcion-campos">
+        <label for="c-asesor">Teléfono del asesor</label>
+        <input id="c-asesor" type="tel" name="transfer_number" inputmode="tel" maxlength="30" autocomplete="off"
+               placeholder="0981 123 456" value="{{ campaign.transfer_number or '' }}" aria-describedby="ayuda-asesor">
+        <p class="hint" id="ayuda-asesor">Si el cliente dice «quiero hablar con un asesor», el agente avisa y le pasa la llamada a este número. Vacío = no se transfiere. Si el asesor no atiende, la llamada se corta.</p>
+        <label for="c-asesor-frase">Lo que dice antes de pasarla</label>
+        <textarea id="c-asesor-frase" name="transfer_script" rows="2" maxlength="400">{{ campaign.transfer_script }}</textarea>
+      </div>
     </details>
 
     <details class="bloque">

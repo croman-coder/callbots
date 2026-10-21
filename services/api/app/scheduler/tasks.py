@@ -207,12 +207,15 @@ def place_call(self, target_id: int) -> dict:  # noqa: ANN001
 
         session_uuid = attempt.session_uuid
         phone = target.phone
+        # Los agentes con asesor usan la variante del dialplan donde el bot corre en un canal Local, para
+        # poder seguir marcando después de que el bot corta (ver extensions.conf). El resto, sin tocar.
+        extension = "start_transferible" if target.campaign.transfer_number else None
         entity_type_id = target.bitrix_entity_type_id
         entity_id = target.bitrix_entity_id
 
         try:
             with AriClient() as ari:
-                channel_id = ari.originate(phone=phone, session_uuid=session_uuid)
+                channel_id = ari.originate(phone=phone, session_uuid=session_uuid, extension=extension)
             attempt.asterisk_channel_id = channel_id
             target.status = TargetStatus.CALLING
             target.last_error = None
@@ -320,6 +323,15 @@ def finalize_call(call_id: int) -> dict:
                 call.analysis.satisfaction_score if call.analysis else None,
             )
 
+        elif call.outcome is CallOutcome.TRANSFERRED:
+            # Una persona se hizo cargo: no se vuelve a llamar. Si alcanzó a contestar algo, se guarda.
+            if respondidas:
+                analyze_call(db, call)
+                db.flush()
+                push_result_to_bitrix(db, call)
+            target.status = TargetStatus.COMPLETED
+            log.info("Llamada transferida a un asesor: target=%s", target.id)
+
         elif call.outcome is CallOutcome.PARTIAL and respondidas:
             # Contestó algunas preguntas: guardamos lo que hay y no reintentamos
             analyze_call(db, call)
@@ -329,6 +341,7 @@ def finalize_call(call_id: int) -> dict:
             log.info("Encuesta parcial guardada para target=%s", target.id)
 
         else:
+            # También entra acá el buzón de voz (outcome VOICEMAIL): no se habló con nadie, se reintenta.
             _schedule_retry_or_finish(target, TargetStatus.NO_ANSWER)
 
         return {"call_id": call_id, "target_status": target.status.value}

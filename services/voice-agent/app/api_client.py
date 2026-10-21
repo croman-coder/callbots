@@ -23,6 +23,14 @@ class ApiError(RuntimeError):
     pass
 
 
+# La dice el agente si el cliente pidió un asesor y no se pudo pasar la llamada. Es la misma que
+# precalienta la API (routers/internal.py) para que salga con la voz buena y sin espera.
+FRASE_TRANSFERENCIA_FALLIDA = (
+    "Disculpe, ahora no puedo comunicarlo con un asesor. Tomo nota para que lo llamen. "
+    "Si le parece, sigamos con la encuesta."
+)
+
+
 @dataclass
 class Question:
     id: int
@@ -52,16 +60,27 @@ class Script:
     voice_volume: float
     voice_profile_id: str
     questions: list[Question]
+    # Buzón de voz ("colgar", "mensaje" o None) y transferencia a un asesor. Apagados por defecto.
+    voicemail_action: str | None = None
+    voicemail_script: str = ""
+    transfer_enabled: bool = False
+    transfer_script: str = ""
 
     @property
     def all_prompts(self) -> list[str]:
         """Todo el texto fijo, para precalentar el caché del TTS."""
+        extra = []
+        if self.voicemail_action == "mensaje" and self.voicemail_script:
+            extra.append(self.voicemail_script)
+        if self.transfer_enabled:
+            extra += [t for t in (self.transfer_script, FRASE_TRANSFERENCIA_FALLIDA) if t]
         return [
             self.intro_script,
             self.outro_script,
             self.fallback_script,
             self.optout_script,
             *[q.text for q in self.questions],
+            *extra,
         ]
 
 
@@ -72,6 +91,7 @@ class AnswerVerdict:
     is_optout: bool
     is_silence: bool
     should_retry: bool
+    wants_transfer: bool = False
 
 
 class ApiClient:
@@ -127,6 +147,10 @@ class ApiClient:
             outro_script=data["outro_script"],
             fallback_script=data["fallback_script"],
             optout_script=data["optout_script"],
+            voicemail_action=data.get("voicemail_action") or None,
+            voicemail_script=str(data.get("voicemail_script") or ""),
+            transfer_enabled=bool(data.get("transfer_enabled", False)),
+            transfer_script=str(data.get("transfer_script") or ""),
             questions=[Question(**q) for q in data["questions"]],
         )
 
@@ -202,7 +226,23 @@ class ApiClient:
             is_optout=data.get("is_optout", False),
             is_silence=data.get("is_silence", False),
             should_retry=data.get("should_retry", False),
+            wants_transfer=data.get("wants_transfer", False),
         )
+
+    async def transfer(self, session_uuid: uuid_mod.UUID) -> bool:
+        """Pide pasar la llamada al asesor. False si no se pudo: el que llama le explica al cliente.
+
+        No levanta error: del otro lado hay una persona esperando y la decisión es del diálogo.
+        """
+        try:
+            response = await self._client.post(
+                f"/internal/sessions/{session_uuid}/transfer", timeout=httpx.Timeout(8.0, connect=3.0)
+            )
+            response.raise_for_status()
+            return bool(response.json().get("ok"))
+        except httpx.HTTPError as exc:
+            log.error("No se pudo pedir la transferencia: %s", exc)
+            return False
 
     async def session_finished(
         self,

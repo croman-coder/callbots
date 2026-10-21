@@ -32,7 +32,7 @@ def calidad_de(call) -> Calidad:
     """None si no hubo conversación (no atendió, falló la llamada)."""
     resultado = _valor(call, "outcome")
     preguntadas = getattr(call, "questions_asked", 0) or 0
-    if resultado in (None, "no_answer", "busy", "rejected", "failed") or preguntadas == 0:
+    if resultado in (None, "no_answer", "busy", "rejected", "failed", "voicemail") or preguntadas == 0:
         return Calidad(None)
 
     puntaje = 100
