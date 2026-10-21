@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import pronunciaciones, vocabulario
+from app import conocimiento, pronunciaciones, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -416,6 +416,7 @@ async def conversational_reply(
         dijo=body.transcript,
         intento=body.retries_used,
         extra_prompt=getattr(campaign, "conversation_prompt", None),
+        conocimiento=conocimiento.para_respuesta(db, campaign, f"{body.question_text} {body.transcript}"),
     )
     if texto:
         log.info("[%s] Respuesta conversacional: %r", session_uuid, texto[:80])
@@ -466,6 +467,7 @@ async def respuesta_al_saludo(session_uuid: uuid_mod.UUID, body: GreetingIn, db:
         respuesta = await conversation.reply(
             pregunta=PREGUNTA_DEL_SALUDO, dijo=texto, intento=0,
             extra_prompt=getattr(campaign, "conversation_prompt", None),
+            conocimiento=conocimiento.para_respuesta(db, campaign, texto),
         )
         if respuesta:
             return {"accion": "responder", "respuesta": respuesta}

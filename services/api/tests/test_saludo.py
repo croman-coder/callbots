@@ -73,7 +73,7 @@ def test_pedir_un_asesor_solo_si_hay_a_quien(Sesion, api):
 def test_una_pregunta_la_contesta_claude_y_vuelve_a_pedir_el_minuto(Sesion, api, monkeypatch):
     pedidos = []
 
-    async def falso(pregunta, dijo, intento=0, extra_prompt=None):
+    async def falso(pregunta, dijo, intento=0, extra_prompt=None, conocimiento=""):
         pedidos.append((pregunta, dijo))
         return "Le habla el asistente de Santa Rosa, por su visita al taller. ¿Tiene un minuto?"
 

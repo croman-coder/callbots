@@ -36,6 +36,7 @@ templates.env.globals["campos_css_v"] = _version("campos.css")
 templates.env.globals["usuarios_js_v"] = _version("usuarios.js")
 templates.env.globals["entrada_js_v"] = _version("entrada.js")
 templates.env.globals["motion_v"] = _version("vendor/motion.min.js")
+templates.env.globals["conocimiento_js_v"] = _version("conocimiento.js")
 
 
 def fecha(valor, formato: str = "%d/%m/%Y %H:%M") -> str:

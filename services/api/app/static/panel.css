@@ -978,6 +978,16 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .en-linea { display: inline; margin: 0 0 0 var(--s2); }
 .clonar h3 { margin: var(--s5) 0 var(--s2); font-size: var(--t-md, 1rem); }
 .clonar h3:first-child { margin-top: 0; }
+/* Conocimiento: fuentes de una base, formularios para sumar y prueba. */
+.fuentes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
+.fuentes summary { flex-wrap: wrap; gap: var(--s2) var(--s3); }
+.fuente-texto { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; margin: 0 0 var(--s3);
+  padding: var(--s3); background: var(--raised); border-radius: var(--r); font: inherit; font-size: var(--t-sm); color: var(--ink-2); }
+.sumar-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--s4); }
+.sumar-grid h3 { margin: 0 0 var(--s2); font-size: var(--t-md); }
+.sumar-grid label:first-of-type { margin-top: 0; }
+.respuesta-base { margin: var(--s3) 0 0; font-size: var(--t-md); color: var(--ink); }
+.respuesta-base:empty { display: none; }
 /* Pronunciación: una fila por palabra. */
 .fila-pron { display: flex; gap: var(--s2); align-items: center; margin: 0; }
 .fila-pron input[type="text"] { min-width: 0; flex: 1; }

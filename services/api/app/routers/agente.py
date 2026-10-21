@@ -24,13 +24,14 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, versiones, vocabulario, voces
+from app import agentes, conocimiento, versiones, vocabulario, voces
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
 from app.db import get_db, session_scope
 from app.deps import principal_ws, require_admin
 from app.models import (
     AgentVersion,
+    Brain,
     Answer,
     CallAnalysis,
     CallAttempt,
@@ -116,6 +117,9 @@ def _datos_configuracion(db: Session, campaign: Campaign) -> dict:
         "tipos": list(QuestionType),
         "etiquetas_tipo": ETIQUETAS_TIPO,
         "modelo_llm": settings.llm_model,
+        "bases": db.scalars(select(Brain).order_by(Brain.nombre)).all(),
+        "bases_elegidas": [int(i) for i in (campaign.brain_ids or [])],
+        "max_bases": conocimiento.MAX_POR_AGENTE,
     }
 
 
@@ -363,6 +367,14 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
 
     if "vocabulario" in form:
         campaign.vocabulario = vocabulario.normalizar(str(form["vocabulario"]))
+
+    if "brains_enviado" in form:
+        pedidas = list(dict.fromkeys(int(i) for i in form.getlist("brain_ids") if str(i).isdigit()))
+        existentes = set(db.scalars(select(Brain.id).where(Brain.id.in_(pedidas))).all()) if pedidas else set()
+        elegidas = [i for i in pedidas if i in existentes]
+        if len(elegidas) > conocimiento.MAX_POR_AGENTE:
+            return _volver(campaign_id, tab, error=f"Como mucho {conocimiento.MAX_POR_AGENTE} bases de conocimiento por agente")
+        campaign.brain_ids = elegidas or None
 
     for campo in ("intro_script", "outro_script", "fallback_script", "optout_script"):
         limpio = texto(campo, 2000)

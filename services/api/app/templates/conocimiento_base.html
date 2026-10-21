@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% set nav = "conocimiento" %}
+{% block title %}{{ brain.nombre }} · Conocimiento · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <p class="crumb"><a class="link" href="/conocimiento">← Conocimiento</a></p>
+    <h1>{{ brain.nombre }}</h1>
+    <p class="lede">{% if usan %}La usan: {{ usan | join(", ") }}.{% else %}Ningún agente la usa todavía: elegila en la ficha del agente, pestaña Configuración.{% endif %}
+      {{ total | dec(0) }} de {{ max_base | dec(0) }} caracteres.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+
+<section class="section">
+  <header><h2>Fuentes</h2><span class="note">El agente responde solo con lo que está acá; si no está, dice que un asesor lo contacta</span></header>
+  {% if brain.fuentes %}
+  <ul class="fuentes">
+    {% for f in brain.fuentes %}
+    <li>
+      <details class="bloque">
+        <summary>
+          <span class="chip-dato">{{ {"texto": "Texto", "archivo": "Archivo", "web": "Web"}.get(f.tipo, f.tipo) }}</span>
+          <strong>{{ f.titulo }}</strong>
+          <span class="hint">{{ f.contenido | length | dec(0) }} caracteres{% if f.origen and f.tipo == "web" %} · {{ f.origen }}{% endif %}</span>
+        </summary>
+        <pre class="fuente-texto">{{ f.contenido[:3000] }}{% if f.contenido | length > 3000 %}
+…{% endif %}</pre>
+        <form method="post" action="/conocimiento/{{ brain.id }}/fuentes/{{ f.id }}/borrar" class="actions"
+              data-confirmar="¿Sacar «{{ f.titulo }}» de la base? Los agentes dejan de saberlo.">
+          <button type="submit" class="btn mini quiet danger">Sacar de la base</button>
+        </form>
+      </details>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty"><strong>Sin fuentes</strong>Pegá texto, subí archivos o sumá una página web.</p>
+  {% endif %}
+</section>
+
+<section class="section">
+  <header><h2>Sumar</h2></header>
+  <div class="sumar-grid">
+    <form method="post" action="/conocimiento/{{ brain.id }}/texto" class="panel-form" autocomplete="off">
+      <h3>Texto</h3>
+      <label for="t-titulo">Título</label><input id="t-titulo" type="text" name="titulo" maxlength="200" placeholder="Horarios de taller">
+      <label for="t-texto">Texto</label><textarea id="t-texto" name="texto" rows="6" required placeholder="Taller Mariano Roque Alonso: lunes a viernes de 7 a 17, sábados de 7 a 12…"></textarea>
+      <div class="actions"><button type="submit" class="btn">Sumar texto</button></div>
+    </form>
+    <form method="post" action="/conocimiento/{{ brain.id }}/archivos" class="panel-form" enctype="multipart/form-data">
+      <h3>Archivos</h3>
+      <label for="a-archivos">{{ extensiones }}, hasta 15 MB cada uno y {{ max_archivos }} por vez</label>
+      <input id="a-archivos" type="file" name="archivos" multiple accept=".pdf,.docx,.txt,.md,.csv,.json" required>
+      <p class="hint">Un PDF escaneado (una foto) no tiene texto: hay que pasarlo a texto antes.</p>
+      <div class="actions"><button type="submit" class="btn">Subir</button></div>
+    </form>
+    <form method="post" action="/conocimiento/{{ brain.id }}/web" class="panel-form" autocomplete="off">
+      <h3>Página web</h3>
+      <label for="w-url">Dirección</label><input id="w-url" type="url" name="url" required placeholder="https://santarosa.com.py/sucursales">
+      <p class="hint">Se lee el texto de esa página (no del sitio entero). Para varias páginas, sumalas de a una.</p>
+      <div class="actions"><button type="submit" class="btn">Sumar página</button></div>
+    </form>
+  </div>
+</section>
+
+<section class="section">
+  <header><h2>Probar</h2><span class="note">Lo que contestaría el agente con esta base</span></header>
+  <form class="panel-form probar-base" data-probar-base="{{ brain.id }}" autocomplete="off">
+    <label for="p-pregunta">Pregunta del cliente</label>
+    <div class="fila-pron"><input id="p-pregunta" type="text" name="pregunta" maxlength="300" placeholder="¿A qué hora abre el taller el sábado?"><button type="submit" class="btn primary">Preguntar</button></div>
+    <p class="respuesta-base" data-respuesta role="status" aria-live="polite"></p>
+  </form>
+</section>
+
+<section class="section">
+  <header><h2>Datos de la base</h2></header>
+  <form method="post" action="/conocimiento/{{ brain.id }}/editar" class="panel-form" autocomplete="off">
+    <div class="row">
+      <div><label for="e-nombre">Nombre</label><input id="e-nombre" type="text" name="nombre" maxlength="80" value="{{ brain.nombre }}" required></div>
+      <div><label for="e-desc">Para qué es</label><input id="e-desc" type="text" name="descripcion" maxlength="300" value="{{ brain.descripcion or '' }}"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn">Guardar</button></div>
+  </form>
+  <form method="post" action="/conocimiento/{{ brain.id }}/borrar" class="actions"
+        data-confirmar="¿Borrar la base «{{ brain.nombre }}» con todas sus fuentes? Los agentes que la usan dejan de saberlo. No se puede deshacer.">
+    <button type="submit" class="btn quiet danger">Borrar la base</button>
+  </form>
+</section>
+<script src="/static/conocimiento.js?v={{ conocimiento_js_v }}" defer></script>
+{% endblock %}

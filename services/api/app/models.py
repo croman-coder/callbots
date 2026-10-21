@@ -110,6 +110,8 @@ class Campaign(Base):
     # Palabras que Whisper tiene que reconocer en lo que dice el cliente (marcas, modelos, sucursales), una por línea.
     # Medido el 21/10/2026: sin ellas escribía bien 8 de 17 nombres; con ellas, 17 de 17 (ver docs/vocabulario.md).
     vocabulario: Mapped[str | None] = mapped_column(Text)
+    # Bases de conocimiento que usa el agente para responder (ids de Brain, hasta 5; ver app/conocimiento.py).
+    brain_ids: Mapped[list | None] = mapped_column(JSON)
 
     # --- Voz del bot ---
     # Se mandan al voice-agent en el guion de cada llamada, así se ajustan
@@ -450,3 +452,36 @@ class AgentVersion(Base):
     created_by: Mapped[str | None] = mapped_column(String(160))
     resumen: Mapped[str] = mapped_column(String(400), nullable=False)
     snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class Brain(Base):
+    """Una base de conocimiento: documentos y texto con los que el agente responde (catálogo, precios, sucursales,
+    preguntas frecuentes). Se comparte entre agentes (ver app/conocimiento.py)."""
+
+    __tablename__ = "brains"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
+    descripcion: Mapped[str | None] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    fuentes: Mapped[list["BrainSource"]] = relationship(
+        back_populates="brain", cascade="all, delete-orphan", order_by="BrainSource.id"
+    )
+
+
+class BrainSource(Base):
+    """Una fuente de una base de conocimiento: texto pegado, un archivo o una página web, ya pasada a texto."""
+
+    __tablename__ = "brain_sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    brain_id: Mapped[int] = mapped_column(ForeignKey("brains.id", ondelete="CASCADE"), nullable=False, index=True)
+    tipo: Mapped[str] = mapped_column(String(10), nullable=False)  # texto | archivo | web
+    titulo: Mapped[str] = mapped_column(String(200), nullable=False)
+    origen: Mapped[str | None] = mapped_column(String(500))  # nombre del archivo o dirección de la página
+    contenido: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_by: Mapped[str | None] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    brain: Mapped[Brain] = relationship(back_populates="fuentes")

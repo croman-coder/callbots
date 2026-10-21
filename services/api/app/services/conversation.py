@@ -71,8 +71,12 @@ async def reply(
     dijo: str,
     intento: int = 0,
     extra_prompt: str | None = None,
+    conocimiento: str = "",
 ) -> str | None:
-    """Qué contestarle al cliente. None si hay que usar la frase fija."""
+    """Qué contestarle al cliente. None si hay que usar la frase fija.
+
+    `conocimiento` es el bloque de la base de conocimiento del agente (app/conocimiento.py), ya armado.
+    """
     if not is_configured():
         return None
 
@@ -82,6 +86,8 @@ async def reply(
             "\n\nContexto de esta campaña (respetá igual las reglas de arriba):\n"
             f"{extra_prompt.strip()}"
         )
+    if conocimiento:
+        instruccion += f"\n\n{conocimiento}"
 
     # Un máximo de tokens corto de verdad: esto se sintetiza y se dice por teléfono.
     texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200)

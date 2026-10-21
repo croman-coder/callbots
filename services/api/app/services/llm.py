@@ -45,6 +45,8 @@ def is_configured() -> bool:
 _SIEMPRE_PIENSAN = ("claude-opus-5-5", "claude-fable-", "claude-mythos-")
 _SIN_ESFUERZO = ("claude-haiku-4", "claude-3", "claude-sonnet-4-5", "claude-opus-4-1", "claude-opus-4-0", "claude-sonnet-4-0")
 MARGEN_PARA_PENSAR = 1024
+# Caracteres desde los que conviene marcar el prompt para caché (~4.000 tokens, el mínimo de los modelos chicos).
+MIN_CACHE = 16_000
 
 
 def _sin_pensar(modelo: str, max_tokens: int) -> dict[str, Any]:
@@ -67,7 +69,10 @@ def _request(system: str, user: str, max_tokens: int) -> tuple[dict[str, str], d
     }
     body = {
         "model": settings.llm_model,
-        "system": system,
+        # Un prompt largo (instrucciones del agente + base de conocimiento) se guarda en caché: la próxima respuesta
+        # del mismo agente lo lee de ahí, más rápido y ~10 veces más barato. Uno corto no llega al mínimo cacheable.
+        "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if len(system) >= MIN_CACHE else system,
         "messages": [{"role": "user", "content": user}],
         **_sin_pensar(settings.llm_model, max_tokens),
     }

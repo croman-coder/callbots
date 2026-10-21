@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set nav = "conocimiento" %}
+{% block title %}Conocimiento · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Conocimiento</h1>
+    <p class="lede">Lo que saben tus agentes para responder con datos: catálogo, precios, sucursales, horarios y preguntas frecuentes. Cada agente usa hasta 5 bases.</p>
+  </div>
+  <div class="right"><a class="btn primary" href="#nueva">Nueva base</a></div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+
+<section class="section">
+  {% if bases %}
+  <div class="tablewrap"><div class="scroll">
+    <table>
+      <thead><tr><th scope="col">Base</th><th scope="col">Fuentes</th><th scope="col">Tamaño</th><th scope="col">La usan</th></tr></thead>
+      <tbody>
+        {% for b in bases %}
+        {% set total = b.fuentes | map(attribute="contenido") | map("length") | sum %}
+        <tr>
+          <td><a class="link" href="/conocimiento/{{ b.id }}"><strong>{{ b.nombre }}</strong></a>{% if b.descripcion %}<span class="sub-line">{{ b.descripcion }}</span>{% endif %}</td>
+          <td class="tnum">{{ b.fuentes | length }}</td>
+          <td class="tnum">{{ total | dec(0) }} caracteres</td>
+          <td>{% set agentes_b = usan.get(b.id, []) %}{% if agentes_b %}{{ agentes_b | join(", ") }}{% else %}<span class="hint">ningún agente</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+  {% else %}
+  <p class="empty"><strong>Todavía no hay bases</strong>Creá la primera, por ejemplo «Sucursales y horarios» o «Catálogo y precios», y después elegila en la ficha del agente.</p>
+  {% endif %}
+</section>
+
+<section class="section" id="nueva">
+  <header><h2>Nueva base</h2></header>
+  <form method="post" action="/conocimiento" class="panel-form" autocomplete="off">
+    <div class="row">
+      <div><label for="b-nombre">Nombre</label><input id="b-nombre" type="text" name="nombre" maxlength="80" required placeholder="Sucursales y horarios"></div>
+      <div><label for="b-desc">Para qué es <span class="hint">(opcional)</span></label><input id="b-desc" type="text" name="descripcion" maxlength="300" placeholder="Direcciones, teléfonos y horarios de los talleres"></div>
+    </div>
+    <div class="actions"><button type="submit" class="btn primary">Crear base</button></div>
+  </form>
+</section>
+{% endblock %}

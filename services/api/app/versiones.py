@@ -47,6 +47,7 @@ CAMPOS: dict[str, str] = {
     "bitrix_entity_type_id": "Bitrix: entityTypeId",
     "trigger_field": "Bitrix: campo disparador",
     "vocabulario": "Palabras que reconoce",
+    "brain_ids": "Bases de conocimiento",
     "voice_profile_id": "Voz",
     "voice_speed": "Voz: velocidad",
     "voice_pitch": "Voz: tono",

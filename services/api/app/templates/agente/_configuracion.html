@@ -178,10 +178,17 @@
       </p>
     </details>
 
-    <details class="bloque">
+    <details class="bloque" open>
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a2 2 0 0 0-3-2zM15 3a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></svg>Base de conocimiento</summary>
-      <p class="hint">Conectar documentos (catálogo, precios, preguntas frecuentes) para que el agente responda con datos. Por ahora lo que sabe está en las instrucciones de la derecha.</p>
-      <span class="chip-pronto">Pronto</span>
+      <p class="hint">Catálogo, precios, sucursales, horarios: cuando el cliente pregunta algo, el agente responde con esto y no inventa. Hasta {{ max_bases }} bases. Se cargan en <a class="link" href="/conocimiento">Conocimiento</a>.</p>
+      <input type="hidden" name="brains_enviado" value="1">
+      {% if bases %}
+      <div class="dias marcas-bases">
+        {% for b in bases %}<label class="dia"><input type="checkbox" name="brain_ids" value="{{ b.id }}" {% if b.id in bases_elegidas %}checked{% endif %}><span>{{ b.nombre }}</span></label>{% endfor %}
+      </div>
+      {% else %}
+      <p class="opcion-off" style="border-top:0"><span>Todavía no hay bases de conocimiento.</span><a class="btn mini" href="/conocimiento">Crear una</a></p>
+      {% endif %}
     </details>
   </div>
   {% include "agente/_editor.html" %}
