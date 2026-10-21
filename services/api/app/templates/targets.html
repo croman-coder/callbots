@@ -21,6 +21,9 @@
   {{ request.query_params.get('dup') }} ya estaban, {{ request.query_params.get('mal') }} sin teléfono válido.
 </div>
 {% endif %}
+{% if request.query_params.get('aviso') %}
+<div class="notice ok" role="status">{{ request.query_params.get('aviso') }}</div>
+{% endif %}
 {% if request.query_params.get('error') %}
 <div class="notice bad" role="alert"><strong>No se cargó el archivo.</strong> {{ request.query_params.get('error') }}</div>
 {% endif %}

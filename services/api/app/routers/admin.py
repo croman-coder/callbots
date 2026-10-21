@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app import agentes, voces
 from app.config import settings
+from app.etiquetas import etiqueta
 from app.plantillas import templates
 from app.db import get_db
 from app.deps import require_admin
@@ -623,7 +624,8 @@ def trigger_call(target_id: int, db: Session = Depends(get_db)) -> RedirectRespo
 
     call_now.delay(target_id)
     log.info("Llamada manual disparada para target %s", target_id)
-    return _redirect("/targets")
+    quien = target.contact_name or target.phone
+    return _redirect(f"/targets?aviso={quote_plus(f'Llamando a {quien}. El resultado aparece en Historial cuando termine.')}")
 
 
 @router.post("/targets/{target_id}/reschedule")
@@ -638,7 +640,8 @@ def reschedule_target(target_id: int, db: Session = Depends(get_db)) -> Redirect
     target.last_error = None
     target.scheduled_at = datetime.now(timezone.utc)
     db.commit()
-    return _redirect("/targets")
+    quien = target.contact_name or target.phone
+    return _redirect(f"/targets?aviso={quote_plus(f'{quien} vuelve a la cola con los intentos en cero: se llama en el próximo horario permitido.')}")
 
 
 # ---------------------------------------------------------------------------
@@ -783,10 +786,14 @@ def _filtros_reporte(
         nombre = db.scalar(select(Campaign.name).where(Campaign.id == campaign_id))
         partes.append(f"campaña «{nombre or campaign_id}»")
 
-    if outcome:
+    if outcome == "conectadas":
+        # «Conectadas» de Dapta: el cliente atendió, terminara o no la encuesta.
+        condiciones.append(CallAttempt.answered_at.is_not(None))
+        partes.append("solo las que atendieron")
+    elif outcome:
         try:
             condiciones.append(CallAttempt.outcome == CallOutcome(outcome))
-            partes.append(f"resultado {outcome}")
+            partes.append(f"resultado «{etiqueta(outcome)}»")
         except ValueError:
             pass
 

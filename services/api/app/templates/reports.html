@@ -31,6 +31,14 @@
     <span class="note">Se aplican también a la exportación</span>
   </header>
 
+  {% if vista == "historial" %}
+  {#- Como el Registro de llamadas de Dapta: los tres cortes de un toque, sin perder los demás filtros. -#}
+  <nav class="filtros-seg" aria-label="Qué llamadas ver" style="margin-bottom:var(--s3)">
+    {% for valor, texto in [("conectadas", "Conectadas"), ("completed", "Exitosas"), ("", "Todas")] %}
+    <a href="{{ request.url.include_query_params(outcome=valor, page=1) }}" {% if (f.outcome or "") == valor %}aria-current="page"{% endif %}>{{ texto }}</a>
+    {% endfor %}
+  </nav>
+  {% endif %}
   <form method="get" action="/{{ vista }}" class="filters">
     <label>
       <span class="sr-only">Desde</span>
@@ -50,6 +58,7 @@
 
     <select name="outcome" aria-label="Resultado">
       <option value="">Todos los resultados</option>
+      <option value="conectadas" {% if f.outcome == "conectadas" %}selected{% endif %}>atendieron (conectadas)</option>
       {% for o in outcomes %}
       <option value="{{ o.value }}" {% if f.outcome == o.value %}selected{% endif %}>{{ o | estado }}</option>
       {% endfor %}
