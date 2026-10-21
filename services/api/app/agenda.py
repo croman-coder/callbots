@@ -185,7 +185,23 @@ def tiempos(suc: TallerSucursal, serv: TallerServicio, inicio: datetime) -> Tiem
     listo = hasta + timedelta(minutes=serv.lavado_min + serv.calidad_min + serv.entrega_min + suc.margen_retiro_min)
     resto = (-local(listo).minute) % 30
     retiro = (listo + timedelta(minutes=resto)).replace(second=0, microsecond=0)
+    # Si a esa hora el taller ya cerró, se retira el siguiente día que abra, desde que abre.
+    dia = local(inicio).date()
+    abre = horario_del_dia(suc, dia)
+    if abre is not None and retiro > datetime.combine(dia, abre[1], tzinfo=tz()):
+        for i in range(1, 15):
+            siguiente = horario_del_dia(suc, dia + timedelta(days=i))
+            if siguiente is not None:
+                retiro = datetime.combine(dia + timedelta(days=i), siguiente[0], tzinfo=tz())
+                break
     return Tiempos(desde, hasta, retiro)
+
+
+def retiro_texto(retiro: datetime, inicio: datetime) -> str:
+    """«desde las 15:00», o «el martes 27/10 desde las 07:00» si queda para otro día."""
+    if local(retiro).date() == local(inicio).date():
+        return f"desde las {hora_texto(retiro)}"
+    return f"el {dia_texto(local(retiro).date())} desde las {hora_texto(retiro)}"
 
 
 def _del_dia(db: Session, suc: TallerSucursal, dia: date) -> list[TallerTurno]:
@@ -410,11 +426,11 @@ def consultar(db: Session, pedido: dict, *, telefono_llamada: str | None = None,
                              chapa=pedido.get("chapa"), km=km, origen=origen, momento=momento, por="agente")
         except HorarioNoDisponible as exc:
             opciones = _opciones(db, suc, serv, dia, None, momento)
-            return f"No se reservó: {exc} {_texto_opciones(opciones)}", None
+            return f"No se reservó: {exc} {_texto_opciones(opciones, suc, serv)}", None
         prueba = " Es una prueba: queda marcado así y no ocupa lugar en la agenda." if turno.estado == "prueba" else ""
         return (f"Turno reservado (n.º {turno.id}): {dia_texto(dia)} a las {hora_texto(turno.inicio)} en {suc.nombre}"
                 f"{' (' + suc.direccion + ')' if suc.direccion else ''}, {serv.nombre}"
-                f"{' para ' + vehiculo if vehiculo else ''}. Lo retira desde las {hora_texto(turno.retiro_estimado)} "
+                f"{' para ' + vehiculo if vehiculo else ''}. Lo retira {retiro_texto(turno.retiro_estimado, turno.inicio)} "
                 f"aproximadamente.{prueba}"), turno.id
 
     opciones = _opciones(db, suc, serv, dia, pedido.get("franja"), momento)
@@ -426,14 +442,11 @@ def consultar(db: Session, pedido: dict, *, telefono_llamada: str | None = None,
     return f"{suc.nombre}. {dura} {aviso}{_texto_opciones(opciones, suc, serv)}", None
 
 
-def _texto_opciones(opciones, suc: TallerSucursal | None = None, serv: TallerServicio | None = None) -> str:  # noqa: ANN001
+def _texto_opciones(opciones, suc: TallerSucursal, serv: TallerServicio) -> str:  # noqa: ANN001
     if not opciones:
         return f"No hay horarios libres en los próximos {MAX_DIAS_ADELANTE} días."
     partes = []
     for dia, lista in opciones:
-        horas = ", ".join(hora_texto(t) for t, _ in lista)
+        horas = ", ".join(f"{hora_texto(t)} (lo retira {retiro_texto(tiempos(suc, serv, t).retiro, t)})" for t, _ in lista)
         partes.append(f"Libres el {dia_texto(dia)} (fecha {dia.isoformat()}): {horas}.")
-    if suc is not None and serv is not None:
-        t0 = opciones[0][1][0][0]
-        partes.append(f"Si lo deja a las {hora_texto(t0)}, lo retira desde las {hora_texto(tiempos(suc, serv, t0).retiro)} aprox.")
-    return " ".join(partes)
+    return " ".join(partes) + " Las horas de retiro son aproximadas: decí la que corresponde, sin calcular otra."

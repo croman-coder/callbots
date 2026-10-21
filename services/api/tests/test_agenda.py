@@ -45,6 +45,9 @@ def test_horarios_libres_y_retiro(base):  # noqa: F811
     t = agenda.tiempos(suc, s10, datetime.combine(LUNES, time(8, 0), tzinfo=agenda.tz()))
     # 8:00 + 95 min de etapas + 60 de margen = 10:35 → se redondea a la media hora siguiente.
     assert agenda.hora_texto(t.retiro) == "11:00"
+    # A las 9 el retiro caería 11:35 → 12:00, con el taller cerrado desde las 11: pasa al martes a la apertura.
+    tarde = agenda.tiempos(suc, s10, datetime.combine(LUNES, time(9, 0), tzinfo=agenda.tz()))
+    assert agenda.retiro_texto(tarde.retiro, datetime.combine(LUNES, time(9, 0), tzinfo=agenda.tz())) == "el martes 27/10 desde las 07:00"
     assert agenda.libres(db, suc, s10, LUNES + timedelta(days=5), ANTES) == []  # sábado: cerrado
 
 
@@ -103,8 +106,8 @@ def test_consultar_y_reservar_como_lo_pide_el_agente(base):  # noqa: F811
     db, suc, _, _, _ = armar(base)
     texto, turno_id = agenda.consultar(db, {"que": "turnos", "servicio": "Service 10.000 km", "marca": "Renault",
                                             "modelo": "Kardian", "fecha": "2026-10-26", "franja": "mañana"}, momento=ANTES)
-    assert turno_id is None and "Libres el lunes 26/10 (fecha 2026-10-26): 07:00, 09:00, 10:00." in texto
-    assert "lo retira desde las 10:00" in texto and "trabajo 45" in texto
+    assert turno_id is None and "Libres el lunes 26/10 (fecha 2026-10-26): 07:00 (lo retira desde las 10:00), " in texto
+    assert "10:00 (lo retira el martes 27/10 desde las 07:00)" in texto and "trabajo 45" in texto
     sabado, _ = agenda.consultar(db, {"que": "turnos", "servicio": "Service 10.000 km", "fecha": "2026-10-31"}, momento=ANTES)
     assert sabado.startswith("Taller Zeballos.") and "El sábado 31/10 el taller no abre. Libres el lunes 02/11 (fecha 2026-11-02)" in sabado
     sin_datos, _ = agenda.consultar(db, {"que": "reservar", "servicio": "Service 10.000 km", "fecha": "2026-10-26",
@@ -115,7 +118,7 @@ def test_consultar_y_reservar_como_lo_pide_el_agente(base):  # noqa: F811
                                          "telefono": "0981 222 333", "km": "10.200"}, origen="telefono", momento=ANTES)
     db.commit()
     turno = db.get(TallerTurno, turno_id)
-    assert "Turno reservado" in ok and "Av. República Argentina 1234" in ok and "desde las 11:00" in ok
+    assert "Turno reservado" in ok and "Av. República Argentina 1234" in ok and "Lo retira desde las 11:00" in ok
     assert turno.estado == "agendado" and turno.km == 10200 and turno.cliente_nombre == "Laura"
 
 
