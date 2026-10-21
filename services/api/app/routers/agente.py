@@ -16,6 +16,7 @@ import json
 import logging
 import re
 import time as reloj
+from itertools import zip_longest
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -42,7 +43,7 @@ from app.models import (
 from app.plantillas import templates
 from app.routers.internal import sesion_de_prueba
 from app.scheduling import parse_days
-from app.services import calidad
+from app.services import calidad, variables
 from app.services.scoring import SATISFACTORY_MIN
 
 log = logging.getLogger(__name__)
@@ -268,6 +269,8 @@ def ficha(
         "callerid": settings.asterisk_callerid,
         "tz": settings.timezone,
         "bitrix_comentario": settings.bitrix_timeline_comment and bool(settings.bitrix_webhook_url),
+        "tipos_variable": variables.TIPOS,
+        "max_variables": variables.MAX_VARIABLES,
     }
     if tab == "probar":
         ctx.update(_datos_probar(db, campaign))
@@ -412,6 +415,22 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     frase = texto("transfer_script", 400)
     if frase:
         campaign.transfer_script = frase
+
+    # Datos propios del análisis: cuatro listas en paralelo, una fila por variable. `vf_enviado` dice que el
+    # formulario trajo la sección (si no, no se toca lo guardado); una fila con el nombre vacío se descarta, y
+    # así es como se quita una variable.
+    if "vf_enviado" in form:
+        filas = [
+            {"nombre": n, "tipo": t, "descripcion": d, "opciones": o}
+            for n, t, d, o in zip_longest(
+                form.getlist("vf_nombre"), form.getlist("vf_tipo"), form.getlist("vf_descripcion"),
+                form.getlist("vf_opciones"), fillvalue="",
+            )
+        ]
+        try:
+            campaign.analysis_fields = variables.validar(filas) or None
+        except variables.VariablesError as exc:
+            return _volver(campaign_id, tab, error=str(exc))
 
     db.commit()
     return _volver(campaign_id, tab, ok="Cambios guardados")

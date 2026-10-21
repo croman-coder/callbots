@@ -28,6 +28,7 @@ from openpyxl.utils import get_column_letter
 from app import etiquetas
 from app.etiquetas import con_mayuscula
 from app.models import CallAttempt, QuestionType
+from app.services import variables
 from app.services.scoring import SATISFACTORY_MIN, is_satisfactory, to_scale_10
 
 log = logging.getLogger(__name__)
@@ -117,6 +118,17 @@ def _hoja_llamadas(wb: Workbook, calls: list[CallAttempt], tz: ZoneInfo) -> None
         "Registro Bitrix", "Ingreso al taller",
     ]
     encabezados += [f"P{q.position}. {q.text[:60]}" for q in ordenadas]
+    # Los datos propios de cada agente (ver services/variables.py): una columna por nombre, de todas las campañas
+    # exportadas. Dos agentes que llaman igual a una variable comparten columna.
+    propios: list[str] = []
+    for call in calls:
+        for nombre, _ in variables.pares(
+            call.target.campaign.analysis_fields if call.target and call.target.campaign else None,
+            call.analysis.extras if call.analysis else None,
+        ):
+            if nombre not in propios:
+                propios.append(nombre)
+    encabezados += propios
     hoja.append(encabezados)
 
     for call in calls:
@@ -150,6 +162,11 @@ def _hoja_llamadas(wb: Workbook, calls: list[CallAttempt], tz: ZoneInfo) -> None
             _valor_legible(respuestas[q.id]) if q.id in respuestas else None
             for q in ordenadas
         ]
+        valores = variables.para_planilla(
+            target.campaign.analysis_fields if target and target.campaign else None,
+            analisis.extras if analisis else None,
+        )
+        fila += [valores.get(n) for n in propios]
         hoja.append(fila)
 
     # Los formatos se ubican por nombre de encabezado, no por número de columna:
@@ -162,7 +179,7 @@ def _hoja_llamadas(wb: Workbook, calls: list[CallAttempt], tz: ZoneInfo) -> None
     _ajustar(hoja, {
         1: 17, 2: 26, 3: 16, 4: 24, 5: 14, 6: 8, 7: 14,
         8: 11, 9: 10, 10: 13, 11: 12, 12: 40, 13: 46, 14: 16, 15: 17,
-        **{16 + i: 22 for i in range(len(ordenadas))},
+        **{16 + i: 22 for i in range(len(ordenadas) + len(propios))},
     })
 
 

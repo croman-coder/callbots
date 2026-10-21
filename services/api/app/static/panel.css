@@ -797,6 +797,20 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .desliza { display: grid; grid-template-columns: 110px minmax(0, 1fr) 46px; align-items: center; gap: var(--s3); font-size: var(--t-sm); font-weight: 600; }
 .desliza .hint { grid-column: 2 / -1; margin-top: -6px; }
 .desliza output { font-variant-numeric: tabular-nums; text-align: right; }
+/* Variables propias del análisis: una fila por variable. */
+.vars-propias { display: flex; flex-direction: column; gap: var(--s3); }
+.var-fila {
+  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .8fr) minmax(0, 2fr) auto; gap: var(--s3); align-items: end;
+  padding: var(--s3); border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--raised);
+}
+.var-fila label { margin: 0; display: flex; flex-direction: column; gap: 5px; font-size: var(--t-sm); font-weight: 600; }
+.var-fila .var-opc { grid-column: 1 / 4; }
+.var-fila .var-opc[hidden] { display: none; }
+.var-fila > button { align-self: end; }
+@media (max-width: 760px) {
+  .var-fila { grid-template-columns: 1fr; }
+  .var-fila .var-opc { grid-column: auto; }
+}
 .opcion-off { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s3) 0; border-top: 1px solid var(--line); margin: 0; }
 .opcion-off p { margin: 0; }
 .chip-pronto { display: inline-block; padding: 3px 10px; border-radius: var(--r-pill); background: var(--warn-bg); color: var(--warn); font-size: var(--t-xs); font-weight: 700; white-space: nowrap; }

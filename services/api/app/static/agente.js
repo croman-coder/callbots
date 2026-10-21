@@ -171,6 +171,34 @@
     if (sel && msg) sel.addEventListener("change", function () { msg.hidden = sel.value !== "mensaje"; });
   });
 
+  // ------------------------------------------------------------ Variables propias del análisis
+  var lista = $("[data-vars]"), molde = $("[data-var-plantilla]"), btnAgregar = $("[data-var-agregar]"), estadoVar = $("[data-var-estado]");
+  if (lista && molde && btnAgregar) {
+    var max = parseInt(lista.dataset.max, 10) || 8;
+    var contar = function () { return $$("[data-var]", lista).length; };
+    var refrescar = function () {
+      var n = contar();
+      btnAgregar.disabled = n >= max;
+      if (estadoVar) estadoVar.textContent = n >= max ? "Máximo " + max + " variables." : (n ? n + (n === 1 ? " variable" : " variables") : "");
+    };
+    var vincular = function (fila) {
+      var tipo = $("[data-var-tipo]", fila), opc = $(".var-opc", fila);
+      if (tipo && opc) tipo.addEventListener("change", function () { opc.hidden = tipo.value !== "opcion"; });
+      $("[data-var-quitar]", fila).addEventListener("click", function () {
+        fila.remove(); refrescar(); if (window.callbotMarcarSucio) window.callbotMarcarSucio();
+      });
+    };
+    $$("[data-var]", lista).forEach(vincular);
+    btnAgregar.addEventListener("click", function () {
+      if (contar() >= max) return;
+      var fila = molde.content.firstElementChild.cloneNode(true);
+      lista.appendChild(fila); vincular(fila); refrescar();
+      var nombre = $("input[name=vf_nombre]", fila); if (nombre) nombre.focus();
+      if (window.callbotMarcarSucio) window.callbotMarcarSucio();
+    });
+    refrescar();
+  }
+
   // ------------------------------------------------------------ Detalles chicos
   $$("[data-copiar-texto]").forEach(function (b) { b.addEventListener("click", function () { copiar(b.dataset.copiarTexto, b); }); });
   $$("input[type=range][data-salida]").forEach(function (r) {

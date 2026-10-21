@@ -20,7 +20,38 @@
       <li><code>temas</code><span>lista · de qué habló (atención, plazo, precio…)</span></li>
       <li><code>requiere_seguimiento</code><span>sí/no · y el motivo, si hay que llamarlo de vuelta</span></li>
     </ul>
-    <p class="opcion-off"><span>Agregar variables propias</span><span class="chip-pronto">Pronto</span></p>
+  </details>
+
+  {% macro fila_variable(v) %}
+  <div class="var-fila" data-var>
+    <label>Nombre
+      <input type="text" name="vf_nombre" maxlength="40" value="{{ v.nombre if v else '' }}" placeholder="Motivo de la queja" spellcheck="false"></label>
+    <label>Tipo
+      <select name="vf_tipo" data-var-tipo>
+        {% for clave, etiqueta in tipos_variable.items() %}<option value="{{ clave }}" {% if v and v.tipo == clave %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+      </select></label>
+    <label class="var-desc">Qué tiene que buscar Claude
+      <input type="text" name="vf_descripcion" maxlength="200" value="{{ v.descripcion if v else '' }}" placeholder="Qué buscar en la conversación, en pocas palabras"></label>
+    <label class="var-opc" {% if not v or v.tipo != "opcion" %}hidden{% endif %}>Opciones, separadas por coma
+      <input type="text" name="vf_opciones" maxlength="300" value="{{ (v.opciones | join(', ')) if v else '' }}" placeholder="baja, media, alta"></label>
+    <button type="button" class="btn mini quiet danger" data-var-quitar>Quitar</button>
+  </div>
+  {% endmacro %}
+
+  <details class="bloque" open>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>Variables propias <span class="hint">· datos extra que Claude saca de cada llamada</span></summary>
+    <p class="hint">Sumá lo que le importa a tu equipo, por ejemplo <em>Motivo de la queja</em> (texto), <em>Volvería a venir</em> (sí / no) o <em>Urgencia</em> (una opción). Aparecen en el detalle de cada llamada, en el Excel y en el comentario de Bitrix. Si la llamada no alcanza para saberlo, queda vacío: Claude no inventa.</p>
+    <input type="hidden" name="vf_enviado" value="1">
+    <noscript><style>.var-opc[hidden] { display: block; }</style></noscript>
+    <div class="vars-propias" data-vars data-max="{{ max_variables }}">
+      {% for v in (campaign.analysis_fields or []) %}{{ fila_variable(v) }}{% endfor %}
+    </div>
+    <template data-var-plantilla>{{ fila_variable(none) }}</template>
+    <p class="actions" style="margin-top:var(--s3)">
+      <button type="button" class="btn" data-var-agregar>Agregar variable</button>
+      <span class="hint" data-var-estado role="status" aria-live="polite"></span>
+    </p>
+    <p class="hint">Se guardan con «Guardar cambios». Las llamadas que ya pasaron no se re-analizan.</p>
   </details>
 
   <details class="bloque" open>

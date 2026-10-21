@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Answer, CallAnalysis, CallAttempt, QuestionType
-from app.services import llm
+from app.services import llm, variables
 from app.services.scoring import (
     SATISFACTORY_MIN,
     interpret,
@@ -103,7 +103,7 @@ def _fallback_sentiment(score: float | None) -> str:
     return "negativo"
 
 
-def build_system_prompt(extra: str | None) -> str:
+def build_system_prompt(extra: str | None, campos: list[dict] | None = None) -> str:
     """Prompt base + lo que haya cargado la campaña.
 
     Las instrucciones de la campaña se agregan DESPUÉS del prompt base y no lo
@@ -112,27 +112,29 @@ def build_system_prompt(extra: str | None) -> str:
     en un análisis perdido en silencio.
     """
     extra = (extra or "").strip()
-    if not extra:
-        return SYSTEM_PROMPT
-
-    return (
-        f"{SYSTEM_PROMPT}\n\n"
-        "Contexto e instrucciones adicionales de esta campaña "
-        "(respetá igual el formato JSON de arriba):\n"
-        f"{extra}"
-    )
+    prompt = SYSTEM_PROMPT
+    if extra:
+        prompt += (
+            "\n\nContexto e instrucciones adicionales de esta campaña "
+            "(respetá igual el formato JSON de arriba):\n"
+            f"{extra}"
+        )
+    pedido = variables.instrucciones(campos)
+    if pedido:
+        prompt += f"\n\n{pedido}"
+    return prompt
 
 
 def query_llm(
-    transcript: str, timeout: float = 120.0, extra_prompt: str | None = None
+    transcript: str, timeout: float = 120.0, extra_prompt: str | None = None, campos: list[dict] | None = None
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Analiza la transcripción con Claude. Devuelve (resultado, modelo usado) o (None, None)."""
     if not llm.is_configured():
         return None, None
     texto = llm.complete_sync(
-        build_system_prompt(extra_prompt) + "\n\nRespondé SOLO con el objeto JSON, sin texto antes ni después.",
+        build_system_prompt(extra_prompt, campos) + "\n\nRespondé SOLO con el objeto JSON, sin texto antes ni después.",
         f"Transcripción de la encuesta:\n\n{transcript}",
-        max_tokens=500,
+        max_tokens=500 + 120 * len(campos or []),
     )
     resultado = llm.parse_json_object(texto)
     if resultado is None:
@@ -166,8 +168,9 @@ def analyze_call(db: Session, call: CallAttempt) -> CallAnalysis:
     transcript = build_transcript(call)
 
     campaign = call.target.campaign if call.target else None
+    campos = getattr(campaign, "analysis_fields", None) or None
     llm_result, modelo = (
-        query_llm(transcript, extra_prompt=getattr(campaign, "analysis_prompt", None))
+        query_llm(transcript, extra_prompt=getattr(campaign, "analysis_prompt", None), campos=campos)
         if transcript.strip()
         else (None, None)
     )
@@ -201,12 +204,14 @@ def analyze_call(db: Session, call: CallAttempt) -> CallAnalysis:
         )
         reasons = [score_warning, llm_result.get("followup_reason")]
         analysis.followup_reason = " | ".join(r for r in reasons if r) or None
+        analysis.extras = variables.coaccionar(campos, llm_result.get("datos"))
     else:
         analysis.sentiment = _fallback_sentiment(score)
         analysis.summary = None
         analysis.model_used = None
         analysis.requires_followup = bool(below)
         analysis.followup_reason = score_warning
+        analysis.extras = None
 
     if analysis.id is None:
         db.add(analysis)

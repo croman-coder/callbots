@@ -104,6 +104,9 @@ class Campaign(Base):
     # Instrucciones extra para el LLM que analiza la llamada. Se suman al
     # prompt base, que ya fija el contrato JSON que la aplicación parsea.
     analysis_prompt: Mapped[str | None] = mapped_column(Text)
+    # Datos propios que Claude saca de cada llamada, además de los fijos (ver services/variables.py):
+    # [{"clave", "nombre", "tipo", "descripcion", "opciones"}].
+    analysis_fields: Mapped[list | None] = mapped_column(JSON)
 
     # --- Voz del bot ---
     # Se mandan al voice-agent en el guion de cada llamada, así se ajustan
@@ -405,6 +408,8 @@ class CallAnalysis(Base):
     followup_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     followup_done_by: Mapped[str | None] = mapped_column(String(160))
     followup_note: Mapped[str | None] = mapped_column(Text)
+    # Valores de los datos propios del agente, por clave (ver Campaign.analysis_fields).
+    extras: Mapped[dict | None] = mapped_column(JSON)
 
     model_used: Mapped[str | None] = mapped_column(String(80))
     synced_to_bitrix: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -135,6 +135,10 @@
           <tr><th scope="row">Temas</th>
               <td class="tagrow">{% for t in call.analysis.topics %}<span class="pill">{{ t }}</span>{% endfor %}</td></tr>
           {% endif %}
+          {% set propios = datos_propios(call.target.campaign.analysis_fields if call.target and call.target.campaign else None, call.analysis.extras) %}
+          {% for nombre, valor in propios %}
+          <tr><th scope="row">{{ nombre }}</th><td>{% if valor == "—" %}<span class="muted">sin dato</span>{% else %}{{ valor }}{% endif %}</td></tr>
+          {% endfor %}
           <tr><th scope="row">Requiere seguimiento</th>
               <td>{% if call.analysis.requires_followup %}
                     {% if call.analysis.followup_done_at %}

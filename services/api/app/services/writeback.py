@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.bitrix.client import BitrixClient, BitrixError
 from app.config import settings
 from app.models import CallAttempt, QuestionType
+from app.services import variables
 from app.services.scoring import SATISFACTORY_MIN, is_satisfactory, to_scale_10
 
 log = logging.getLogger(__name__)
@@ -87,6 +88,18 @@ def build_comment(call: CallAttempt) -> str:
 
     if analysis and analysis.topics:
         lines += ["", "[B]Temas:[/B] " + ", ".join(str(t) for t in analysis.topics)]
+
+    # Datos propios del agente (variables.py): solo los que Claude pudo determinar.
+    propios = [
+        (nombre, valor)
+        for nombre, valor in variables.pares(
+            target.campaign.analysis_fields if target and target.campaign else None,
+            analysis.extras if analysis else None,
+        )
+        if valor != "—"
+    ]
+    if propios:
+        lines += ["", "[B]Datos:[/B]"] + [f"[LIST][*]{nombre}: {valor}[/LIST]" for nombre, valor in propios]
 
     duration = call.duration_seconds or 0
     lines += [
