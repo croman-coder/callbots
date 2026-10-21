@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import secrets
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -1267,6 +1268,70 @@ async def clonar_voz(
     except voicestudio.VoiceStudioError as exc:
         return JSONResponse({"error": str(exc)}, 502)
     log.info("Voz clonada %s (%s) por %s", perfil.get("id"), nombre, usuario)
+    return JSONResponse({"id": voicestudio.id_callbot(str(perfil["id"])), "nombre": nombre})
+
+
+@router.post("/voices/disenar/probar")
+async def disenar_probar(
+    request: Request, genero: str = Form(""), edad: str = Form(""), tono: str = Form("")
+) -> JSONResponse:
+    """Inventa una voz con IA a partir de tres rasgos y devuelve el audio para escucharlo. No es la voz de
+    nadie: no pide permiso. Cada pedido sale con una variante distinta."""
+    if not voicestudio.is_configured():
+        return JSONResponse({"error": "El motor de voz todavía no está instalado en el servidor."}, 503)
+    instruccion = voces.instruccion_diseno(genero, edad, tono)
+    if instruccion is None:
+        return JSONResponse({"error": "Elegí si es voz de mujer o de hombre, la edad y el tono."}, 400)
+    usuario = request.state.principal.usuario if getattr(request.state, "principal", None) else "?"
+    if not agentes.permitir_diseno(usuario):
+        return JSONResponse({"error": "Probaste muchas voces en la última hora. Seguí con una de las que escuchaste o probá más tarde."}, 429)
+    try:
+        wav = await asyncio.to_thread(
+            voicestudio.disenar, instruccion, secrets.randbelow(1_000_000), voces.TEXTO_DISENO
+        )
+    except voicestudio.VoiceStudioError as exc:
+        return JSONResponse({"error": str(exc)}, 502)
+    largo = voicestudio.duracion_wav(wav)
+    if not wav or largo is None or not 2.0 <= largo <= voces.MAX_REFERENCIA_SEGUNDOS:
+        return JSONResponse({"error": "Esa variante salió mal. Probá otra."}, 502)
+    codigo = voces.guardar_muestra(wav)
+    return JSONResponse({"codigo": codigo, "audio": f"/voices/disenar/muestra/{codigo}"})
+
+
+@router.get("/voices/disenar/muestra/{codigo}")
+def disenar_muestra(codigo: str) -> Response:
+    wav = voces.muestra(codigo)
+    if wav is None:
+        raise HTTPException(404, "Esa muestra venció: probá la voz de nuevo.")
+    return Response(content=wav, media_type="audio/wav", headers={"Cache-Control": "no-store"})
+
+
+@router.post("/voices/disenar/guardar")
+async def disenar_guardar(
+    request: Request, codigo: str = Form(""), nombre: str = Form(""), genero: str = Form("")
+) -> JSONResponse:
+    """Se queda con la voz que se escuchó: el mismo audio pasa a ser su referencia, y suena igual en todas las frases."""
+    if not voicestudio.is_configured():
+        return JSONResponse({"error": "El motor de voz todavía no está instalado en el servidor."}, 503)
+    nombre = " ".join(nombre.split())[:40]
+    if not nombre:
+        return JSONResponse({"error": "Ponele un nombre a la voz."}, 400)
+    if genero not in voces.DISENO_GENERO:
+        return JSONResponse({"error": "Elegí si es voz de mujer o de hombre."}, 400)
+    wav = voces.muestra(codigo)
+    if wav is None:
+        return JSONResponse({"error": "Esa muestra venció: probá la voz de nuevo y guardala."}, 410)
+    usuario = request.state.principal.usuario if getattr(request.state, "principal", None) else "?"
+    if not agentes.permitir_voz_ia(usuario):
+        return JSONResponse({"error": "Ya guardaste varias voces en la última hora. Probá más tarde."}, 429)
+    try:
+        perfil = await asyncio.to_thread(
+            voicestudio.crear_disenada, f"{nombre} ({genero.lower()}, IA)", wav, voces.TEXTO_DISENO
+        )
+    except voicestudio.VoiceStudioError as exc:
+        return JSONResponse({"error": str(exc)}, 502)
+    voces.quitar_muestra(codigo)
+    log.info("Voz creada con IA %s (%s) por %s", perfil.get("id"), nombre, usuario)
     return JSONResponse({"id": voicestudio.id_callbot(str(perfil["id"])), "nombre": nombre})
 
 

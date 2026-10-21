@@ -57,9 +57,10 @@ class Config:
     voicestudio_api_key: str = os.getenv("VOICESTUDIO_API_KEY", "")
     voicestudio_language: str = os.getenv("VOICESTUDIO_LANGUAGE", "Spanish")
     voicestudio_vivo_timeout: float = float(os.getenv("VOICESTUDIO_VIVO_TIMEOUT", "4"))
-    # Pasos de difusión: menos es más rápido y algo menos fino. Medido en la notebook (RTX 5060), una
-    # frase de 6 s: 8 pasos 0,8 s; 12 pasos 1,1 s; 16 pasos 1,4 s; 32 pasos 2,6 s.
-    voicestudio_pasos: int = int(os.getenv("VOICESTUDIO_PASOS", "12"))
+    # Pasos de difusión: menos es más rápido y algo menos fino. Medido en la RTX 5070 del servidor, una
+    # frase de 5 s: 8 pasos 0,42 s; 12 pasos 0,5 s; 16 pasos 0,6 s; 24 pasos 0,8 s; 32 pasos 1 s. Desde 12 pasos
+    # Whisper entiende el 100 % de lo dicho; 16 es el valor del propio modelo y deja margen en las terminaciones.
+    voicestudio_pasos: int = int(os.getenv("VOICESTUDIO_PASOS", "16"))
 
     # ElevenLabs (voces de la cuenta de Santa Rosa; de pago, por carácter). Las campañas lo usan con un
     # perfil "el:<voice_id>". Sin clave no se ofrece.

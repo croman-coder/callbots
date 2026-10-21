@@ -193,7 +193,7 @@
       <input type="search" data-filtro-texto placeholder="Buscar voces…" autocomplete="off">
     </label>
     <label><span class="sr-only">Género</span><select data-filtro="genero"><option value="">Género</option><option>Mujer</option><option>Hombre</option></select></label>
-    <label><span class="sr-only">Tipo</span><select data-filtro="tipo"><option value="">Tipo</option><option>Prediseñada</option><option>Clonada</option></select></label>
+    <label><span class="sr-only">Tipo</span><select data-filtro="tipo"><option value="">Tipo</option><option>Prediseñada</option><option>Clonada</option><option>Creada con IA</option></select></label>
     <label><span class="sr-only">Modelo</span><select data-filtro="motor"><option value="">Modelo</option>{% for m in voces | map(attribute="motor_nombre") | unique %}<option>{{ m }}</option>{% endfor %}</select></label>
   </div>
   <div class="tablewrap"><div class="scroll">

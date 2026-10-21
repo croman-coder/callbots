@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets
+import threading
+import time
 
 from app.config import settings
 from app.services import elevenlabs, voicebox, voicestudio
@@ -33,6 +36,58 @@ GENERO_PRESET = {"ef_dora": "Mujer", "em_alex": "Hombre", "em_santa": "Hombre"}
 # Más largo no clona mejor: el propio modelo recomienda entre 3 y 10 segundos.
 TEXTO_REFERENCIA = "Hola, buenas tardes. Le hablo de Santa Rosa Automotores, ¿tiene un minutito?"
 MAX_REFERENCIA_SEGUNDOS = 7.0
+
+
+# Voces creadas con IA: el modelo inventa una voz a partir de rasgos. No es la voz de ninguna persona, así que
+# no hace falta permiso, y es la forma de tener una voz natural y estable sin grabar a nadie. Los rasgos son
+# listas cerradas (el motor los entiende en inglés) para que nadie pueda meter texto libre en el pedido.
+DISENO_GENERO = {"Mujer": "female", "Hombre": "male"}
+DISENO_EDAD = {"Joven": "young adult", "Adulta": "middle-aged"}
+DISENO_TONO = {"Agudo": "high pitch", "Medio": "moderate pitch", "Grave": "low pitch"}
+# Lo que dice la muestra, y la que queda como referencia de la voz: la de una llamada real, de unos 5 segundos.
+TEXTO_DISENO = TEXTO_REFERENCIA
+
+
+def instruccion_diseno(genero: str, edad: str, tono: str) -> str | None:
+    """«female, young adult, moderate pitch», o None si algún rasgo no está en las listas."""
+    g, e, t = DISENO_GENERO.get(genero), DISENO_EDAD.get(edad), DISENO_TONO.get(tono)
+    return f"{g}, {e}, {t}" if g and e and t else None
+
+
+# Las muestras que se escucharon y todavía no se guardaron. Quedan en el servidor y se guardan por su código: quien
+# crea la voz solo puede quedarse con un audio que el motor generó, nunca con uno que suba él (eso sería clonar a
+# alguien sin su permiso). Duran 15 minutos y no hay más de 20.
+_MUESTRAS: dict[str, tuple[float, bytes]] = {}
+_MUESTRAS_TTL = 15 * 60
+_MUESTRAS_MAX = 20
+_cerrojo_muestras = threading.Lock()
+
+
+def guardar_muestra(wav: bytes, ahora: float | None = None) -> str:
+    ahora = time.monotonic() if ahora is None else ahora
+    with _cerrojo_muestras:
+        for k in [k for k, (t, _) in _MUESTRAS.items() if ahora - t > _MUESTRAS_TTL]:
+            del _MUESTRAS[k]
+        while len(_MUESTRAS) >= _MUESTRAS_MAX:
+            del _MUESTRAS[min(_MUESTRAS, key=lambda k: _MUESTRAS[k][0])]
+        codigo = secrets.token_urlsafe(16)
+        _MUESTRAS[codigo] = (ahora, wav)
+        return codigo
+
+
+def muestra(codigo: str, ahora: float | None = None) -> bytes | None:
+    ahora = time.monotonic() if ahora is None else ahora
+    with _cerrojo_muestras:
+        hallada = _MUESTRAS.get(codigo)
+        if hallada is None or ahora - hallada[0] > _MUESTRAS_TTL:
+            _MUESTRAS.pop(codigo, None)
+            return None
+        return hallada[1]
+
+
+def quitar_muestra(codigo: str) -> None:
+    with _cerrojo_muestras:
+        _MUESTRAS.pop(codigo, None)
 
 
 def frase_consentimiento(persona: str) -> str:
@@ -121,8 +176,13 @@ def catalogo() -> tuple[list[dict], str | None]:
     return voces, error
 
 
+def _es_ia(perfil: dict) -> bool:
+    return str(perfil.get("personality") or "") == voicestudio.MARCA_IA
+
+
 def clonadas() -> list[dict]:
-    """Las voces clonadas en VoiceStudio con consentimiento registrado: sin él no se ofrecen."""
+    """Las voces de VoiceStudio: las clonadas con consentimiento registrado (sin él no se ofrecen) y las creadas
+    con IA, que no son de nadie."""
     if not voicestudio.is_configured():
         return []
     try:
@@ -130,26 +190,32 @@ def clonadas() -> list[dict]:
     except voicestudio.VoiceStudioError as exc:
         log.warning("Voces clonadas: %s", exc)
         return []
-    return [
-        {
-            "id": voicestudio.id_callbot(str(p["id"])),
-            "nombre": _nombre_limpio(str(p.get("name") or "Sin nombre")),
-            "genero": _genero(p),
-            "tipo": "Clonada",
-            "descripcion": p.get("description") or "",
-            "motor": "omnivoice",
-            "motor_nombre": MOTORES["omnivoice"]["nombre"],
-            "detalle": MOTORES["omnivoice"]["detalle"],
-            "en_vivo": True,
-            "predeterminada": False,
-            "escuchar": True,
-            "consentimiento": p.get("consent_text") or "",
-            "creada": p.get("created_at"),
-            "costo": "Gratis",
-        }
-        for p in perfiles
-        if p.get("id") and p.get("kind", "clone") == "clone" and p.get("verified_own_voice")
-    ]
+    salida = []
+    for p in perfiles:
+        if not p.get("id") or p.get("kind", "clone") != "clone":
+            continue
+        ia = _es_ia(p)
+        if not ia and not p.get("verified_own_voice"):
+            continue
+        salida.append(
+            {
+                "id": voicestudio.id_callbot(str(p["id"])),
+                "nombre": _nombre_limpio(str(p.get("name") or "Sin nombre")),
+                "genero": _genero(p),
+                "tipo": "Creada con IA" if ia else "Clonada",
+                "descripcion": "Inventada por el motor de voz: no es de ninguna persona" if ia else (p.get("description") or ""),
+                "motor": "omnivoice",
+                "motor_nombre": MOTORES["omnivoice"]["nombre"],
+                "detalle": "Habla en vivo, sin esperas" if ia else MOTORES["omnivoice"]["detalle"],
+                "en_vivo": True,
+                "predeterminada": False,
+                "escuchar": True,
+                "consentimiento": "" if ia else (p.get("consent_text") or ""),
+                "creada": p.get("created_at"),
+                "costo": "Gratis",
+            }
+        )
+    return salida
 
 
 _GENERO_ELEVEN = {"female": "Mujer", "male": "Hombre"}

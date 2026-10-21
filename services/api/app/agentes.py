@@ -169,6 +169,21 @@ def permitir_ia(usuario: str, ahora: float | None = None) -> bool:
     return _limitar(f"ia:{usuario}", MAX_IA_POR_HORA, ahora)
 
 
+MAX_DISENO_POR_HORA = 40
+MAX_VOCES_IA_POR_HORA = 10
+
+
+def permitir_diseno(usuario: str, ahora: float | None = None) -> bool:
+    """Tope de «Probar una voz» (cada prueba usa la placa de video, unos segundos): se prueban muchas hasta
+    encontrar una."""
+    return _limitar(f"diseno:{usuario}", MAX_DISENO_POR_HORA, ahora)
+
+
+def permitir_voz_ia(usuario: str, ahora: float | None = None) -> bool:
+    """Tope de voces creadas con IA que se guardan: cada una queda en el motor de voz."""
+    return _limitar(f"voz-ia:{usuario}", MAX_VOCES_IA_POR_HORA, ahora)
+
+
 def _ip_publica(ip: str) -> bool:
     a = ipaddress.ip_address(ip)
     return not (

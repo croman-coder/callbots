@@ -954,6 +954,13 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .en-linea { display: inline; margin: 0 0 0 var(--s2); }
 .clonar h3 { margin: var(--s5) 0 var(--s2); font-size: var(--t-md, 1rem); }
 .clonar h3:first-child { margin-top: 0; }
+/* Crear una voz con IA: probar variantes y quedarse con la que suena bien. */
+.disenar .row { align-items: end; }
+.muestra-diseno { margin-top: var(--s4); padding: var(--s4); border: 1px solid var(--line-2); border-radius: var(--r-lg); background: var(--raised); }
+.muestra-diseno[hidden] { display: none; }
+.muestra-diseno audio { width: 100%; }
+.guardar-diseno { margin-top: var(--s3); }
+.alinea-abajo { display: flex; align-items: flex-end; }
 .grabador { padding: var(--s3) var(--s4); border: 1px solid var(--line-2); border-radius: var(--r-lg); display: flex; flex-direction: column; gap: var(--s2); }
 .grabador .leer { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
 .texto-leer { margin: 0; padding: var(--s3) var(--s4); border: 1px solid var(--line-2); background: var(--active-soft); border-radius: var(--r); font-size: 1.05rem; line-height: 1.6; text-wrap: pretty; max-width: 70ch; }

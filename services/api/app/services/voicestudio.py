@@ -19,6 +19,9 @@ from app.config import settings
 log = logging.getLogger(__name__)
 
 PREFIJO = "vs:"
+# Se guarda en el campo `personality` del perfil: así se distingue una voz creada con IA (que no es de ninguna
+# persona y no necesita permiso) de una clonada de alguien (que solo se ofrece con su permiso grabado).
+MARCA_IA = "callbot-ia"
 RAPIDO = 10.0
 # Crear el perfil procesa el audio de referencia; la muestra corre el modelo. Con GPU es cuestión de
 # segundos, pero la primera vez que se carga el modelo tarda más.
@@ -134,6 +137,46 @@ def clonar(
             "No se pudo preparar la voz con esa grabación. Probá con una más corta (unos 5 segundos), "
             "clara y sin ruido de fondo."
         ) from exc
+    return perfil
+
+
+def disenar(instruccion: str, semilla: int, texto: str) -> bytes:
+    """WAV de una voz inventada por el modelo a partir de rasgos («female, young adult, moderate pitch»).
+    Sale con los pasos de calidad máxima: este audio es el que después se fija como la voz."""
+    try:
+        r = httpx.post(
+            _url("/v1/audio/speech"),
+            json={"model": "omnivoice", "input": texto, "voice": "default", "response_format": "wav",
+                  "language": "Spanish", "instruct": instruccion, "seed": semilla, "num_step": 32},
+            headers=_cabeceras(),
+            timeout=LENTO,
+        )
+        r.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise _fallo("inventar la voz", exc) from exc
+    return r.content
+
+
+def crear_disenada(nombre: str, audio: bytes, texto: str) -> dict:
+    """Fija una voz diseñada: el audio que se escuchó pasa a ser su referencia, así suena igual en todas las frases.
+    No es la voz de una persona, no lleva permiso; queda marcada con `MARCA_IA`."""
+    try:
+        r = httpx.post(
+            _url("/profiles"),
+            data={"name": nombre, "ref_text": texto, "language": "Spanish", "kind": "clone", "personality": MARCA_IA},
+            files={"ref_audio": ("voz-ia.wav", audio, "application/octet-stream")},
+            headers=_cabeceras(),
+            timeout=LENTO,
+        )
+        r.raise_for_status()
+        perfil = r.json()
+    except httpx.HTTPError as exc:
+        raise _fallo("guardar la voz", exc) from exc
+    try:
+        verificar(perfil["id"])
+    except VoiceStudioError as exc:
+        borrar(perfil["id"], silencioso=True)
+        raise VoiceStudioError("No se pudo preparar la voz. Probá con otra variante.") from exc
     return perfil
 
 

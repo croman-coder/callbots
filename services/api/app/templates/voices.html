@@ -9,7 +9,8 @@
     <p class="lede">Las voces que pueden usar tus agentes. Las gratis corren en el servidor de Santa Rosa{% if elevenlabs %}; las de ElevenLabs se cobran en tu cuenta de ElevenLabs{% endif %}.</p>
   </div>
   <div class="right">
-    <a class="btn primary" href="#clonar">Clonar una voz</a>
+    <a class="btn primary" href="#crear">Crear una voz con IA</a>
+    <a class="btn" href="#clonar">Clonar una voz</a>
   </div>
 </div>
 {% endblock %}
@@ -40,7 +41,7 @@
           <td>{% set agentes_voz = en_uso.get(v.id, []) %}{% if agentes_voz %}{{ agentes_voz | join(", ") }}{% else %}<span class="hint">—</span>{% endif %}</td>
           <td class="num nowrap">
             {% if v.escuchar %}<button type="button" class="icono" data-escuchar="{{ v.id }}" aria-label="Escuchar a {{ v.nombre }}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg></button>{% endif %}
-            {% if v.tipo == "Clonada" and v.motor == "omnivoice" %}
+            {% if v.motor == "omnivoice" %}
             <form method="post" action="/voices/{{ v.id }}/borrar" class="en-linea"
                   data-confirmar="¿Borrar la voz {{ v.nombre }}? Se borran su grabación y su permiso, y los agentes que la usan pasan a la voz del servidor. No se puede deshacer.">
               <button type="submit" class="btn quiet danger">Borrar</button>
@@ -72,6 +73,43 @@
     <p class="hint">Se conecta una sola vez, cargando la clave de API en el servidor (no se escribe en el panel). Los pasos están en <code>docs/elevenlabs.md</code>. Después, las voces de tu cuenta aparecen acá solas.</p>
     {% endif %}
   </div>
+</section>
+
+<section class="section" id="crear">
+  <header>
+    <h2>Crear una voz con IA</h2>
+    <span class="note">Natural, estable y sin grabar a nadie</span>
+  </header>
+  {% if not puede_clonar %}
+  <div class="panel-form">
+    <p style="margin-top:0"><span class="chip-dato">Pronto</span> <strong>Falta instalar el motor de voz en el servidor.</strong></p>
+  </div>
+  {% else %}
+  <form id="form-disenar" class="panel-form disenar" autocomplete="off" novalidate>
+    <p class="hint" style="margin-top:0">El motor inventa una voz a partir de tres rasgos. No es la voz de ninguna persona, así que no hace falta permiso, y habla en vivo en cada llamada (no cae a la voz robótica de respaldo). Probá variantes hasta que una te guste: <strong>la que escuchás es la que se guarda</strong>.</p>
+    <div class="row">
+      <div><label for="di-genero">Voz de</label>
+        <select id="di-genero" name="genero"><option>Mujer</option><option>Hombre</option></select></div>
+      <div><label for="di-edad">Edad de la voz</label>
+        <select id="di-edad" name="edad"><option>Joven</option><option selected>Adulta</option></select></div>
+      <div><label for="di-tono">Tono</label>
+        <select id="di-tono" name="tono"><option>Agudo</option><option selected>Medio</option><option>Grave</option></select></div>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn primary" data-probar>Probar una voz</button>
+      <span class="hint" data-estado-diseno role="status" aria-live="polite">Se genera en unos segundos y suena sola.</span>
+    </div>
+    <div class="muestra-diseno" data-muestra hidden>
+      <audio controls data-audio-diseno></audio>
+      <p class="hint" style="margin:var(--s2) 0 0">«{{ texto_referencia }}»</p>
+      <div class="row guardar-diseno">
+        <div><label for="di-nombre">Nombre de la voz</label>
+          <input id="di-nombre" type="text" name="nombre" maxlength="40" placeholder="Marina, taller"></div>
+        <div class="alinea-abajo"><button type="submit" class="btn" data-guardar>Quedarme con esta voz</button></div>
+      </div>
+    </div>
+  </form>
+  {% endif %}
 </section>
 
 <section class="section" id="clonar">
