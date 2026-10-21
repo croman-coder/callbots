@@ -44,6 +44,9 @@ def test_la_voz_cambia_la_clave_en_memoria_y_en_disco():
 
 
 def test_en_llamada_una_frase_sin_cachear_habla_piper_al_instante_aunque_voicebox_tarde(monkeypatch):
+    # Kokoro se espera en vivo, pero con tope: si Voicebox se cuelga, a los pocos segundos habla Piper.
+    object.__setattr__(config, "voicebox_vivo_timeout", 0.2)
+
     async def caso():
         liberar = asyncio.Event()
 
@@ -66,10 +69,10 @@ def test_en_llamada_una_frase_sin_cachear_habla_piper_al_instante_aunque_voicebo
 
 def test_el_segundo_plano_genera_con_la_voz_de_voicebox_y_la_proxima_llamada_la_usa(_aislar):
     async def caso():
-        p = P(profile_id="perfil-a")
-        await tts.synthesize("Buenos días", params=p)
+        p = P(profile_id="perfil-b")  # clonación (qwen): en llamada no se espera
+        assert await tts.synthesize("Buenos días", params=p) == PCM_PIPER
         await tts._tarea
-        assert _aislar and _aislar[0][2] == "perfil-a"
+        assert _aislar and _aislar[0][2] == "perfil-b"
         assert await tts.synthesize("Buenos días", params=p) == PCM_VOICEBOX
 
     asyncio.run(caso())
@@ -129,5 +132,15 @@ def test_una_plantilla_sin_reemplazar_no_se_sintetiza(_aislar):
     async def caso():
         assert await tts.warm_up(["Hola {nombre}, buenos días"], P(profile_id="perfil-a")) == 0
         assert _aislar == []
+
+    asyncio.run(caso())
+
+
+def test_con_kokoro_la_voz_buena_sale_en_vivo_y_queda_guardada(_aislar):
+    async def caso():
+        p = P(profile_id="perfil-a")  # kokoro
+        assert await tts.synthesize("Hola, Marta", params=p) == PCM_VOICEBOX
+        assert not tts._en_cola  # no hizo falta el segundo plano
+        assert ("Hola, Marta", p.clave()) in tts._memory_cache
 
     asyncio.run(caso())

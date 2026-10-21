@@ -295,6 +295,8 @@ def _piper_synthesize(text: str, params: VoiceParams = DEFAULT_PARAMS) -> bytes:
 # Interfaz pública
 # ---------------------------------------------------------------------------
 PAUSA_ENTRE_FRASES_MS = 450
+# Motores que generan más rápido que lo que dura el audio: se pueden usar en vivo.
+MOTORES_RAPIDOS = {"kokoro"}
 
 
 def _silencio(ms: int) -> bytes:
@@ -324,6 +326,11 @@ async def synthesize(
     return _silencio(PAUSA_ENTRE_FRASES_MS).join(partes)
 
 
+async def sintetizar_frase(text: str, params: VoiceParams = DEFAULT_PARAMS) -> bytes:
+    """Una sola frase, en llamada. El diálogo la usa para preparar la siguiente mientras suena esta."""
+    return await _sintetizar_frase(text, None, params)
+
+
 async def _sintetizar_frase(
     text: str,
     timeout: float | None,
@@ -344,11 +351,20 @@ async def _sintetizar_frase(
 
     pcm = b""
     perfil = perfil_de_voicebox(params)
-    # En llamada (sin timeout explícito) hay un cliente escuchando: una frase que todavía no
-    # está cacheada con la voz de Voicebox no se espera, habla Piper al instante y la voz buena
-    # se genera en segundo plano para la próxima. Esperar acá eran hasta 8 s de silencio por frase.
+    # En llamada (sin timeout explícito) hay un cliente escuchando. Con Kokoro la frase sale en
+    # medio segundo: se la espera (con tope) y así nunca cambia la voz en mitad de la charla. Los
+    # motores de clonación tardan decenas de segundos en CPU: ahí habla Piper al instante y la voz
+    # buena se genera en segundo plano para la próxima.
     if perfil and timeout is None:
-        _encolar(text, params)
+        if await _engine_de(perfil) in MOTORES_RAPIDOS:
+            try:
+                pcm = await asyncio.wait_for(
+                    _voicebox_synthesize(text, config.voicebox_vivo_timeout, perfil), config.voicebox_vivo_timeout
+                )
+            except (asyncio.TimeoutError, httpx.HTTPError, ValueError, wave.Error) as exc:
+                log.warning("Voicebox no llegó a tiempo para %r (%s): habla Piper", text[:40], exc or "tiempo")
+        if not pcm:
+            _encolar(text, params)
     elif perfil:
         try:
             pcm = await _voicebox_synthesize(

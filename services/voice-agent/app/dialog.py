@@ -22,7 +22,7 @@ from app import stt, tts
 from app.api_client import ApiClient, ApiError, Question, Script
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
-from app.guion import personalizar
+from app.guion import partir_frases, personalizar
 from app.listener import ListenResult, listen
 
 log = logging.getLogger(__name__)
@@ -85,10 +85,25 @@ MULETILLA = "Déjeme ver."
 async def _say(
     socket: AudioSocket, text: str, params: tts.VoiceParams = tts.DEFAULT_PARAMS
 ) -> None:
-    pcm = await tts.synthesize(text, params=params)
+    """Dice el texto frase por frase: mientras suena una, ya se está generando la siguiente, así la
+    voz buena no agrega espera y entre frase y frase queda una pausa natural."""
     await socket.send_event("agente", text)
-    if pcm:
-        await socket.play(pcm)
+    frases = partir_frases(text)
+    if not frases:
+        return
+    siguiente = asyncio.create_task(tts.sintetizar_frase(frases[0], params))
+    try:
+        for i in range(len(frases)):
+            pcm = await siguiente
+            if i + 1 < len(frases):
+                siguiente = asyncio.create_task(tts.sintetizar_frase(frases[i + 1], params))
+            if pcm:
+                await socket.play(pcm)
+            if i + 1 < len(frases):
+                await socket.play_silence(tts.PAUSA_ENTRE_FRASES_MS)
+    finally:
+        if not siguiente.done():
+            siguiente.cancel()
 
 
 class SurveyDialog:

@@ -109,3 +109,45 @@ def test_un_evento_vacio_no_se_manda():
     s.eventos = True
     asyncio.run(s.send_event("cliente", ""))
     assert s._writer.datos == b""
+
+
+# ------------------------------------------------------------------ frases preparadas de antemano
+class _SocketFalso:
+    eventos = True
+
+    def __init__(self):
+        self.reproducido = []
+
+    async def send_event(self, rol, texto):
+        self.reproducido.append(("evento", texto))
+
+    async def play(self, pcm):
+        self.reproducido.append(("voz", pcm))
+
+    async def play_silence(self, ms):
+        self.reproducido.append(("pausa", ms))
+
+
+def test_el_dialogo_prepara_la_frase_siguiente_mientras_suena_la_actual(monkeypatch):
+    import sys
+    import types
+
+    # El diálogo importa el detector de voz (webrtcvad), que no hace falta para esta prueba.
+    sys.modules.setdefault("webrtcvad", types.SimpleNamespace(Vad=lambda *a: None))
+    from app import dialog
+
+    pedidas = []
+
+    async def frase(text, params=None):
+        pedidas.append(text)
+        return text.encode()
+
+    monkeypatch.setattr(tts, "sintetizar_frase", frase)
+    s = _SocketFalso()
+    asyncio.run(dialog._say(s, SALUDO))
+    frases = partir_frases(SALUDO)
+    assert pedidas == frases
+    voces = [x[1] for x in s.reproducido if x[0] == "voz"]
+    assert voces == [f.encode() for f in frases]
+    assert [x for x in s.reproducido if x[0] == "pausa"] == [("pausa", tts.PAUSA_ENTRE_FRASES_MS)] * (len(frases) - 1)
+    assert s.reproducido[0] == ("evento", SALUDO)

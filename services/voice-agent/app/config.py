@@ -47,6 +47,9 @@ class Config:
     # En llamada: hay un cliente escuchando. Si voicebox no contesta en este
     # tiempo, habla Piper. Una frase robótica es mejor que medio minuto de silencio.
     voicebox_call_timeout: int = int(os.getenv("VOICEBOX_CALL_TIMEOUT", "8"))
+    # Con Kokoro una frase sale en medio segundo: en llamada se la espera hasta este tope antes de
+    # caer a Piper, que suena robótico y con otra voz. Los motores de clonación no se esperan.
+    voicebox_vivo_timeout: float = float(os.getenv("VOICEBOX_VIVO_TIMEOUT", "3"))
 
     # Piper (respaldo, y motor principal si no hay voicebox)
     piper_voice: str = os.getenv("PIPER_VOICE", "es_AR-daniela-high")
