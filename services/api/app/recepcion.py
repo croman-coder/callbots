@@ -347,8 +347,9 @@ marca y que Repuestos confirma que sea el de su modelo.
 Para consultar, completá «consultar» y en «decir» poné solo una frase corta para que espere («{espera}»). Después \
 vas a ver el resultado como «Sistema» en la conversación y le contestás con eso.
 Con lo que diga el sistema: las fechas de llegada son estimaciones, decilas como «aproximadamente»; si no hay plazo \
-cargado, no inventes uno y derivá a Repuestos. Contale solo lo de sus propios pedidos y no leas números de documento \
-ni teléfonos. {precios}
+cargado, no inventes uno y derivá a Repuestos. Contale solo lo de sus propios pedidos; no leas números de documento \
+ni teléfonos, y no lo llames por el nombre que figura en el sistema si él no te lo dijo (puede no ser el titular). \
+Si con el dato del sistema quedó contestado y no hace falta nada más, es «resuelto». {precios}
 """
 CAMPO_CONSULTAR = (
     ',\n "consultar": null, o {"que": "pedidos", "documento": "...", "telefono": "..."}, '
