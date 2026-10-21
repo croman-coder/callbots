@@ -21,6 +21,11 @@ services:
     environment:
       - LOG_LEVEL=info
       - NUMBA_CACHE_DIR=/tmp/numba_cache
+      # PyTorch ve los 24 núcleos del servidor y abre 24 hilos, pero el contenedor tiene 6: el
+      # kernel lo frena todo el tiempo y Kokoro tardaba 14 s por frase. Con los hilos igualados
+      # al límite vuelve a generar en menos de un segundo, que es lo que permite hablar en vivo.
+      - OMP_NUM_THREADS=6
+      - MKL_NUM_THREADS=6
     volumes:
       - voicebox-data:/app/data                         # perfiles, base de datos y audios de referencia
       - huggingface-cache:/home/voicebox/.cache/huggingface  # modelos: no se vuelven a bajar
@@ -29,7 +34,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "4"
+          cpus: "6"
           memory: 8G
 
 networks:

@@ -331,7 +331,47 @@ async def sintetizar_frase(text: str, params: VoiceParams = DEFAULT_PARAMS) -> b
     return await _sintetizar_frase(text, None, params)
 
 
+# Volumen percibido de destino para el teléfono (≈ -19 dBFS de RMS sobre la voz, sin contar silencios).
+NIVEL_RMS = 0.11
+TECHO = 0.9
+
+
+def nivelar(pcm: bytes, volumen: float = 1.0) -> bytes:
+    """Deja cada frase al mismo volumen percibido, fuerte y sin saturar.
+
+    Voicebox normaliza el pico, no lo que se oye: una frase suave salía más baja que la anterior y
+    en un celular se perdía. Se mide la energía solo de las tramas con voz (las pausas no cuentan),
+    se lleva a NIVEL_RMS × volumen y, si algún pico pasa el techo, se baja todo un poco. Aplicarla dos
+    veces da lo mismo, así que el audio cacheado antes de este cambio también queda parejo.
+    """
+    if not pcm:
+        return pcm
+    x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
+    n = (x.size // 160) * 160
+    if n == 0:
+        return pcm
+    tramas = x[:n].reshape(-1, 160)
+    energia = np.sqrt(np.mean(tramas**2, axis=1))
+    voz = energia[energia > 0.01]
+    if voz.size == 0:
+        return pcm  # silencio o casi: no hay nada que nivelar
+    rms = float(np.sqrt(np.mean(voz**2)))
+    y = x * min(NIVEL_RMS * max(volumen, 0.1) / rms, 6.0)
+    pico = float(np.max(np.abs(y)))
+    if pico > TECHO:
+        y *= TECHO / pico
+    return (np.clip(y, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
+
+
 async def _sintetizar_frase(
+    text: str,
+    timeout: float | None,
+    params: VoiceParams,
+) -> bytes:
+    return nivelar(await _sintetizar_crudo(text, timeout, params), params.volume)
+
+
+async def _sintetizar_crudo(
     text: str,
     timeout: float | None,
     params: VoiceParams,

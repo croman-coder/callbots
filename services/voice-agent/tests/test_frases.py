@@ -151,3 +151,42 @@ def test_el_dialogo_prepara_la_frase_siguiente_mientras_suena_la_actual(monkeypa
     assert voces == [f.encode() for f in frases]
     assert [x for x in s.reproducido if x[0] == "pausa"] == [("pausa", tts.PAUSA_ENTRE_FRASES_MS)] * (len(frases) - 1)
     assert s.reproducido[0] == ("evento", SALUDO)
+
+
+# ------------------------------------------------------------------ volumen parejo
+import numpy as np  # noqa: E402
+
+
+def _tono(amplitud: float, segundos: float = 1.0) -> bytes:
+    t = np.arange(int(8000 * segundos)) / 8000
+    return (np.sin(2 * np.pi * 440 * t) * amplitud * 32767).astype(np.int16).tobytes()
+
+
+def _rms(pcm: bytes) -> float:
+    x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768
+    return float(np.sqrt(np.mean(x**2)))
+
+
+def test_frases_suaves_y_fuertes_quedan_al_mismo_volumen():
+    suave, fuerte = tts.nivelar(_tono(0.05)), tts.nivelar(_tono(0.6))
+    assert abs(_rms(suave) - _rms(fuerte)) < 0.01
+    assert abs(_rms(suave) - tts.NIVEL_RMS) < 0.01
+
+
+def test_nivelar_no_satura_ni_cambia_al_repetirse():
+    una = tts.nivelar(_tono(0.3), volumen=1.5)
+    assert np.max(np.abs(np.frombuffer(una, dtype=np.int16))) <= tts.TECHO * 32767 + 1
+    assert abs(_rms(tts.nivelar(una, volumen=1.5)) - _rms(una)) < 0.005
+
+
+def test_las_pausas_no_cuentan_y_el_silencio_queda_igual():
+    silencio = b"\x00\x00" * 8000
+    assert tts.nivelar(silencio) == silencio
+    con_pausa = _tono(0.2) + silencio
+    # el silencio no baja el promedio: la parte con voz queda al nivel de destino
+    voz = tts.nivelar(con_pausa)[: 16000]
+    assert abs(_rms(voz) - tts.NIVEL_RMS) < 0.01
+
+
+def test_el_volumen_de_la_campana_sube_o_baja_la_voz_buena():
+    assert _rms(tts.nivelar(_tono(0.2), volumen=1.2)) > _rms(tts.nivelar(_tono(0.2), volumen=0.8))

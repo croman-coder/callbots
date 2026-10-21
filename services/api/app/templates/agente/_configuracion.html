@@ -4,22 +4,45 @@
   <div class="ficha-izq">
     <details class="bloque" open>
       <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>Configuración de voz</summary>
-      <label class="etiqueta" for="c-voz">Voz</label>
-      <select id="c-voz" name="voice_profile_id">
-        <option value="" {% if not campaign.voice_profile_id %}selected{% endif %}>La del servidor (predeterminada)</option>
-        {% for p in perfiles %}<option value="{{ p.id }}" {% if p.id == campaign.voice_profile_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
-        {% if campaign.voice_profile_id and campaign.voice_profile_id != "piper" and campaign.voice_profile_id not in perfiles | map(attribute="id") | list %}
-        <option value="{{ campaign.voice_profile_id }}" selected>{{ campaign.voice_profile_id }} (no disponible ahora)</option>
-        {% endif %}
-        <option value="piper" {% if campaign.voice_profile_id == "piper" %}selected{% endif %}>Piper (respaldo, más robótica)</option>
-      </select>
-      <p class="hint">Para escuchar cada voz o clonar una nueva, entrá a <a class="link" href="/voices">Voces</a>.</p>
+      <p class="etiqueta">Voz</p>
+      <input type="hidden" name="voice_profile_id" id="c-voz" value="{{ campaign.voice_profile_id or '' }}">
+      {% if error_voces %}<p class="aviso error">{{ error_voces }}</p>{% endif %}
+      <div class="voz-elegida" data-voz-elegida>
+        <div class="voz-datos">
+          <strong data-voz-nombre>{{ voz_actual.nombre if voz_actual else "La del servidor" }}</strong>
+          <span class="chips" data-voz-chips>
+            {% if voz_actual %}<span class="chip-dato">{{ voz_actual.genero }}</span><span class="chip-dato">{{ voz_actual.tipo }}</span><span class="chip-dato">Gratis</span>{% endif %}
+          </span>
+        </div>
+        <button type="button" class="icono" data-escuchar="{{ voz_actual.id if voz_actual and voz_actual.escuchar else '' }}" aria-label="Escuchar la voz elegida" {% if not (voz_actual and voz_actual.escuchar) %}disabled{% endif %}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>
+        </button>
+        <button type="button" class="btn" data-abrir-voces>Cambiar voz</button>
+      </div>
+      <p class="etiqueta">Modelo de voz</p>
+      <p class="dato" data-voz-modelo>{% if voz_actual %}{{ voz_actual.motor_nombre }} · {{ voz_actual.detalle }}{% endif %}</p>
+
+      <details class="consejos">
+        <summary>Cómo hacer que suene natural</summary>
+        <ul>
+          <li><strong>Escuchá la voz con tu saludo</strong> antes de activar el agente (botón ▶).</li>
+          <li><strong>Frases cortas</strong>, de una idea cada una. Entre frase y frase el agente hace una pausa sola.</li>
+          <li><strong>Escribí como se habla:</strong> «¿Tiene un minutito?» suena mejor que «¿Dispone usted de un minuto?».</li>
+          <li><strong>Números y siglas en palabras:</strong> «del cero al diez», «kilómetros», no «0-10» ni «km».</li>
+          <li><strong>Signos que guían la voz:</strong> la coma es una pausa corta, el punto una más larga y los ¿? dan tono de pregunta.</li>
+          <li><strong>Terminá el saludo en pregunta</strong> para que el cliente sepa que le toca hablar.</li>
+          <li><strong>Usá {nombre} solo en el saludo:</strong> repetir el nombre en cada pregunta suena a robot.</li>
+          <li><strong>Probala hablando</strong> en «Probar agente», con auriculares.</li>
+        </ul>
+      </details>
+
       <div class="deslizadores">
+        <p class="hint">El volumen vale para todas las voces. Velocidad, tono y expresividad solo cambian la voz de respaldo (Piper).</p>
         {% for campo, titulo, minimo, maximo, paso, ayuda in [
-          ("voice_speed", "Velocidad", 0.6, 1.6, 0.05, "1 = normal"),
-          ("voice_pitch", "Tono", 0.8, 1.25, 0.01, "menos es más grave"),
-          ("voice_expressiveness", "Expresividad", 0, 1.2, 0.02, "0 es plano"),
-          ("voice_volume", "Volumen", 0.4, 1.2, 0.05, "arriba de 1 satura")] %}
+          ("voice_volume", "Volumen", 0.4, 1.2, 0.05, "1 = nivel normal"),
+          ("voice_speed", "Velocidad", 0.6, 1.6, 0.05, "solo Piper"),
+          ("voice_pitch", "Tono", 0.8, 1.25, 0.01, "solo Piper"),
+          ("voice_expressiveness", "Expresividad", 0, 1.2, 0.02, "solo Piper")] %}
         <label class="desliza">{{ titulo }}
           <input type="range" name="{{ campo }}" min="{{ minimo }}" max="{{ maximo }}" step="{{ paso }}" value="{{ campaign[campo] }}" data-salida>
           <output>{{ campaign[campo] }}</output> <span class="hint">{{ ayuda }}</span>
@@ -143,3 +166,40 @@
 <form id="q-borra-{{ q.id }}" method="post" action="/questions/{{ q.id }}/delete" hidden
       onsubmit="return confirm('¿Borrar esta pregunta? Las respuestas ya guardadas se borran también.')"></form>
 {% endfor %}
+
+<dialog id="voces" class="asistente selector-voces" aria-labelledby="voces-titulo" data-saludo="{{ saludo_prueba }}">
+  <h2 id="voces-titulo">Seleccionar voz</h2>
+  <div class="filtros-voces">
+    <label class="buscar"><span class="sr-only">Buscar voces</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input type="search" data-filtro-texto placeholder="Buscar voces…" autocomplete="off">
+    </label>
+    <label><span class="sr-only">Género</span><select data-filtro="genero"><option value="">Género</option><option>Mujer</option><option>Hombre</option></select></label>
+    <label><span class="sr-only">Tipo</span><select data-filtro="tipo"><option value="">Tipo</option><option>Prediseñada</option><option>Clonada</option></select></label>
+    <label><span class="sr-only">Modelo</span><select data-filtro="motor"><option value="">Modelo</option>{% for m in voces | map(attribute="motor_nombre") | unique %}<option>{{ m }}</option>{% endfor %}</select></label>
+  </div>
+  <div class="tablewrap"><div class="scroll">
+    <table class="tabla-voces">
+      <thead><tr><th scope="col">Nombre</th><th scope="col">Atributos</th><th scope="col">Modelo</th><th scope="col"><span class="sr-only">Escuchar</span></th></tr></thead>
+      <tbody>
+        {% for v in voces %}
+        <tr data-voz="{{ v.id }}" data-genero="{{ v.genero }}" data-tipo="{{ v.tipo }}" data-motor="{{ v.motor_nombre }}" data-nombre="{{ v.nombre }}"
+            data-detalle="{{ v.detalle }}" data-escucha="{{ '1' if v.escuchar else '' }}" tabindex="0" aria-selected="false">
+          <td><label class="elegir-voz"><input type="radio" name="voz-elegida" value="{{ v.id }}"> <strong>{{ v.nombre }}</strong>{% if v.predeterminada %} <span class="hint">· predeterminada</span>{% endif %}</label>
+            {% if v.descripcion %}<span class="sub-line">{{ v.descripcion }}</span>{% endif %}</td>
+          <td><span class="chip-dato">{{ v.genero }}</span> <span class="chip-dato">{{ v.tipo }}</span> <span class="chip-dato">Gratis</span></td>
+          <td><span class="sub-line">{{ v.motor_nombre }}</span><span class="hint">{{ v.detalle }}</span></td>
+          <td class="num">{% if v.escuchar %}<button type="button" class="icono" data-escuchar="{{ v.id }}" aria-label="Escuchar a {{ v.nombre }}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg></button>{% else %}<span class="hint">sin muestra</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+  <p class="hint" data-estado-voz role="status" aria-live="polite">Tocá ▶ para escuchar cada voz diciendo el saludo de este agente.</p>
+  <footer class="acciones">
+    <a class="link" href="/voices#clonar">Clonar una voz nueva</a>
+    <span class="resto"></span>
+    <button type="button" class="btn quiet" data-cerrar-voces>Cancelar</button>
+    <button type="button" class="btn primary" data-usar-voz>Usar voz</button>
+  </footer>
+</dialog>

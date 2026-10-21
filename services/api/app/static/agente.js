@@ -198,6 +198,69 @@
       .then(function () { gen.disabled = false; });
   });
 
+  // ------------------------------------------------------------ Selector de voces
+  var dlgVoces = document.getElementById("voces");
+  var audioMuestra = null, botonSonando = null;
+  function escuchar(id, boton) {
+    if (!id) return;
+    if (audioMuestra) { audioMuestra.pause(); audioMuestra = null; }
+    if (botonSonando) { botonSonando.classList.remove("sonando"); }
+    if (botonSonando === boton) { botonSonando = null; return; }  // segundo toque: para
+    var estadoVoz = dlgVoces && $("[data-estado-voz]", dlgVoces);
+    var texto = (dlgVoces && dlgVoces.dataset.saludo) || "";
+    if (estadoVoz) estadoVoz.textContent = "Generando la muestra…";
+    botonSonando = boton; if (boton) boton.classList.add("sonando");
+    audioMuestra = new Audio("/voices/preview?profile_id=" + encodeURIComponent(id) + (texto ? "&text=" + encodeURIComponent(texto) : ""));
+    audioMuestra.addEventListener("playing", function () { if (estadoVoz) estadoVoz.textContent = "Escuchando…"; });
+    audioMuestra.addEventListener("ended", function () { if (boton) boton.classList.remove("sonando"); botonSonando = null; if (estadoVoz) estadoVoz.textContent = ""; });
+    audioMuestra.addEventListener("error", function () { if (boton) boton.classList.remove("sonando"); botonSonando = null; if (estadoVoz) estadoVoz.textContent = "No se pudo generar la muestra. Probá de nuevo."; });
+    audioMuestra.play().catch(function () {});
+  }
+  $$("[data-escuchar]").forEach(function (b) {
+    b.addEventListener("click", function (e) { e.stopPropagation(); escuchar(b.dataset.escuchar, b); });
+  });
+  if (dlgVoces && typeof dlgVoces.showModal === "function") {
+    var campoVoz = document.getElementById("c-voz"), filas = $$("tr[data-voz]", dlgVoces), elegidaId = campoVoz.value;
+    function marcar(id) {
+      elegidaId = id;
+      filas.forEach(function (f) {
+        var si = f.dataset.voz === id;
+        f.setAttribute("aria-selected", si ? "true" : "false");
+        var r = $("input[type=radio]", f); if (r) r.checked = si;
+      });
+    }
+    function filtrar() {
+      var t = ($("[data-filtro-texto]", dlgVoces).value || "").trim().toLowerCase();
+      var sel = {}; $$("[data-filtro]", dlgVoces).forEach(function (s) { sel[s.dataset.filtro] = s.value; });
+      filas.forEach(function (f) {
+        var ok = (!t || f.dataset.nombre.toLowerCase().indexOf(t) !== -1)
+          && (!sel.genero || f.dataset.genero === sel.genero) && (!sel.tipo || f.dataset.tipo === sel.tipo) && (!sel.motor || f.dataset.motor === sel.motor);
+        f.hidden = !ok;
+      });
+    }
+    $("[data-abrir-voces]").addEventListener("click", function () { marcar(campoVoz.value || (filas.filter(function (f) { return /predeterminada/.test(f.textContent); })[0] || {dataset: {}}).dataset.voz || ""); dlgVoces.showModal(); });
+    $("[data-cerrar-voces]", dlgVoces).addEventListener("click", function () { if (audioMuestra) audioMuestra.pause(); dlgVoces.close(); });
+    $("[data-filtro-texto]", dlgVoces).addEventListener("input", filtrar);
+    $$("[data-filtro]", dlgVoces).forEach(function (s) { s.addEventListener("change", filtrar); });
+    filas.forEach(function (f) {
+      f.addEventListener("click", function () { marcar(f.dataset.voz); });
+      f.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); marcar(f.dataset.voz); } });
+    });
+    $("[data-usar-voz]", dlgVoces).addEventListener("click", function () {
+      var f = filas.filter(function (x) { return x.dataset.voz === elegidaId; })[0];
+      if (!f) { dlgVoces.close(); return; }
+      campoVoz.value = f.dataset.voz;
+      $("[data-voz-nombre]").textContent = f.dataset.nombre;
+      $("[data-voz-chips]").innerHTML = "";
+      [f.dataset.genero, f.dataset.tipo, "Gratis"].forEach(function (t) { var c = document.createElement("span"); c.className = "chip-dato"; c.textContent = t; $("[data-voz-chips]").appendChild(c); });
+      $("[data-voz-modelo]").textContent = f.dataset.motor + " · " + f.dataset.detalle;
+      var b = $("[data-voz-elegida] [data-escuchar]"); b.dataset.escuchar = f.dataset.escucha ? f.dataset.voz : ""; b.disabled = !f.dataset.escucha;
+      if (window.callbotMarcarSucio) window.callbotMarcarSucio();
+      if (audioMuestra) audioMuestra.pause();
+      dlgVoces.close();
+    });
+  }
+
   // ------------------------------------------------------------ Prueba con el micrófono
   var panel = $("[data-llamada]");
   if (!panel) return;

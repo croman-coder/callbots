@@ -23,7 +23,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes
+from app import agentes, voces
 from app.config import settings
 from app.db import get_db, session_scope
 from app.deps import principal_ws, require_admin
@@ -41,7 +41,7 @@ from app.models import (
 from app.plantillas import templates
 from app.routers.internal import sesion_de_prueba
 from app.scheduling import parse_days
-from app.services import calidad, voicebox
+from app.services import calidad
 from app.services.scoring import SATISFACTORY_MIN
 
 log = logging.getLogger(__name__)
@@ -100,14 +100,13 @@ def _datos_probar(db: Session, campaign: Campaign) -> dict:
 
 
 def _datos_configuracion(db: Session, campaign: Campaign) -> dict:
-    perfiles: list[dict] = []
-    if voicebox.is_configured():
-        try:
-            perfiles = voicebox.list_profiles()
-        except voicebox.VoiceboxError as exc:
-            log.warning("Ficha: no se pudieron listar las voces: %s", exc)
+    lista, error_voces = voces.catalogo()
+    saludo = (campaign.intro_script or "").replace("{nombre}", "Marta")
     return {
-        "perfiles": perfiles,
+        "voces": lista,
+        "voz_actual": voces.elegida(lista, campaign.voice_profile_id),
+        "error_voces": error_voces,
+        "saludo_prueba": saludo[:400],
         "dias_activos": parse_days(campaign.call_window_days),
         "dias_semana": DIAS_SEMANA,
         "tipos": list(QuestionType),
