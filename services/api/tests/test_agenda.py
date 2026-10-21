@@ -93,6 +93,7 @@ def test_tiempos_por_modelo(base):  # noqa: F811
     ("2026-10-27", date(2026, 10, 27)), ("hoy", LUNES), ("mañana", date(2026, 10, 27)),
     ("pasado mañana", date(2026, 10, 28)), ("el jueves", date(2026, 10, 29)), ("lunes", date(2026, 11, 2)),
     ("30/10", date(2026, 10, 30)), ("cualquier día", None),
+    ("2025-10-27", date(2026, 10, 27)), ("2026-01-05", date(2027, 1, 5)),
 ])
 def test_fechas_como_las_dice_claude_o_el_cliente(texto, esperado):
     assert agenda.fecha_de(texto, LUNES) == esperado
@@ -102,10 +103,10 @@ def test_consultar_y_reservar_como_lo_pide_el_agente(base):  # noqa: F811
     db, suc, _, _, _ = armar(base)
     texto, turno_id = agenda.consultar(db, {"que": "turnos", "servicio": "Service 10.000 km", "marca": "Renault",
                                             "modelo": "Kardian", "fecha": "2026-10-26", "franja": "mañana"}, momento=ANTES)
-    assert turno_id is None and "Libres el lunes 26/10: 07:00, 09:00, 10:00." in texto
+    assert turno_id is None and "Libres el lunes 26/10 (fecha 2026-10-26): 07:00, 09:00, 10:00." in texto
     assert "lo retira desde las 10:00" in texto and "trabajo 45" in texto
     sabado, _ = agenda.consultar(db, {"que": "turnos", "servicio": "Service 10.000 km", "fecha": "2026-10-31"}, momento=ANTES)
-    assert sabado.startswith("Taller Zeballos.") and "El sábado 31/10 el taller no abre. Libres el lunes 02/11" in sabado
+    assert sabado.startswith("Taller Zeballos.") and "El sábado 31/10 el taller no abre. Libres el lunes 02/11 (fecha 2026-11-02)" in sabado
     sin_datos, _ = agenda.consultar(db, {"que": "reservar", "servicio": "Service 10.000 km", "fecha": "2026-10-26",
                                          "hora": "08:00"}, momento=ANTES)
     assert "faltan el nombre y el teléfono" in sin_datos
@@ -143,7 +144,7 @@ def test_el_agente_reserva_y_el_turno_queda_atado_al_caso(base, monkeypatch):  #
     db.commit()
 
     bloque = fuentes.bloque(caso, db)
-    assert "«reservar»" in bloque and "Taller Zeballos" in bloque and "Hoy es domingo 25/10" in bloque
+    assert "«reservar»" in bloque and "Taller Zeballos" in bloque and "Hoy es domingo 25/10/2026 (2026-10-25)" in bloque
     r = asyncio.run(recepcion.turno(caso, "Quiero el service de los 10 mil el lunes a las 9", consultas=bloque))
     assert r["accion"] == "consultar"
     r = asyncio.run(recepcion.continuar(caso, fuentes.consultor(caso)))

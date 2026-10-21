@@ -254,9 +254,18 @@ def fecha_de(texto: str | None, hoy: date) -> date | None:
     m = re.fullmatch(r"(\d{4}) (\d{1,2}) (\d{1,2})", t)
     if m:
         try:
-            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            d = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
             return None
+        if d < hoy:
+            # Claude a veces se equivoca de año («2025-10-26» en 2026): un turno nunca es para atrás.
+            try:
+                d = d.replace(year=hoy.year)
+                if d < hoy:
+                    d = d.replace(year=hoy.year + 1)
+            except ValueError:
+                return None
+        return d
     m = re.fullmatch(r"(\d{1,2}) (\d{1,2})(?: (\d{2,4}))?", t)
     if m:
         anio = int(m.group(3)) if m.group(3) else hoy.year
@@ -344,11 +353,13 @@ def texto_para_claude(db: Session, momento: datetime | None = None) -> str:
         f"- «reservar»: reserva el turno. Pasá «servicio», «marca», «modelo», «fecha», «hora» (HH:MM, una de las "
         f"libres), «nombre» y «telefono» del cliente, y «chapa» y «km» si los dijo"
         f"{', y «sucursal»' if len(sucursales) > 1 else ''}.\n"
-        f"Hoy es {dia_texto(hoy.date())}, {hoy.strftime('%H:%M')}. Talleres:\n" + "\n".join(lineas_suc) +
+        f"Hoy es {dia_texto(hoy.date())}/{hoy.year} ({hoy.date().isoformat()}), {hoy.strftime('%H:%M')}. Talleres:\n"
+        + "\n".join(lineas_suc) +
         "\nServicios:\n" + "\n".join(lineas_serv) +
         "\nPara agendar: preguntá qué servicio, qué vehículo y qué día y franja le quedan bien; ofrecé dos o tres "
-        "horarios de los libres; reservá recién cuando el cliente elija uno y te diga su nombre y teléfono. Después "
-        "decile día, hora, taller y desde qué hora lo retira. No ofrezcas horarios que no te haya dado el sistema."
+        "horarios de los libres; reservá recién cuando el cliente elija uno y te diga su nombre y teléfono. No digas "
+        "que quedó reservado hasta que el sistema lo confirme. Después decile día, hora, taller y desde qué hora lo "
+        "retira. No ofrezcas horarios que no te haya dado el sistema y usá la fecha (AAAA-MM-DD) que te dio."
     )
 
 
@@ -421,7 +432,7 @@ def _texto_opciones(opciones, suc: TallerSucursal | None = None, serv: TallerSer
     partes = []
     for dia, lista in opciones:
         horas = ", ".join(hora_texto(t) for t, _ in lista)
-        partes.append(f"Libres el {dia_texto(dia)}: {horas}.")
+        partes.append(f"Libres el {dia_texto(dia)} (fecha {dia.isoformat()}): {horas}.")
     if suc is not None and serv is not None:
         t0 = opciones[0][1][0][0]
         partes.append(f"Si lo deja a las {hora_texto(t0)}, lo retira desde las {hora_texto(tiempos(suc, serv, t0).retiro)} aprox.")
