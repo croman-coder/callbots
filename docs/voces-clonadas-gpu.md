@@ -8,6 +8,23 @@ Medido en la RTX 5070 el 21/10/2026: una frase sale en **~0,3 s** (en CPU tardab
 guion se genera una vez y queda guardada; solo lo que cambia por llamada (el nombre, lo que contesta Claude)
 se genera en vivo.
 
+## Voces creadas con IA (sin clonar a nadie)
+
+Desde Voces → «Crear una voz con IA» el motor **inventa** una voz a partir de tres rasgos (mujer u hombre, edad,
+tono). No es la voz de ninguna persona: no pide permiso ni grabación. Se prueban variantes hasta que una guste y
+la que se escuchó se guarda: ese mismo audio queda como la referencia del perfil, así suena igual en todas las
+frases (si cada frase se inventara por separado, la voz cambiaría de una a otra).
+
+- Se guardan como perfiles de VoiceStudio con `personality=callbot-ia` y se ofrecen como «Creada con IA».
+- Solo se puede guardar un audio que generó el motor (queda en el servidor 15 minutos, por código). Subir un audio
+  propio es clonar, y eso sigue pidiendo el permiso grabado de la persona.
+- Habla **en vivo** en la llamada (~0,3 a 0,65 s por frase en la RTX 5070): las frases que no se conocen de
+  antemano (el nombre, lo que contesta Claude) no caen a la voz robótica de respaldo.
+- Medido el 21/10/2026: las 8 variantes probadas se entienden al 100 % (Whisper) y la entonación varía entre 14 y 24 %
+  (una voz monótona queda por debajo de 8 %). Si un modelo o un rasgo nuevo suena mal, se nota al escucharla: el
+  oído manda, estos números solo descartan lo roto.
+- Con 12 o más pasos de difusión la inteligibilidad ya es total; `VOICESTUDIO_PASOS` quedó en 16 (era 12).
+
 ## La placa se comparte: presupuesto
 
 La placa tiene **11,49 GiB utilizables** (el 12,2 GB que muestra `nvidia-smi` incluye reserva del driver).
