@@ -100,6 +100,8 @@
       <label class="check"><input type="checkbox" name="fu_precios" value="1" {% if fuentes_elegidas.precios %}checked{% endif %}>
         <span>Puede decir precios <span class="hint">· apagado: si el cliente pregunta, le dice que se los pasa Repuestos</span></span></label>
       <p class="hint">El Cotizador no guarda fechas de llegada ni embarques: el agente calcula una fecha aproximada con los días que cargó el área y lo dice como aproximado.</p>
+      <label class="check"><input type="checkbox" name="fu_turnos" value="1" {% if fuentes_elegidas.turnos %}checked{% endif %}>
+        <span><strong>Agenda del taller</strong> · ofrece horarios libres y reserva el turno con los tiempos de cada servicio. Talleres, horarios y tiempos en <a class="link" href="/agenda/talleres">Agenda</a></span></label>
     </details>
 
     <details class="bloque" open id="limites">

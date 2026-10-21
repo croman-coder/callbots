@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% set nav = "agenda" %}
+{% block title %}Agenda del taller · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Agenda del taller</h1>
+    <p class="lede">{% if suc %}{{ suc.nombre }} · {{ dia_texto | capitalize }}{% else %}Todavía no hay talleres cargados{% endif %}</p>
+  </div>
+  <div class="right"><a class="btn" href="/agenda/talleres">Talleres y servicios</a></div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+
+{% if not suc %}
+<div class="tablewrap"><p class="empty"><strong>No hay talleres</strong>Cargá uno en <a class="link" href="/agenda/talleres">Talleres y servicios</a> con su horario y sus bahías.</p></div>
+{% else %}
+<form method="get" action="/agenda" class="filters agenda-barra">
+  <a class="btn" href="/agenda?fecha={{ anterior.isoformat() }}&amp;sucursal={{ suc.id }}{% if pruebas %}&amp;pruebas=1{% endif %}" aria-label="Día anterior">←</a>
+  <label><span class="sr-only">Día</span><input type="date" name="fecha" value="{{ dia.isoformat() }}" aria-label="Día"></label>
+  <a class="btn" href="/agenda?fecha={{ siguiente.isoformat() }}&amp;sucursal={{ suc.id }}{% if pruebas %}&amp;pruebas=1{% endif %}" aria-label="Día siguiente">→</a>
+  {% if dia != hoy %}<a class="btn quiet" href="/agenda?sucursal={{ suc.id }}">Hoy</a>{% endif %}
+  {% if sucursales | length > 1 %}
+  <select name="sucursal" aria-label="Taller">
+    {% for s in sucursales %}<option value="{{ s.id }}" {% if s.id == suc.id %}selected{% endif %}>{{ s.nombre }}{% if not s.activa %} (inactivo){% endif %}</option>{% endfor %}
+  </select>
+  {% else %}<input type="hidden" name="sucursal" value="{{ suc.id }}">{% endif %}
+  <label class="check"><input type="checkbox" name="pruebas" value="1" {% if pruebas %}checked{% endif %}> Ver los de prueba</label>
+  <button type="submit">Ver</button>
+</form>
+
+<p class="statement agenda-resumen">
+  {% if abre %}
+    Abre de {{ abre[0].strftime("%H:%M") }} a {{ abre[1].strftime("%H:%M") }} · {{ ocupan }} turno{{ "s" if ocupan != 1 }} · {{ suc.bahias }} bahía{{ "s" if suc.bahias != 1 }}.
+    {% if referencia %}
+      {% if libres %}Libres para {{ referencia.nombre }}: {% for h in libres %}<span class="chip-dato">{{ h }}</span> {% endfor %}
+      {% else %}Sin horarios libres para {{ referencia.nombre }}.{% endif %}
+    {% endif %}
+  {% else %}<span class="pill no_answer">cerrado</span> {{ suc.nombre }} no abre este día.{% endif %}
+</p>
+
+<div class="tablewrap">
+  {% if turnos %}
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th scope="col">Hora</th><th scope="col">Cliente</th><th scope="col">Vehículo</th><th scope="col">Servicio</th><th scope="col">Retira</th><th scope="col">Estado</th></tr>
+      </thead>
+      <tbody>
+        {% for t in turnos %}
+        <tr {% if t.estado in ("cancelado", "no_vino") %}class="atenuada"{% endif %}>
+          <td class="tnum strong">{{ hora(t.inicio) }}<span class="sub-line">bahía {{ t.bahia }}</span></td>
+          <td>{{ t.cliente_nombre or "Sin nombre" }}{% if t.telefono %}<span class="sub-line tnum">{{ t.telefono }}</span>{% endif %}</td>
+          <td>{{ [t.marca, t.modelo] | select | join(" ") or "—" }}{% if t.chapa or t.km %}<span class="sub-line">{{ t.chapa or "" }}{% if t.chapa and t.km %} · {% endif %}{% if t.km %}{{ t.km | miles }} km{% endif %}</span>{% endif %}</td>
+          <td>{{ t.servicio_nombre }}
+            <span class="sub-line">{% if t.origen != "panel" %}por el agente{% if t.caso_id %} · <a class="link" href="/casos/{{ t.caso_id }}">caso #{{ t.caso_id }}</a>{% endif %}{% else %}cargado a mano{% endif %}</span></td>
+          <td class="tnum">{{ hora(t.retiro_estimado) if t.retiro_estimado else "—" }}</td>
+          <td>
+            <form method="post" action="/agenda/turnos/{{ t.id }}/estado" class="fila-revision">
+              <label class="sr-only" for="e-{{ t.id }}">Estado del turno de las {{ hora(t.inicio) }}</label>
+              <select id="e-{{ t.id }}" name="estado" data-autoenviar {% if t.estado == "prueba" %}disabled{% endif %}>
+                {% for clave, nombre in estados.items() if clave != "prueba" or t.estado == "prueba" %}<option value="{{ clave }}" {% if clave == t.estado %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+              </select>
+              <noscript><button type="submit" class="btn mini">Cambiar</button></noscript>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty"><strong>Sin turnos este día</strong>Los que agenda el agente de recepción aparecen acá; también se pueden cargar a mano.</p>
+  {% endif %}
+</div>
+
+<details class="bloque agenda-nuevo" {% if error %}open{% endif %}>
+  <summary>Cargar un turno a mano</summary>
+  <form method="post" action="/agenda/turnos" class="panel-form" autocomplete="off">
+    <input type="hidden" name="sucursal_id" value="{{ suc.id }}">
+    <div class="fila-campos">
+      <label>Servicio
+        <select name="servicio_id" required>
+          {% for s in servicios %}<option value="{{ s.id }}">{{ s.nombre }}{% if s.marca or s.modelo %} · {{ [s.marca, s.modelo] | select | join(" ") }}{% endif %}</option>{% endfor %}
+        </select></label>
+      <label>Día <input type="date" name="fecha" value="{{ dia.isoformat() }}" required></label>
+      <label>Hora <input type="time" name="hora" required list="horas-libres" step="600"></label>
+      <datalist id="horas-libres">{% for h in libres %}<option value="{{ h }}">{% endfor %}</datalist>
+    </div>
+    <div class="fila-campos">
+      <label>Cliente <input type="text" name="cliente" maxlength="160" required></label>
+      <label>Teléfono <input type="tel" name="telefono" maxlength="30" inputmode="tel" required></label>
+      <label>Marca <input type="text" name="marca" maxlength="40"></label>
+      <label>Modelo <input type="text" name="modelo" maxlength="60"></label>
+      <label>Chapa <input type="text" name="chapa" maxlength="20" spellcheck="false"></label>
+      <label>Km <input type="text" name="km" maxlength="9" inputmode="numeric"></label>
+    </div>
+    <label class="etiqueta" for="t-notas">Notas</label>
+    <textarea id="t-notas" name="notas" rows="2" maxlength="1000"></textarea>
+    <div class="actions"><button type="submit" class="btn primary">Reservar</button>
+      <span class="hint">Se controla igual que cuando agenda el agente: si a esa hora no hay bahía libre, avisa.</span></div>
+  </form>
+</details>
+{% endif %}
+<script>
+  document.querySelectorAll("[data-autoenviar]").forEach(function (s) {
+    s.addEventListener("change", function () { s.form.submit(); });
+  });
+</script>
+{% endblock %}

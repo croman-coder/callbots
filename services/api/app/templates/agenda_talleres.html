@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% set nav = "agenda" %}
+{% block title %}Talleres y servicios · Agenda · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <p class="crumb"><a class="link" href="/agenda">Agenda del taller</a></p>
+    <h1>Talleres y servicios</h1>
+    <p class="lede">Con esto el agente calcula los horarios libres y desde qué hora se retira el vehículo</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+
+{% macro form_taller(s) %}
+<form method="post" action="/agenda/talleres" class="panel-form taller" autocomplete="off">
+  {% if s %}<input type="hidden" name="id" value="{{ s.id }}">{% endif %}
+  <div class="fila-campos">
+    <label>Taller <input type="text" name="nombre" maxlength="80" value="{{ s.nombre if s else '' }}" required></label>
+    <label class="ancho">Dirección <span class="hint">· el agente se la dice al cliente</span>
+      <input type="text" name="direccion" maxlength="200" value="{{ (s.direccion or '') if s else '' }}"></label>
+    <label class="check"><input type="checkbox" name="activa" value="1" {% if not s or s.activa %}checked{% endif %}> Recibe turnos</label>
+  </div>
+  <fieldset class="horario-semana">
+    <legend class="etiqueta">Horario <span class="hint">· vacío = cerrado ese día</span></legend>
+    {% for d in range(7) %}
+    {% set franja = (s.horario or {}).get(d | string) if s else none %}
+    <div class="horario-dia">
+      <span>{{ dias[d] | capitalize }}</span>
+      <label class="sr-only" for="d{{ s.id if s else 'n' }}-{{ d }}">{{ dias[d] }}: desde</label>
+      <input id="d{{ s.id if s else 'n' }}-{{ d }}" type="time" name="desde_{{ d }}" value="{{ franja[0] if franja else '' }}">
+      <span aria-hidden="true">a</span>
+      <label class="sr-only" for="h{{ s.id if s else 'n' }}-{{ d }}">{{ dias[d] }}: hasta</label>
+      <input id="h{{ s.id if s else 'n' }}-{{ d }}" type="time" name="hasta_{{ d }}" value="{{ franja[1] if franja else '' }}">
+    </div>
+    {% endfor %}
+  </fieldset>
+  <div class="fila-campos">
+    <label>Bahías <input type="number" name="bahias" min="1" max="50" value="{{ s.bahias if s else 2 }}"></label>
+    <label>Autos que recibe a la misma hora <input type="number" name="recepciones_por_franja" min="1" max="20" value="{{ s.recepciones_por_franja if s else 2 }}"></label>
+    <label>Turnos cada (min) <input type="number" name="intervalo_min" min="10" max="240" value="{{ s.intervalo_min if s else 30 }}"></label>
+    <label>Margen hasta el retiro (min) <input type="number" name="margen_retiro_min" min="0" max="600" value="{{ s.margen_retiro_min if s else 60 }}"></label>
+    <label>Anticipación para hoy (min) <input type="number" name="anticipacion_min" min="0" max="2880" value="{{ s.anticipacion_min if s else 120 }}"></label>
+  </div>
+  <div class="actions"><button type="submit" class="btn {{ 'primary' if s else '' }}">{{ "Guardar taller" if s else "Agregar taller" }}</button></div>
+</form>
+{% endmacro %}
+
+<section class="section">
+  <header><h2>Talleres</h2><span class="note">Un horario está libre si a esa hora no se reciben más autos que los indicados y hay una bahía sin trabajo mientras dura el servicio</span></header>
+  {% for s in sucursales %}{{ form_taller(s) }}{% endfor %}
+  <details class="bloque"><summary>Agregar otro taller</summary>{{ form_taller(none) }}</details>
+</section>
+
+<section class="section">
+  <header><h2>Servicios</h2><span class="note">Minutos de cada etapa. Con marca o modelo, esos tiempos se usan solo para esos vehículos; vaciá el nombre para quitar un servicio</span></header>
+  <form method="post" action="/agenda/servicios" autocomplete="off">
+    <div class="tablewrap"><div class="scroll">
+      <table class="tabla-servicios">
+        <thead><tr>
+          <th scope="col">Servicio</th><th scope="col">Cómo lo pide la gente</th><th scope="col">Marca</th><th scope="col">Modelo</th>
+          <th scope="col" class="num">Recepción</th><th scope="col" class="num">Trabajo</th><th scope="col" class="num">Lavado</th>
+          <th scope="col" class="num">Control</th><th scope="col" class="num">Entrega</th><th scope="col" class="num">Total</th>
+        </tr></thead>
+        <tbody>
+          {% for s in servicios if s.activo %}
+          <tr>
+            <td><input type="hidden" name="sv_id" value="{{ s.id }}"><input type="text" name="sv_nombre" maxlength="120" value="{{ s.nombre }}" aria-label="Servicio"></td>
+            <td><input type="text" name="sv_palabras" maxlength="300" value="{{ s.palabras or '' }}" aria-label="Cómo lo pide la gente"></td>
+            <td><input type="text" name="sv_marca" maxlength="40" value="{{ s.marca or '' }}" placeholder="todas" aria-label="Marca"></td>
+            <td><input type="text" name="sv_modelo" maxlength="60" value="{{ s.modelo or '' }}" placeholder="todos" aria-label="Modelo"></td>
+            {% for campo, valor in [("sv_recepcion", s.recepcion_min), ("sv_trabajo", s.trabajo_min), ("sv_lavado", s.lavado_min), ("sv_calidad", s.calidad_min), ("sv_entrega", s.entrega_min)] %}
+            <td class="num"><input type="number" name="{{ campo }}" min="0" max="1440" value="{{ valor }}" aria-label="{{ campo[3:] }} (min)"></td>
+            {% endfor %}
+            <td class="num tnum">{{ s.total_min }} min</td>
+          </tr>
+          {% endfor %}
+          {% for _ in range(2) %}
+          <tr class="nueva">
+            <td><input type="hidden" name="sv_id" value=""><input type="text" name="sv_nombre" maxlength="120" placeholder="Nuevo servicio" aria-label="Nuevo servicio"></td>
+            <td><input type="text" name="sv_palabras" maxlength="300" aria-label="Cómo lo pide la gente"></td>
+            <td><input type="text" name="sv_marca" maxlength="40" placeholder="todas" aria-label="Marca"></td>
+            <td><input type="text" name="sv_modelo" maxlength="60" placeholder="todos" aria-label="Modelo"></td>
+            {% for campo, valor in [("sv_recepcion", 5), ("sv_trabajo", 60), ("sv_lavado", 0), ("sv_calidad", 5), ("sv_entrega", 10)] %}
+            <td class="num"><input type="number" name="{{ campo }}" min="0" max="1440" value="{{ valor }}" aria-label="{{ campo[3:] }} (min)"></td>
+            {% endfor %}
+            <td></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+    <p class="actions"><button type="submit" class="btn primary">Guardar servicios</button>
+      <span class="hint">Ejemplo: «Service 10.000 km» para todos y otra fila «Service 10.000 km» con modelo «Duster» y sus propios tiempos.</span></p>
+  </form>
+</section>
+{% endblock %}

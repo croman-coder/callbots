@@ -582,3 +582,82 @@ class Caso(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     campaign: Mapped[Campaign] = relationship()
+
+
+class TallerSucursal(Base):
+    """Un taller que recibe vehículos: horario por día, bahías y cuántos autos recibe a la misma hora (app/agenda.py)."""
+
+    __tablename__ = "taller_sucursales"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(80), nullable=False)
+    direccion: Mapped[str | None] = mapped_column(String(200))
+    activa: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    # {"0": ["07:00", "17:00"], …, "5": ["07:00", "11:00"]}: lunes = 0. Un día sin entrada está cerrado.
+    horario: Mapped[dict | None] = mapped_column(JSON)
+    intervalo_min: Mapped[int] = mapped_column(Integer, default=30, server_default="30", nullable=False)
+    bahias: Mapped[int] = mapped_column(Integer, default=2, server_default="2", nullable=False)
+    recepciones_por_franja: Mapped[int] = mapped_column(Integer, default=2, server_default="2", nullable=False)
+    # Lo que se suma a los tiempos del servicio para decirle al cliente desde qué hora lo retira.
+    margen_retiro_min: Mapped[int] = mapped_column(Integer, default=60, server_default="60", nullable=False)
+    # Cuánto antes como mínimo se puede pedir un turno para hoy.
+    anticipacion_min: Mapped[int] = mapped_column(Integer, default=120, server_default="120", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class TallerServicio(Base):
+    """Un servicio con sus tiempos por etapa. Con marca o modelo, pisa al general para esos vehículos."""
+
+    __tablename__ = "taller_servicios"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    palabras: Mapped[str | None] = mapped_column(String(300))  # cómo lo pide la gente: «service de los 10 mil»
+    marca: Mapped[str | None] = mapped_column(String(40))
+    modelo: Mapped[str | None] = mapped_column(String(60))
+    recepcion_min: Mapped[int] = mapped_column(Integer, default=5, server_default="5", nullable=False)
+    trabajo_min: Mapped[int] = mapped_column(Integer, default=60, server_default="60", nullable=False)
+    lavado_min: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    calidad_min: Mapped[int] = mapped_column(Integer, default=5, server_default="5", nullable=False)
+    entrega_min: Mapped[int] = mapped_column(Integer, default=10, server_default="10", nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    @property
+    def total_min(self) -> int:
+        return self.recepcion_min + self.trabajo_min + self.lavado_min + self.calidad_min + self.entrega_min
+
+
+class TallerTurno(Base):
+    """Un turno: a qué hora deja el vehículo, en qué bahía se trabaja y desde cuándo lo retira."""
+
+    __tablename__ = "taller_turnos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sucursal_id: Mapped[int] = mapped_column(ForeignKey("taller_sucursales.id", ondelete="RESTRICT"), nullable=False)
+    servicio_id: Mapped[int | None] = mapped_column(ForeignKey("taller_servicios.id", ondelete="SET NULL"))
+    servicio_nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    inicio: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)  # recepción
+    trabajo_desde: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    trabajo_hasta: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    retiro_estimado: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    bahia: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    cliente_nombre: Mapped[str | None] = mapped_column(String(160))
+    telefono: Mapped[str | None] = mapped_column(String(30))
+    marca: Mapped[str | None] = mapped_column(String(40))
+    modelo: Mapped[str | None] = mapped_column(String(60))
+    chapa: Mapped[str | None] = mapped_column(String(20))
+    km: Mapped[int | None] = mapped_column(Integer)
+    # agendado | confirmado | en_taller | listo | entregado | cancelado | no_vino | prueba
+    estado: Mapped[str] = mapped_column(String(12), default="agendado", server_default="agendado", nullable=False)
+    origen: Mapped[str] = mapped_column(String(12), default="panel", server_default="panel", nullable=False)
+    caso_id: Mapped[int | None] = mapped_column(ForeignKey("casos.id", ondelete="SET NULL"))
+    notas: Mapped[str | None] = mapped_column(Text)
+    eventos: Mapped[list | None] = mapped_column(JSON)
+    created_by: Mapped[str | None] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    sucursal: Mapped[TallerSucursal] = relationship()

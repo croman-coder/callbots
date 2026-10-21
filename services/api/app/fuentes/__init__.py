@@ -1,34 +1,75 @@
-"""Sistemas que el agente de recepción consulta en vivo (por ahora, el Cotizador de repuestos).
+"""Sistemas que el agente de recepción consulta en vivo: el Cotizador de repuestos y la agenda del taller.
 
-Cada agente elige en su ficha qué consulta (`Campaign.fuentes`): {"repuestos": bool, "precios": bool}. Sin la conexión
-configurada en el servidor no se ofrece nada, aunque el agente lo tenga marcado.
+Cada agente elige en su ficha qué consulta (`Campaign.fuentes`): {"repuestos": bool, "precios": bool, "turnos": bool}.
+Lo que no está disponible no se ofrece aunque esté marcado: el Cotizador sin conexión configurada, o la agenda sin un
+taller activo con horario.
+
+Las consultas al Cotizador van a otra base y corren en un hilo. Las de la agenda usan una sesión propia que hace
+commit enseguida: así la reserva no queda bloqueando la sucursal mientras Claude arma la respuesta.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import Awaitable, Callable
 
+from sqlalchemy import update
+from sqlalchemy.orm import Session, object_session
+
+from app import agenda
+from app.db import session_scope
 from app.fuentes import cotizador
+from app.models import TallerTurno
 
 
 def elegidas(campaign) -> dict[str, bool]:  # noqa: ANN001 - Campaign
     f = getattr(campaign, "fuentes", None) or {}
-    return {"repuestos": bool(f.get("repuestos")), "precios": bool(f.get("precios"))}
+    return {"repuestos": bool(f.get("repuestos")), "precios": bool(f.get("precios")), "turnos": bool(f.get("turnos"))}
 
 
 def repuestos_activos(campaign) -> bool:  # noqa: ANN001
     return elegidas(campaign)["repuestos"] and cotizador.configurado()
 
 
-def bloque(caso) -> str:  # noqa: ANN001 - Caso
+def bloque(caso, db: Session | None = None) -> str:  # noqa: ANN001 - Caso
     """Lo que se le explica a Claude sobre las consultas que puede pedir en este caso ("" si ninguna)."""
     from app import recepcion
 
-    if not repuestos_activos(caso.campaign):
-        return ""
-    return recepcion.bloque_consultas(telefono_conocido=bool(caso.telefono), precios=elegidas(caso.campaign)["precios"])
+    partes = []
+    if repuestos_activos(caso.campaign):
+        partes.append(recepcion.texto_repuestos(telefono_conocido=bool(caso.telefono),
+                                                precios=elegidas(caso.campaign)["precios"]))
+    if elegidas(caso.campaign)["turnos"]:
+        sesion = db or object_session(caso)
+        if sesion is not None:
+            partes.append(agenda.texto_para_claude(sesion))
+        else:
+            with session_scope() as nueva:
+                partes.append(agenda.texto_para_claude(nueva))
+    return recepcion.bloque_consultas(partes)
 
 
-def consultor(caso) -> Callable[[dict], str]:  # noqa: ANN001
+def _agenda(pedido: dict, telefono: str | None, origen: str, cliente: str | None) -> tuple[str, int | None]:
+    with session_scope() as db:
+        return agenda.consultar(db, pedido, telefono_llamada=telefono, origen=origen, cliente=cliente)
+
+
+def consultor(caso) -> Callable[[dict], Awaitable[str]]:  # noqa: ANN001
+    """La función que corre lo que pidió Claude. Una reserva queda atada al caso (y el caso, al turno)."""
+    from app import recepcion
+
     precios = elegidas(caso.campaign)["precios"]
-    return lambda pedido: cotizador.consultar(pedido, telefono_llamada=caso.telefono, precios=precios)
+
+    async def consultar(pedido: dict) -> str:
+        if pedido["que"] in ("pedidos", "stock"):
+            return await asyncio.to_thread(cotizador.consultar, pedido, telefono_llamada=caso.telefono, precios=precios)
+        texto, turno_id = await asyncio.to_thread(_agenda, pedido, caso.telefono, caso.origen, caso.nombre)
+        if turno_id:
+            recepcion.evento(caso, "turno reservado", f"Turno n.º {turno_id}")
+            caso.datos = {**(caso.datos or {}), "turno": str(turno_id)}
+            sesion = object_session(caso)
+            if sesion is not None and caso.id:
+                sesion.execute(update(TallerTurno).where(TallerTurno.id == turno_id).values(caso_id=caso.id))
+        return texto
+
+    return consultar

@@ -50,7 +50,7 @@ qué se contestó y qué se venció.
   (`diagnostico-audio-2026-10-20.md`).
 - **Datos vivos**: ✅ repuestos del Cotizador (pedidos, plazo aproximado y stock), ver `datos-en-vivo.md`. Faltan
   embarques con fecha real (COMEX), patentamiento y PDI.
-- **Agendar turnos** con los tiempos por modelo y servicio.
+- **Agendar turnos**: ✅ ver `agenda-taller.md`. Falta avisar al cliente por WhatsApp.
 
 ## Archivos
 

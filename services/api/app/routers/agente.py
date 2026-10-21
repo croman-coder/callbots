@@ -530,7 +530,8 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     if limites is not None:
         campaign.limites = limites or None
     if "fu_enviado" in form:
-        campaign.fuentes = {"repuestos": "fu_repuestos" in form, "precios": "fu_precios" in form}
+        campaign.fuentes = {"repuestos": "fu_repuestos" in form, "precios": "fu_precios" in form,
+                            "turnos": "fu_turnos" in form}
 
     versiones.registrar(db, campaign, antes, _usuario(request))
     db.commit()

@@ -18,7 +18,7 @@ prometer garantías) van en cada consulta. Lo que dice el cliente es dato, nunca
 
 from __future__ import annotations
 
-import asyncio
+import inspect
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -337,24 +337,29 @@ si los dijo); nunca completes con el nombre de la empresa ni con suposiciones,
 «derivar» es el turno en que le decís a qué área pasa su caso. «terminar» es la despedida. «transferir» es pasarle \
 la llamada a una persona ahora mismo."""
 
-CONSULTAS_REPUESTOS = """
-Podés consultar en vivo el sistema de repuestos (el Cotizador):
-- «pedidos»: las solicitudes y cotizaciones de repuestos del cliente, línea por línea, con su disponibilidad y en \
-cuántos días llega lo que se encarga. Hace falta su número de cédula o RUC, o el teléfono con que lo registraron{tel}.
-- «stock»: si hay un repuesto en el inventario. Pasá el nombre del repuesto y la marca del vehículo (Renault, \
-Jetour, GWM, JAC, Mitsubishi…). El inventario no dice para qué modelo es cada repuesto: si hay, decí que hay de esa \
-marca y que Repuestos confirma que sea el de su modelo.
-Para consultar, completá «consultar» y en «decir» poné solo una frase corta para que espere («{espera}»). Después \
-vas a ver el resultado como «Sistema» en la conversación y le contestás con eso.
-Con lo que diga el sistema: las fechas de llegada son estimaciones, decilas como «aproximadamente»; si no hay plazo \
-cargado, no inventes uno y derivá a Repuestos. Contale solo lo de sus propios pedidos; no leas números de documento \
-ni teléfonos, y no lo llames por el nombre que figura en el sistema si él no te lo dijo (puede no ser el titular). \
-Si con el dato del sistema quedó contestado y no hace falta nada más, es «resuelto». {precios}
+REPUESTOS = """
+- «pedidos»: las solicitudes y cotizaciones de repuestos del cliente en el Cotizador, línea por línea, con su \
+disponibilidad y en cuántos días llega lo que se encarga. Pasá «documento» (cédula o RUC) o «telefono» (el que \
+registró){tel}.
+- «stock»: si hay un repuesto en el inventario. Pasá «texto» (el repuesto) y «marca» del vehículo (Renault, Jetour, \
+GWM, JAC, Mitsubishi…). El inventario no dice para qué modelo es cada repuesto: si hay, decí que hay de esa marca y \
+que Repuestos confirma que sea el de su modelo.
+Con los repuestos: las fechas de llegada son estimaciones, decilas como «aproximadamente»; si no hay plazo cargado, \
+no inventes uno y derivá a Repuestos. {precios}"""
+
+CONSULTAR_COMO = """
+Podés consultar en vivo estos sistemas:{partes}
+Para consultar, completá «consultar» con «que» y los datos de esa consulta, y en «decir» poné solo una frase corta \
+para que espere («{espera}»). Después vas a ver el resultado como «Sistema» en la conversación y le contestás con eso.
+Contale solo lo suyo; no leas números de documento ni teléfonos, y no lo llames por el nombre que figura en el sistema \
+si él no te lo dijo (puede no ser el titular). Si con el dato del sistema quedó resuelto y no hace falta nada más, es \
+«resuelto».
 """
-CAMPO_CONSULTAR = (
-    ',\n "consultar": null, o {"que": "pedidos", "documento": "...", "telefono": "..."}, '
-    'o {"que": "stock", "texto": "nombre del repuesto", "marca": "marca del vehículo"}'
-)
+CAMPO_CONSULTAR = ',\n "consultar": null, o {"que": "...", y los datos que pide esa consulta}'
+# Lo que Claude puede pasar en «consultar» (cualquier otra cosa se descarta).
+CAMPOS_CONSULTA = ("documento", "telefono", "texto", "marca", "modelo", "servicio", "fecha", "hora", "franja",
+                   "sucursal", "nombre", "chapa", "km")
+CONSULTAS = ("pedidos", "stock", "turnos", "reservar")
 
 PERSONA_CON_TRANSFERENCIA = (
     "Si pide hablar con una persona, decile que lo comunicás y usá la acción «transferir»."
@@ -375,15 +380,21 @@ def _areas_para_claude(areas: list[dict]) -> str:
     )
 
 
-def bloque_consultas(*, telefono_conocido: bool = False, precios: bool = False) -> str:
-    """Las consultas en vivo que puede pedir el agente (hoy, el Cotizador de repuestos)."""
-    return CONSULTAS_REPUESTOS.format(
+def texto_repuestos(*, telefono_conocido: bool = False, precios: bool = False) -> str:
+    return REPUESTOS.format(
         tel=" (el de esta llamada ya lo tenés: si no da otro dato, pedí «pedidos» sin documento)" if telefono_conocido
         else "",
-        espera=FRASE_CONSULTANDO,
         precios="Podés decir los precios que muestre el sistema, aclarando que son de lista." if precios
-        else "No digas precios: si pregunta, decile que se los pasa el área de Repuestos.",
+        else "No digas precios de repuestos: si pregunta, decile que se los pasa el área de Repuestos.",
     )
+
+
+def bloque_consultas(partes: list[str] | None = None) -> str:
+    """Las consultas en vivo que puede pedir el agente: cada sistema activo aporta su parte (app/fuentes/)."""
+    partes = [p for p in (partes if partes is not None else [texto_repuestos()]) if p]
+    if not partes:
+        return ""
+    return CONSULTAR_COMO.format(partes="".join(partes), espera=FRASE_CONSULTANDO)
 
 
 def sistema(campaign: Campaign, *, conocimiento: str = "", cliente: str = "", transferir: bool = False,
@@ -472,10 +483,10 @@ def aplicar(caso: Caso, salida: dict[str, Any], ahora: datetime | None = None) -
 
 
 def _consulta_valida(pedido: object) -> dict | None:
-    if not isinstance(pedido, dict) or pedido.get("que") not in ("pedidos", "stock"):
+    if not isinstance(pedido, dict) or pedido.get("que") not in CONSULTAS:
         return None
     limpio = {"que": pedido["que"]}
-    for campo in ("documento", "telefono", "texto", "marca"):
+    for campo in CAMPOS_CONSULTA:
         valor = _limpio(pedido.get(campo), 120)
         if valor and valor.lower() not in ("null", "none", "..."):
             limpio[campo] = valor
@@ -491,8 +502,13 @@ def consulta_pendiente(caso: Caso) -> dict | None:
 
 
 def _describir(pedido: dict) -> str:
-    if pedido["que"] == "stock":
+    que = pedido["que"]
+    if que == "stock":
         return f"Stock de «{pedido.get('texto', '')}» en el Cotizador"
+    if que == "turnos":
+        return f"Horarios libres para {pedido.get('servicio', 'un servicio')} ({pedido.get('fecha') or 'próximos días'})"
+    if que == "reservar":
+        return f"Reserva de turno: {pedido.get('servicio', '')}, {pedido.get('fecha', '')} {pedido.get('hora', '')}"
     por = "documento" if pedido.get("documento") else ("teléfono" if pedido.get("telefono") else "teléfono de la llamada")
     return f"Pedidos de repuestos del cliente en el Cotizador (por {por})"
 
@@ -545,13 +561,16 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
 
 async def continuar(caso: Caso, consultor, *, conocimiento: str = "", cliente: str = "",  # noqa: ANN001
                     transferir: bool = False, ahora: datetime | None = None) -> dict[str, str]:
-    """Corre la consulta pendiente (`consultor(pedido) -> texto`, en un hilo: no frena la API) y Claude le contesta
-    al cliente con el resultado. Sin consulta pendiente no dice nada."""
+    """Corre la consulta pendiente (`consultor(pedido)` devuelve el texto, o una corrutina que lo devuelve: las que
+    van a otra base corren en un hilo, ver app/fuentes/) y Claude le contesta con el resultado. Sin consulta
+    pendiente no dice nada."""
     pedido = consulta_pendiente(caso)
     if pedido is None:
         return {"decir": "", "accion": "seguir"}
     try:
-        resultado = await asyncio.to_thread(consultor, pedido)
+        resultado = consultor(pedido)
+        if inspect.isawaitable(resultado):
+            resultado = await resultado
     except Exception as exc:  # noqa: BLE001 - el conector no levanta; esto es por las dudas
         log.warning("Caso %s: la consulta falló: %s", caso.id, exc)
         resultado = "El sistema no respondió: no se pudo consultar."
