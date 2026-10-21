@@ -28,7 +28,7 @@ from app.deps import require_admin
 from app.routers.simulator import emitir_ticket
 from app.bitrix.client import normalize_phone_py
 from app.scheduling import next_call_slot, parse_days, parse_hhmm, texto_dias
-from app.services import calidad, contactabilidad, importar, preguntar, voicebox, voicestudio
+from app.services import calidad, contactabilidad, elevenlabs, importar, preguntar, voicebox, voicestudio
 from app.services.export import construir_excel
 from app.services.scoring import SATISFACTORY_MIN
 from app.models import (
@@ -1193,6 +1193,8 @@ def voices_page(
             "en_uso": en_uso,
             "error_catalogo": error_catalogo,
             "puede_clonar": voicestudio.is_configured(),
+            "elevenlabs": elevenlabs.is_configured(),
+            "eleven_consumo": elevenlabs.consumo() if elevenlabs.is_configured() else None,
             "texto_referencia": voces.TEXTO_REFERENCIA,
             "max_referencia": int(voces.MAX_REFERENCIA_SEGUNDOS),
             "frase_permiso_plantilla": voces.frase_consentimiento("{persona}"),
@@ -1297,14 +1299,21 @@ def preview_voice(profile_id: str, text: str | None = None) -> Response:
         "¿Tiene un minuto para una consulta muy breve?"
     )
     perfil = voicestudio.id_estudio(profile_id)
+    eleven = elevenlabs.id_elevenlabs(profile_id)
+    media = "audio/wav"
     try:
-        wav = voicestudio.muestra(perfil, sample) if perfil else voicebox.generate(profile_id, sample)
-    except (voicebox.VoiceboxError, voicestudio.VoiceStudioError) as exc:
+        if eleven:
+            wav, media = elevenlabs.muestra(eleven, sample), "audio/mpeg"
+        elif perfil:
+            wav = voicestudio.muestra(perfil, sample)
+        else:
+            wav = voicebox.generate(profile_id, sample)
+    except (voicebox.VoiceboxError, voicestudio.VoiceStudioError, elevenlabs.ElevenLabsError) as exc:
         raise HTTPException(502, str(exc))
 
     return Response(
         content=wav,
-        media_type="audio/wav",
+        media_type=media,
         headers={"Cache-Control": "no-store"},
     )
 
@@ -1336,7 +1345,7 @@ def update_campaign_voice(
 
     # "" = la del servidor, "piper" = Piper a propósito, o el id de un perfil de Voicebox.
     perfil = voice_profile_id.strip()
-    if perfil and perfil != "piper" and not re.fullmatch(r"(vs:)?[A-Za-z0-9_-]{1,61}", perfil):
+    if perfil and perfil != "piper" and not re.fullmatch(r"((vs|el):)?[A-Za-z0-9_-]{1,61}", perfil):
         return _redirect(f"/voices?error={quote_plus('Voz inválida')}")
     campaign.voice_profile_id = perfil or None
     db.commit()
@@ -1484,6 +1493,18 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
         except voicestudio.VoiceStudioError as exc:
             checks.append({"name": "VoiceStudio (clonar voces)", "ok": False,
                            "detail": f"{exc} Las voces clonadas hablan con la voz del servidor."})
+
+    # ElevenLabs (voces de la cuenta, de pago). Sin clave no es falla: solo no se ofrecen esas voces.
+    if not elevenlabs.is_configured():
+        checks.append({"name": "ElevenLabs (voces de la cuenta)", "ok": True, "detail": "no conectado; solo hay voces del servidor"})
+    else:
+        try:
+            n = sum(1 for v in elevenlabs.listar_voces() if v.get("voice_id"))
+            c = elevenlabs.consumo()
+            uso = f"; usaste {c['usados']:,} de {c['limite']:,} caracteres".replace(",", ".") if c and c["limite"] else ""
+            checks.append({"name": "ElevenLabs (voces de la cuenta)", "ok": True, "detail": f"responde; {n} voces en la cuenta{uso}"})
+        except elevenlabs.ElevenLabsError as exc:
+            checks.append({"name": "ElevenLabs (voces de la cuenta)", "ok": False, "detail": f"{exc} Las voces de ElevenLabs hablan con la voz del servidor."})
 
     dias = parse_days(settings.call_window_days)
     return templates.TemplateResponse(

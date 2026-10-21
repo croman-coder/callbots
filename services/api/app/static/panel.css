@@ -1017,3 +1017,6 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .opcion-campos > label:first-child { margin-top: 0; }
 .opcion-campos textarea { min-height: 64px; }
 .opcion-campos [hidden] { display: none; }
+
+/* Voces de pago: se distinguen de las gratis sin gritar (es información, no una alerta). */
+.chip-dato.paga { background: var(--warn-bg); color: var(--warn); }

@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     voicestudio_url: str = ""
     # La instalación de servidor de VoiceStudio pide OMNIVOICE_API_KEY como «Authorization: Bearer».
     voicestudio_api_key: str = ""
+    # ElevenLabs: las voces de la cuenta de Santa Rosa. De pago por carácter. Vacío = no se ofrece.
+    elevenlabs_api_key: str = ""
+    elevenlabs_model: str = "eleven_multilingual_v2"
 
     # --- Login con la cuenta de los dashboards (Supabase) ---
     # Es la misma cuenta que usan Meta Ads y el tablero comercial: una persona, un

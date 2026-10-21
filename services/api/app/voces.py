@@ -11,7 +11,7 @@ import logging
 import re
 
 from app.config import settings
-from app.services import voicebox, voicestudio
+from app.services import elevenlabs, voicebox, voicestudio
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ MOTORES = {
     "qwen_custom_voice": {"nombre": "Qwen3-TTS", "detalle": "Voz prediseñada", "en_vivo": False},
     "piper": {"nombre": "Piper", "detalle": "Respaldo: suena robótica", "en_vivo": True},
     "omnivoice": {"nombre": "OmniVoice", "detalle": "Voz clonada, habla en vivo", "en_vivo": True},
+    "elevenlabs": {"nombre": "ElevenLabs", "detalle": "Muy natural. De pago, por carácter", "en_vivo": True},
 }
 GENERO_PRESET = {"ef_dora": "Mujer", "em_alex": "Hombre", "em_santa": "Hombre"}
 
@@ -94,9 +95,11 @@ def catalogo() -> tuple[list[dict], str | None]:
                 "en_vivo": datos["en_vivo"],
                 "predeterminada": p["id"] == settings.voicebox_profile_id,
                 "escuchar": True,
+                "costo": "Gratis",
             }
         )
     voces.extend(clonadas())
+    voces.extend(de_elevenlabs())
     # Primero las que hablan en vivo (no cambian de voz en mitad de la llamada), después por nombre.
     voces.sort(key=lambda v: (not v["en_vivo"], v["nombre"].lower()))
     voces.append(
@@ -112,6 +115,7 @@ def catalogo() -> tuple[list[dict], str | None]:
             "en_vivo": True,
             "predeterminada": False,
             "escuchar": False,
+            "costo": "Gratis",
         }
     )
     return voces, error
@@ -141,10 +145,50 @@ def clonadas() -> list[dict]:
             "escuchar": True,
             "consentimiento": p.get("consent_text") or "",
             "creada": p.get("created_at"),
+            "costo": "Gratis",
         }
         for p in perfiles
         if p.get("id") and p.get("kind", "clone") == "clone" and p.get("verified_own_voice")
     ]
+
+
+_GENERO_ELEVEN = {"female": "Mujer", "male": "Hombre"}
+
+
+def de_elevenlabs() -> list[dict]:
+    """Las voces de la cuenta de ElevenLabs. De pago: se avisa en pantalla y se ofrecen aparte de las gratis."""
+    if not elevenlabs.is_configured():
+        return []
+    try:
+        voces_cuenta = elevenlabs.listar_voces()
+    except elevenlabs.ElevenLabsError as exc:
+        log.warning("Voces de ElevenLabs: %s", exc)
+        return []
+    salida = []
+    for v in voces_cuenta:
+        voz_id = str(v.get("voice_id") or "")
+        if not voz_id:
+            continue
+        etiquetas = v.get("labels") or {}
+        propia = str(v.get("category") or "") in ("cloned", "professional", "generated")
+        detalles = [str(etiquetas[k]) for k in ("accent", "descriptive", "use_case") if etiquetas.get(k)]
+        salida.append(
+            {
+                "id": elevenlabs.id_callbot(voz_id),
+                "nombre": str(v.get("name") or "Sin nombre").split(" - ")[0].strip()[:40],
+                "genero": _GENERO_ELEVEN.get(str(etiquetas.get("gender") or "").lower(), ""),
+                "tipo": "Clonada" if propia else "Prediseñada",
+                "descripcion": " · ".join(detalles) or (v.get("description") or "")[:120],
+                "motor": "elevenlabs",
+                "motor_nombre": MOTORES["elevenlabs"]["nombre"],
+                "detalle": MOTORES["elevenlabs"]["detalle"],
+                "en_vivo": True,
+                "predeterminada": False,
+                "escuchar": True,
+                "costo": "De pago",
+            }
+        )
+    return salida
 
 
 def elegida(voces: list[dict], voice_profile_id: str | None) -> dict | None:

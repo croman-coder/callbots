@@ -373,7 +373,7 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
 
     perfil = texto("voice_profile_id", 64)
     if perfil is not None:
-        if perfil and perfil != "piper" and not re.fullmatch(r"(vs:)?[A-Za-z0-9_-]{1,61}", perfil):
+        if perfil and perfil != "piper" and not re.fullmatch(r"((vs|el):)?[A-Za-z0-9_-]{1,61}", perfil):
             return _volver(campaign_id, tab, error="Esa voz no existe: elegí una de la lista")
         campaign.voice_profile_id = perfil or None
     # Mismos topes que en Voz: un valor absurdo deja la voz irreconocible o tarda una eternidad.

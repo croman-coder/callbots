@@ -259,7 +259,7 @@
       campoVoz.value = f.dataset.voz;
       $("[data-voz-nombre]").textContent = f.dataset.nombre;
       $("[data-voz-chips]").innerHTML = "";
-      [f.dataset.genero, f.dataset.tipo, "Gratis"].filter(Boolean).forEach(function (t) { var c = document.createElement("span"); c.className = "chip-dato"; c.textContent = t; $("[data-voz-chips]").appendChild(c); });
+      [f.dataset.genero, f.dataset.tipo, f.dataset.costo || "Gratis"].filter(Boolean).forEach(function (t) { var c = document.createElement("span"); c.className = "chip-dato"; c.textContent = t; $("[data-voz-chips]").appendChild(c); });
       $("[data-voz-modelo]").textContent = f.dataset.motor + " · " + f.dataset.detalle;
       var b = $("[data-voz-elegida] [data-escuchar]"); b.dataset.escuchar = f.dataset.escucha ? f.dataset.voz : ""; b.disabled = !f.dataset.escucha;
       if (window.callbotMarcarSucio) window.callbotMarcarSucio();

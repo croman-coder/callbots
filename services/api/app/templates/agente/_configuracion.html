@@ -11,7 +11,7 @@
         <div class="voz-datos">
           <strong data-voz-nombre>{{ voz_actual.nombre if voz_actual else "La del servidor" }}</strong>
           <span class="chips" data-voz-chips>
-            {% if voz_actual %}{% if voz_actual.genero %}<span class="chip-dato">{{ voz_actual.genero }}</span>{% endif %}<span class="chip-dato">{{ voz_actual.tipo }}</span><span class="chip-dato">Gratis</span>{% endif %}
+            {% if voz_actual %}{% if voz_actual.genero %}<span class="chip-dato">{{ voz_actual.genero }}</span>{% endif %}<span class="chip-dato">{{ voz_actual.tipo }}</span><span class="chip-dato{% if voz_actual.costo != 'Gratis' %} paga{% endif %}">{{ voz_actual.costo }}</span>{% endif %}
           </span>
         </div>
         <button type="button" class="icono" data-escuchar="{{ voz_actual.id if voz_actual and voz_actual.escuchar else '' }}" aria-label="Escuchar la voz elegida" {% if not (voz_actual and voz_actual.escuchar) %}disabled{% endif %}>
@@ -201,11 +201,11 @@
       <thead><tr><th scope="col">Nombre</th><th scope="col">Atributos</th><th scope="col">Modelo</th><th scope="col"><span class="sr-only">Escuchar</span></th></tr></thead>
       <tbody>
         {% for v in voces %}
-        <tr data-voz="{{ v.id }}" data-genero="{{ v.genero }}" data-tipo="{{ v.tipo }}" data-motor="{{ v.motor_nombre }}" data-nombre="{{ v.nombre }}"
+        <tr data-voz="{{ v.id }}" data-genero="{{ v.genero }}" data-tipo="{{ v.tipo }}" data-motor="{{ v.motor_nombre }}" data-nombre="{{ v.nombre }}" data-costo="{{ v.costo }}"
             data-detalle="{{ v.detalle }}" data-escucha="{{ '1' if v.escuchar else '' }}" tabindex="0" aria-selected="false">
           <td><label class="elegir-voz"><input type="radio" name="voz-elegida" value="{{ v.id }}"> <strong>{{ v.nombre }}</strong>{% if v.predeterminada %} <span class="hint">· predeterminada</span>{% endif %}</label>
             {% if v.descripcion %}<span class="sub-line">{{ v.descripcion }}</span>{% endif %}</td>
-          <td>{% if v.genero %}<span class="chip-dato">{{ v.genero }}</span>{% endif %} <span class="chip-dato">{{ v.tipo }}</span> <span class="chip-dato">Gratis</span></td>
+          <td>{% if v.genero %}<span class="chip-dato">{{ v.genero }}</span>{% endif %} <span class="chip-dato">{{ v.tipo }}</span> <span class="chip-dato{% if v.costo != 'Gratis' %} paga{% endif %}">{{ v.costo }}</span></td>
           <td><span class="sub-line">{{ v.motor_nombre }}</span><span class="hint">{{ v.detalle }}</span></td>
           <td class="num">{% if v.escuchar %}<button type="button" class="icono" data-escuchar="{{ v.id }}" aria-label="Escuchar a {{ v.nombre }}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg></button>{% else %}<span class="hint">sin muestra</span>{% endif %}</td>
         </tr>

@@ -6,7 +6,7 @@
 <div class="bar">
   <div>
     <h1>Voces</h1>
-    <p class="lede">Las voces que pueden usar tus agentes. Todas son gratis: corren en el servidor de Santa Rosa.</p>
+    <p class="lede">Las voces que pueden usar tus agentes. Las gratis corren en el servidor de Santa Rosa{% if elevenlabs %}; las de ElevenLabs se cobran en tu cuenta de ElevenLabs{% endif %}.</p>
   </div>
   <div class="right">
     <a class="btn primary" href="#clonar">Clonar una voz</a>
@@ -35,7 +35,7 @@
         <tr>
           <td><strong>{{ v.nombre }}</strong>{% if v.predeterminada %} <span class="hint">· predeterminada</span>{% endif %}
             {% if v.descripcion %}<span class="sub-line">{{ v.descripcion }}</span>{% endif %}</td>
-          <td>{% if v.genero %}<span class="chip-dato">{{ v.genero }}</span>{% endif %} <span class="chip-dato">{{ v.tipo }}</span> <span class="chip-dato">Gratis</span></td>
+          <td>{% if v.genero %}<span class="chip-dato">{{ v.genero }}</span>{% endif %} <span class="chip-dato">{{ v.tipo }}</span> <span class="chip-dato{% if v.costo != 'Gratis' %} paga{% endif %}">{{ v.costo }}</span></td>
           <td><span class="sub-line">{{ v.motor_nombre }}</span><span class="hint">{{ v.detalle }}</span></td>
           <td>{% set agentes_voz = en_uso.get(v.id, []) %}{% if agentes_voz %}{{ agentes_voz | join(", ") }}{% else %}<span class="hint">—</span>{% endif %}</td>
           <td class="num nowrap">
@@ -53,6 +53,25 @@
     </table>
   </div></div>
   <p class="hint" data-estado-biblioteca role="status" aria-live="polite">{% if voces | selectattr("escuchar") | list %}Tocá ▶ para escuchar cada voz.{% endif %}</p>
+</section>
+
+<section class="section" id="elevenlabs">
+  <header>
+    <h2>ElevenLabs</h2>
+    <span class="note">Las voces de tu cuenta</span>
+  </header>
+  <div class="panel-form">
+    {% if elevenlabs %}
+    <p style="margin-top:0"><span class="chip-dato">Conectado</span> Las voces de «My Voices» de tu cuenta aparecen en la biblioteca con la etiqueta <span class="chip-dato paga">De pago</span> y se eligen en la ficha de cada agente, como cualquier otra.</p>
+    {% if eleven_consumo and eleven_consumo.limite %}
+    <p>En este período usaste <strong>{{ eleven_consumo.usados | dec(0) }}</strong> de {{ eleven_consumo.limite | dec(0) }} caracteres ({{ (100 * eleven_consumo.usados / eleven_consumo.limite) | dec(0) }} %).</p>
+    {% endif %}
+    <p class="hint">ElevenLabs cobra por carácter. Cada frase del guion se genera <strong>una sola vez</strong> y queda guardada; lo que se paga cada vez es lo que cambia por llamada (el nombre del cliente y lo que contesta Claude). Hay un tope diario de seguridad y, si se pasa o ElevenLabs no responde, el agente sigue con la voz del servidor. Para sumar voces: en elevenlabs.io agregalas a «My Voices» y acá aparecen en unos 5 minutos.</p>
+    {% else %}
+    <p style="margin-top:0"><span class="chip-dato">Pronto</span> <strong>Falta conectar la cuenta de ElevenLabs.</strong></p>
+    <p class="hint">Se conecta una sola vez, cargando la clave de API en el servidor (no se escribe en el panel). Los pasos están en <code>docs/elevenlabs.md</code>. Después, las voces de tu cuenta aparecen acá solas.</p>
+    {% endif %}
+  </div>
 </section>
 
 <section class="section" id="clonar">

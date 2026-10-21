@@ -7,6 +7,7 @@ se sintetiza una vez, se guarda en disco a 8 kHz y se reutiliza para siempre.
     ┌─ memoria ──► hit: microsegundos
     ├─ disco ────► hit: milisegundos (sobrevive reinicios)
     ├─ voicestudio ► miss: ~1 s con GPU (voz clonada, en vivo; perfiles "vs:<id>")
+    ├─ elevenlabs ─► miss: ~0,5 s, de pago por carácter (voces de la cuenta; perfiles "el:<id>")
     ├─ voicebox ─► miss: segundos (voz clonada)
     └─ piper ────► voicebox caído o lento: milisegundos (voz genérica)
 
@@ -21,8 +22,10 @@ import hashlib
 import io
 import logging
 import os
+import re
 import wave
 from dataclasses import dataclass, replace
+from datetime import datetime
 
 import httpx
 import numpy as np
@@ -73,6 +76,16 @@ class VoiceParams:
 
 
 PREFIJO_VOICESTUDIO = "vs:"
+PREFIJO_ELEVENLABS = "el:"
+_ID_ELEVENLABS = re.compile(r"[A-Za-z0-9]{10,40}")
+
+
+def perfil_de_elevenlabs(params: "VoiceParams") -> str | None:
+    """El id de voz de ElevenLabs que habla en esta campaña (sin el prefijo), o None."""
+    if config.elevenlabs_api_key and params.profile_id.startswith(PREFIJO_ELEVENLABS):
+        voz = params.profile_id[len(PREFIJO_ELEVENLABS):]
+        return voz if _ID_ELEVENLABS.fullmatch(voz) else None
+    return None
 
 
 def perfil_de_voicestudio(params: "VoiceParams") -> str | None:
@@ -89,6 +102,9 @@ def perfil_de_voicebox(params: "VoiceParams") -> str | None:
     if params.profile_id.startswith(PREFIJO_VOICESTUDIO):
         # Es de VoiceStudio: Voicebox no lo conoce. Si VoiceStudio no está, habla la voz del servidor.
         return None if config.voicestudio_url else (config.voicebox_profile_id or None)
+    if params.profile_id.startswith(PREFIJO_ELEVENLABS):
+        # Igual con ElevenLabs: sin clave (o con un id raro) habla la voz del servidor.
+        return None if perfil_de_elevenlabs(params) else (config.voicebox_profile_id or None)
     return params.profile_id or config.voicebox_profile_id or None
 
 
@@ -149,8 +165,11 @@ def _cache_key(text: str, params: VoiceParams) -> str:
     """
     perfil = perfil_de_voicebox(params)
     estudio = perfil_de_voicestudio(params)
+    eleven = perfil_de_elevenlabs(params)
     if estudio:
         motor = f"voicestudio:{estudio}:{config.voicestudio_pasos}"
+    elif eleven:
+        motor = f"elevenlabs:{eleven}:{config.elevenlabs_model}:{config.elevenlabs_estabilidad}:{config.elevenlabs_similitud}"
     else:
         motor = f"voicebox:{perfil}:{config.voicebox_engine}" if perfil else "piper"
     seed = f"{motor}|{config.piper_voice}|{params.clave()}|{text}"
@@ -252,6 +271,64 @@ async def _voicestudio_synthesize(text: str, timeout: float, perfil: str, speed:
         )
         response.raise_for_status()
         return _wav_to_telephony(response.content)
+
+
+# ---------------------------------------------------------------------------
+# Motor 1c: ElevenLabs (voces de la cuenta; de pago por carácter)
+# ---------------------------------------------------------------------------
+_gasto_eleven = {"dia": "", "caracteres": 0, "avisado": False}
+
+
+def _hay_presupuesto_elevenlabs(caracteres: int) -> bool:
+    """Suma los caracteres pedidos hoy y dice si todavía entran en el tope diario.
+
+    Se cuenta antes de pedir: es plata. La cuenta es en memoria y se reinicia con el día (hora del servidor);
+    si el servicio se reinicia a mitad del día, el tope vuelve a empezar, y el límite de verdad lo tiene
+    la propia cuenta de ElevenLabs.
+    """
+    hoy = datetime.now().strftime("%Y-%m-%d")
+    if _gasto_eleven["dia"] != hoy:
+        _gasto_eleven.update(dia=hoy, caracteres=0, avisado=False)
+    if _gasto_eleven["caracteres"] + caracteres > config.elevenlabs_max_caracteres_dia:
+        if not _gasto_eleven["avisado"]:
+            _gasto_eleven["avisado"] = True
+            log.error(
+                "ElevenLabs: tope diario de %d caracteres alcanzado. Las frases nuevas salen con la voz del "
+                "servidor hasta mañana (se sube con ELEVENLABS_MAX_CARACTERES_DIA).",
+                config.elevenlabs_max_caracteres_dia,
+            )
+        return False
+    _gasto_eleven["caracteres"] += caracteres
+    return True
+
+
+async def _elevenlabs_synthesize(text: str, timeout: float, voz: str, speed: float = 1.0) -> bytes:
+    """POST /v1/text-to-speech/<voz> con salida PCM de 16 kHz, que se baja a 8 kHz para la línea."""
+    payload = {
+        "text": text,
+        "model_id": config.elevenlabs_model,
+        "voice_settings": {
+            "stability": config.elevenlabs_estabilidad,
+            "similarity_boost": config.elevenlabs_similitud,
+            "use_speaker_boost": True,
+            # ElevenLabs acepta 0,7 a 1,2.
+            "speed": min(max(speed, 0.7), 1.2),
+        },
+    }
+    if "v2_5" in config.elevenlabs_model:
+        payload["language_code"] = "es"  # solo los modelos v2.5 permiten fijar el idioma
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        response = await client.post(
+            f"{config.elevenlabs_url.rstrip('/')}/v1/text-to-speech/{voz}",
+            params={"output_format": "pcm_16000"},
+            json=payload,
+            headers={"xi-api-key": config.elevenlabs_api_key, "Accept": "audio/pcm"},
+        )
+        response.raise_for_status()
+        crudo = response.content
+    if len(crudo) < 3200:  # menos de 0,1 s: no es audio, es un error disfrazado
+        raise ValueError("ElevenLabs devolvió un audio vacío")
+    return _to_telephony(np.frombuffer(crudo[: len(crudo) // 2 * 2], dtype=np.int16), 16000)
 
 
 # ---------------------------------------------------------------------------
@@ -449,6 +526,24 @@ async def _sintetizar_crudo(
         _write_cache(text, pcm, params)
         return pcm
 
+    eleven = perfil_de_elevenlabs(params)
+    if eleven:
+        # Se espera (con tope), en llamada y al precalentar, como con VoiceStudio. Si falla o no hay
+        # presupuesto, habla la voz del servidor SIN cachear con esta clave: se volvería a probar la
+        # próxima vez y la frase no queda guardada con otra voz para siempre.
+        espera = timeout or config.elevenlabs_vivo_timeout
+        try:
+            if not _hay_presupuesto_elevenlabs(len(text)):
+                raise ValueError("tope diario de caracteres")
+            pcm = await asyncio.wait_for(_elevenlabs_synthesize(text, espera, eleven, params.speed), espera)
+        except (asyncio.TimeoutError, httpx.HTTPError, ValueError) as exc:
+            log.warning("ElevenLabs no pudo con %r (%s): habla la voz del servidor", text[:40], exc or "tiempo")
+        if not pcm:
+            return await _sintetizar_crudo(text, timeout, replace(params, profile_id=""))
+        _memory_cache[clave_memoria] = pcm
+        _write_cache(text, pcm, params)
+        return pcm
+
     perfil = perfil_de_voicebox(params)
     # En llamada (sin timeout explícito) hay un cliente escuchando. Con Kokoro la frase sale en
     # medio segundo: se la espera (con tope) y así nunca cambia la voz en mitad de la charla. Los
@@ -521,7 +616,7 @@ async def _vaciar_cola() -> None:
 
 def precalentar_en_segundo_plano(texts: list[str], params: VoiceParams = DEFAULT_PARAMS) -> None:
     """Encola lo que falte del guion de una campaña, sin bloquear la llamada que lo pidió."""
-    if not (perfil_de_voicebox(params) or perfil_de_voicestudio(params)):
+    if not (perfil_de_voicebox(params) or perfil_de_voicestudio(params) or perfil_de_elevenlabs(params)):
         return
     for t in dict.fromkeys(f for texto in texts for f in partir_frases(texto)):
         if (t, params.clave()) not in _memory_cache and _read_cache(t, params) is None:

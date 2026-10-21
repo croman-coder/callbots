@@ -61,6 +61,19 @@ class Config:
     # frase de 6 s: 8 pasos 0,8 s; 12 pasos 1,1 s; 16 pasos 1,4 s; 32 pasos 2,6 s.
     voicestudio_pasos: int = int(os.getenv("VOICESTUDIO_PASOS", "12"))
 
+    # ElevenLabs (voces de la cuenta de Santa Rosa; de pago, por carácter). Las campañas lo usan con un
+    # perfil "el:<voice_id>". Sin clave no se ofrece.
+    elevenlabs_api_key: str = os.getenv("ELEVENLABS_API_KEY", "")
+    elevenlabs_url: str = os.getenv("ELEVENLABS_URL", "https://api.elevenlabs.io")
+    # multilingual_v2: la más natural. flash_v2_5: casi sin demora y la mitad de precio, algo menos fina.
+    elevenlabs_model: str = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
+    elevenlabs_vivo_timeout: float = float(os.getenv("ELEVENLABS_VIVO_TIMEOUT", "6"))
+    elevenlabs_estabilidad: float = float(os.getenv("ELEVENLABS_ESTABILIDAD", "0.5"))
+    elevenlabs_similitud: float = float(os.getenv("ELEVENLABS_SIMILITUD", "0.8"))
+    # Freno contra gastos por error (un guion mal armado, un bucle): al pasar este total de caracteres en
+    # el día, las frases nuevas salen con la voz del servidor. Lo que ya está guardado sigue sonando igual.
+    elevenlabs_max_caracteres_dia: int = int(os.getenv("ELEVENLABS_MAX_CARACTERES_DIA", "60000"))
+
     # Piper (respaldo, y motor principal si no hay voicebox)
     piper_voice: str = os.getenv("PIPER_VOICE", "es_AR-daniela-high")
     piper_dir: str = os.getenv("PIPER_DIR", "/models/piper")
