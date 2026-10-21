@@ -1,0 +1,50 @@
+<form id="ficha" method="post" action="/campaigns/{{ campaign.id }}/guardar" class="ficha-grid" autocomplete="off">
+  <input type="hidden" name="tab" value="contexto">
+  <div class="ficha-izq">
+    <details class="bloque" open>
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16M14 9h5a1 1 0 0 1 1 1v11M3 21h18M8 8h2M8 12h2M8 16h2"/></svg>Contexto de la empresa</summary>
+      <label class="etiqueta" for="f-empresa">Nombre de la empresa <span class="req" aria-hidden="true">*</span></label>
+      <input id="f-empresa" type="text" name="empresa_nombre" required maxlength="160" value="{{ campaign.empresa_nombre or 'Santa Rosa Paraguay' }}">
+
+      <label class="etiqueta" for="a-url">URL del sitio web</label>
+      <div class="fila-url">
+        <input id="a-url" type="text" inputmode="url" placeholder="https://santarosa.com.py" spellcheck="false">
+        <button type="button" class="btn" id="generar-contexto">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>Generar contexto
+        </button>
+      </div>
+      <p id="estado-contexto" class="hint" role="status" aria-live="polite"></p>
+
+      <label class="etiqueta" for="a-descripcion">Descripción de la empresa <span class="req" aria-hidden="true">*</span></label>
+      <textarea id="a-descripcion" name="empresa_descripcion" rows="6" required maxlength="4000">{{ campaign.empresa_descripcion or "" }}</textarea>
+    </details>
+
+    <details class="bloque" open>
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a4 4 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg>Contexto del agente</summary>
+      <label class="etiqueta" for="f-idioma">Idioma <span class="req" aria-hidden="true">*</span></label>
+      <select id="f-idioma" disabled><option>Español - Latinoamérica</option></select>
+
+      <label class="etiqueta" for="f-nombre">Nombre del agente <span class="req" aria-hidden="true">*</span></label>
+      <input id="f-nombre" type="text" name="name" required maxlength="160" value="{{ campaign.name }}">
+
+      <label class="etiqueta" for="f-proposito">Propósito <span class="req" aria-hidden="true">*</span></label>
+      <select id="f-proposito" name="description" required>
+        {% if campaign.description and campaign.description not in propositos %}<option selected>{{ campaign.description }}</option>{% endif %}
+        {% for p in propositos %}<option value="{{ p }}" {% if p == campaign.description %}selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+
+      <label class="etiqueta" for="f-zona">Zona horaria</label>
+      <select id="f-zona" disabled><option>America/Asunción</option></select>
+
+      <label class="etiqueta" for="f-instr">Instrucciones importantes</label>
+      <textarea id="f-instr" name="instrucciones_importantes" rows="4" maxlength="4000" placeholder="Los detalles del agente, sus tareas y cómo debe comportarse. Ayuda a la IA a armar las instrucciones.">{{ campaign.instrucciones_importantes or "" }}</textarea>
+
+      <p class="etiqueta">Identificador de llamadas</p>
+      <p class="dato">{{ callerid }} <span class="hint">· el número que ve el cliente lo asigna la troncal</span></p>
+
+      <p class="etiqueta">ID del agente</p>
+      <p class="dato mono">agente_{{ campaign.id }} <button type="button" class="icono mini-icono" data-copiar-texto="agente_{{ campaign.id }}" aria-label="Copiar el ID"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg></button></p>
+    </details>
+  </div>
+  {% include "agente/_editor.html" %}
+</form>

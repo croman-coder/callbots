@@ -80,10 +80,10 @@
                   <span class="sub-line">Configurá <span class="mono">VOICEBOX_URL</span> para usar una voz clonada</span>
                 {% endif %}
               </td></tr>
-          <tr><th scope="row">Modelo de Ollama</th>
+          <tr><th scope="row">IA (toda la plataforma)</th>
               <td>
-                <span class="mono">{{ settings.ollama_model }}</span>
-                {% if not settings.ollama_enabled %} <span class="pill">deshabilitado</span>{% endif %}
+                Claude · <span class="mono">{{ settings.llm_model }}</span>
+                {% if not settings.anthropic_api_key %} <span class="pill">sin clave</span>{% endif %}
               </td></tr>
         </tbody>
       </table>

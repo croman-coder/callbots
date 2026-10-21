@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app import cuentas, log_redaction, sso
 from app.config import settings
 from app.deps import IrALogin, SesionRequerida
-from app.routers import acceso, admin, internal, simulator
+from app.routers import acceso, admin, agente, internal, simulator
 from app.seguridad import CabecerasSeguras, frame_ancestors, origenes_descartados
 
 # Las tareas se declaran con @shared_task, que resuelve el broker recién al
@@ -50,6 +50,8 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 
 app.include_router(acceso.router)
 app.include_router(internal.router)
+app.include_router(agente.router)
+app.include_router(agente.ws_router)
 app.include_router(admin.router)
 app.include_router(simulator.router)
 
@@ -77,7 +79,7 @@ async def ir_a_login(request: Request, exc: IrALogin) -> RedirectResponse:
 def health() -> JSONResponse:
     """Liveness para el healthcheck de Docker. Sin dependencias externas.
 
-    El chequeo profundo (Bitrix, Asterisk, Ollama) está en /health-detail, que
+    El chequeo profundo (Bitrix, Asterisk, Claude, Voicebox) está en /health-detail, que
     requiere autenticación porque expone detalles de infraestructura.
     """
     return JSONResponse({"status": "ok"})

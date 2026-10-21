@@ -158,7 +158,7 @@
                   {% else %}<span class="muted">no</span>{% endif %}</td></tr>
           <tr><th scope="row">Modelo usado</th>
               <td>{% if call.analysis.model_used %}<span class="mono">{{ call.analysis.model_used }}</span>
-                  {% else %}<span class="muted">solo reglas, Ollama no estaba disponible</span>{% endif %}</td></tr>
+                  {% else %}<span class="muted">solo reglas: Claude no respondió</span>{% endif %}</td></tr>
           <tr><th scope="row">Enviado a Bitrix</th>
               <td>
                 {% if call.analysis.synced_to_bitrix %}<span class="pill completed">sí</span>

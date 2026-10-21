@@ -42,7 +42,6 @@ def _secretos() -> list[str]:
         settings.internal_token,
         settings.admin_password,
         settings.ari_password,
-        settings.gemini_api_key,
         settings.anthropic_api_key,
         settings.sso_secret,
     ]

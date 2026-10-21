@@ -1,0 +1,37 @@
+{#- Editor de las instrucciones del agente (lo que sabe la IA que conversa con el cliente).
+    Va dentro del formulario de la pestaña: se guarda con «Guardar cambios». -#}
+<section class="editor" data-editor data-campaign="{{ campaign.id }}" {% if nuevo %}data-auto="1"{% endif %} aria-label="Instrucciones del agente">
+  <div class="editor-barra">
+    <div class="seg" role="group" aria-label="Cómo se ve">
+      <button type="button" data-modo="vista" aria-pressed="true">Vista previa</button>
+      <button type="button" data-modo="md" aria-pressed="false">Markdown</button>
+    </div>
+    <div class="herr" data-herr hidden role="group" aria-label="Formato">
+      <button type="button" data-ins="# " title="Título 1">H1</button>
+      <button type="button" data-ins="## " title="Título 2">H2</button>
+      <button type="button" data-ins="### " title="Título 3">H3</button>
+      <button type="button" data-ins="#### " title="Título 4">H4</button>
+      <button type="button" data-envolver="**" title="Negrita"><b>B</b></button>
+      <button type="button" data-ins="- " title="Lista">•</button>
+      <button type="button" data-ins="1. " title="Lista numerada">1.</button>
+      <button type="button" data-envolver="`" title="Código">&lt;&gt;</button>
+      <button type="button" data-ins="> " title="Cita">“</button>
+    </div>
+    <button type="button" class="icono" data-copiar title="Copiar" aria-label="Copiar las instrucciones">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg>
+    </button>
+  </div>
+  <div class="editor-vista markdown" data-vista></div>
+  <label class="sr-only" for="instrucciones-md">Instrucciones en Markdown</label>
+  <textarea id="instrucciones-md" name="conversation_prompt" data-md hidden maxlength="20000" spellcheck="true">{{ campaign.conversation_prompt or "" }}</textarea>
+  <div class="editor-pie">
+    <button type="button" class="btn" data-ia>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/></svg>
+      <span data-ia-texto>{{ "Mejorar con IA" if campaign.conversation_prompt else "Generar con IA" }}</span>
+    </button>
+    <label class="sr-only" for="pedido-ia">Qué cambiar</label>
+    <input id="pedido-ia" type="text" data-pedido maxlength="300" placeholder="Qué querés cambiar (opcional)" {% if not campaign.conversation_prompt %}hidden{% endif %}>
+    <span class="tokens" data-tokens>~{{ tokens }} tokens</span>
+  </div>
+  <p class="hint" data-estado role="status" aria-live="polite"></p>
+</section>

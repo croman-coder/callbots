@@ -86,6 +86,7 @@ async def _say(
     socket: AudioSocket, text: str, params: tts.VoiceParams = tts.DEFAULT_PARAMS
 ) -> None:
     pcm = await tts.synthesize(text, params=params)
+    await socket.send_event("agente", text)
     if pcm:
         await socket.play(pcm)
 
@@ -195,6 +196,7 @@ class SurveyDialog:
                 transcript = result.text
                 confidence = result.confidence
 
+            await self.socket.send_event("cliente", transcript)
             log.info(
                 "[%s] P%d %r -> %r (%s, %.1fs)",
                 self.session_uuid, question.position, question.text[:40],

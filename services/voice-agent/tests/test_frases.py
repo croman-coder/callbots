@@ -69,3 +69,43 @@ def test_synthesize_une_las_frases_con_una_pausa(_frases):
 def test_synthesize_de_una_sola_frase_no_agrega_pausa(_frases):
     pcm = asyncio.run(tts.synthesize("Gracias por su tiempo, que tenga un buen día."))
     assert len(pcm) == 200
+
+
+# ------------------------------------------------------------------ transcripción en vivo
+class _Escritor:
+    def __init__(self):
+        self.datos = b""
+
+    def write(self, b):
+        self.datos += b
+
+    async def drain(self):
+        pass
+
+    def get_extra_info(self, _):
+        return ("127.0.0.1", 1)
+
+
+def _socket():
+    from app.audiosocket import AudioSocket
+
+    return AudioSocket(None, _Escritor())
+
+
+def test_la_transcripcion_en_vivo_solo_sale_en_pruebas_del_navegador():
+    s = _socket()
+    asyncio.run(s.send_event("agente", "Hola"))
+    assert s._writer.datos == b""  # llamada real: Asterisk no recibe nada raro
+
+    s.eventos = True
+    asyncio.run(s.send_event("cliente", "Sí, dígame"))
+    d = s._writer.datos
+    assert d[0] == 0x20 and int.from_bytes(d[1:3], "big") == len(d) - 3
+    assert "Sí, dígame".encode() in d and b'"cliente"' in d
+
+
+def test_un_evento_vacio_no_se_manda():
+    s = _socket()
+    s.eventos = True
+    asyncio.run(s.send_event("cliente", ""))
+    assert s._writer.datos == b""

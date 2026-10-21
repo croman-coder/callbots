@@ -1,0 +1,44 @@
+<form id="ficha" method="post" action="/campaigns/{{ campaign.id }}/guardar" class="columna-unica" autocomplete="off">
+  <input type="hidden" name="tab" value="analisis">
+  <h2 class="titulo-seccion">Análisis posterior a la llamada</h2>
+
+  <details class="bloque" open>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg>Objetivo de la llamada</summary>
+    <p class="hint">Qué es una llamada exitosa para este agente y qué tiene que mirar Claude al analizarla. Se suma a las reglas fijas del análisis (puntaje, sentimiento, resumen, temas y seguimiento).</p>
+    <label class="sr-only" for="a-objetivo">Objetivo e instrucciones del análisis</label>
+    <textarea id="a-objetivo" name="analysis_prompt" rows="6" maxlength="8000" data-contar="tokens-analisis"
+              placeholder="Ej.: Es exitosa si el cliente responde todas las preguntas. Tratá como grave cualquier mención a que el vehículo volvió por la misma falla.">{{ campaign.analysis_prompt or "" }}</textarea>
+    <p class="hint derecha"><span id="tokens-analisis">~{{ (campaign.analysis_prompt or "") | length // 4 }} tokens</span></p>
+  </details>
+
+  <details class="bloque" open>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Datos que se recuperan de cada llamada</summary>
+    <ul class="variables">
+      <li><code>satisfaccion</code><span>número · puntaje de 0 a 10 con las respuestas</span></li>
+      <li><code>sentimiento</code><span>selector · positivo, neutral o negativo</span></li>
+      <li><code>resumen</code><span>texto · qué dijo el cliente, en dos o tres oraciones</span></li>
+      <li><code>temas</code><span>lista · de qué habló (atención, plazo, precio…)</span></li>
+      <li><code>requiere_seguimiento</code><span>sí/no · y el motivo, si hay que llamarlo de vuelta</span></li>
+    </ul>
+    <p class="opcion-off"><span>Agregar variables propias</span><span class="chip-pronto">Pronto</span></p>
+  </details>
+
+  <details class="bloque" open>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>Destinos después de la llamada</summary>
+    <div class="destinos">
+      <div class="destino"><strong>Panel de Calidad</strong><span>Resultados, seguimiento y reportes</span><span class="pill completed">activo</span></div>
+      <div class="destino"><strong>Excel</strong><span>Descarga desde Reportes o el registro</span><span class="pill completed">activo</span></div>
+      <div class="destino"><strong>Bitrix24</strong><span>Comentario en el negocio</span>
+        {% if bitrix_comentario %}<span class="pill completed">activo</span>{% else %}<span class="pill no_answer">apagado</span>{% endif %}</div>
+      <div class="destino off"><strong>Google Sheets</strong><span>Una fila por llamada</span><span class="chip-pronto">Pronto</span></div>
+    </div>
+  </details>
+
+  <details class="bloque" open>
+    <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/></svg>Notificaciones</summary>
+    <ul class="acciones-agente">
+      <li><span><strong>Lista de seguimiento</strong> · cada puntaje menor a 9 queda arriba de todo en Resultados</span><span class="pill completed">activa</span></li>
+      <li><span><strong>Aviso por correo o WhatsApp</strong> · a quien atiende el seguimiento</span><span class="chip-pronto">Pronto</span></li>
+    </ul>
+  </details>
+</form>

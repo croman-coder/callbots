@@ -78,9 +78,8 @@ def test_la_conversacion_usa_claude_y_deja_texto_plano_y_corto(monkeypatch):
     assert t and len(t) <= 401 and "  " not in t and not t.startswith('"') and t.endswith(".")
 
 
-def test_la_conversacion_sin_claude_ni_gemini_no_responde(monkeypatch):
+def test_la_conversacion_sin_claude_no_responde(monkeypatch):
     monkeypatch.setattr(llm.settings, "anthropic_api_key", "")
-    monkeypatch.setattr(conversation.settings, "gemini_api_key", "")
     assert not conversation.is_configured()
     assert asyncio.run(conversation.reply("p", "d")) is None
 
@@ -91,15 +90,16 @@ def test_el_analisis_usa_claude_y_registra_el_modelo(monkeypatch):
     assert resultado["sentiment"] == "positivo" and modelo == "claude-haiku-5-5"
 
 
-def test_el_analisis_cae_a_ollama_si_claude_no_da_json(monkeypatch):
+def test_el_analisis_sin_json_de_claude_queda_solo_con_las_reglas(monkeypatch):
     _responder(_ok("lo siento, no puedo"), monkeypatch)
-    monkeypatch.setattr(analysis, "query_ollama", lambda *a, **k: {"sentiment": "neutral"})
-    monkeypatch.setattr(analysis.settings, "ollama_model", "granite")
-    resultado, modelo = analysis.query_llm("x")
-    assert resultado == {"sentiment": "neutral"} and modelo == "granite"
+    assert analysis.query_llm("x") == (None, None)
 
 
 def test_el_analisis_sin_nadie_que_conteste_devuelve_nada(monkeypatch):
     _responder(lambda r: httpx.Response(500), monkeypatch)
-    monkeypatch.setattr(analysis, "query_ollama", lambda *a, **k: None)
+    assert analysis.query_llm("x") == (None, None)
+
+
+def test_sin_clave_de_claude_no_hay_analisis(monkeypatch):
+    monkeypatch.setattr(llm.settings, "anthropic_api_key", "")
     assert analysis.query_llm("x") == (None, None)

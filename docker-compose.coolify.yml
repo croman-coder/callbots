@@ -6,8 +6,7 @@
 #   1. Sin puertos publicados salvo SIP/RTP. En el server ya están tomados
 #      5432 (supabase-pooler), 8000 (supabase-kong), 8090 (coolify) y
 #      11434 (ollama del host). El panel sale por Traefik, no por un puerto.
-#   2. Sin `ollama` propio: se usa el que ya corre en el host como servicio de
-#      systemd, con los modelos ya descargados.
+#   2. Sin LLM propio: toda la IA es Claude, por la API de Anthropic (ANTHROPIC_API_KEY).
 #   3. NINGÚN bind mount relativo. Coolify clona el repo dentro de un
 #      contenedor helper que solo tiene montado /var/run/docker.sock: el
 #      daemon del host no ve /artifacts/<uuid>, así que un `./loquesea` se
@@ -108,21 +107,16 @@ services:
       ASTERISK_EXTENSION: ${ASTERISK_EXTENSION}
       ASTERISK_CALLERID: ${ASTERISK_CALLERID}
       ASTERISK_DIAL_TIMEOUT: ${ASTERISK_DIAL_TIMEOUT}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CALLBOT_LLM_MODEL: ${CALLBOT_LLM_MODEL:-claude-haiku-5-5}
       CALLBOT_LLM_TIMEOUT: ${CALLBOT_LLM_TIMEOUT:-8}
-      OLLAMA_URL: ${OLLAMA_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
-      OLLAMA_ENABLED: ${OLLAMA_ENABLED}
       VOICEBOX_URL: ${VOICEBOX_URL}
       VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID}
       VOICEBOX_ENGINE: ${VOICEBOX_ENGINE}
     volumes:
       - voices:/voices
       - recordings:/recordings
-    # Ollama corre en el host (systemd, 11434). Se apunta a la IP de docker0
+    # Acceso a servicios del host. Se apunta a la IP de docker0
     # y NO a `host-gateway`: tras el `systemctl reload docker` con el que se
     # registró el runtime nvidia, el daemon dejó de resolverlo y los
     # containers nuevos arrancaban con `invalid IP  host.docker.internal` en
@@ -191,14 +185,9 @@ services:
       ASTERISK_EXTENSION: ${ASTERISK_EXTENSION}
       ASTERISK_CALLERID: ${ASTERISK_CALLERID}
       ASTERISK_DIAL_TIMEOUT: ${ASTERISK_DIAL_TIMEOUT}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CALLBOT_LLM_MODEL: ${CALLBOT_LLM_MODEL:-claude-haiku-5-5}
       CALLBOT_LLM_TIMEOUT: ${CALLBOT_LLM_TIMEOUT:-8}
-      OLLAMA_URL: ${OLLAMA_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
-      OLLAMA_ENABLED: ${OLLAMA_ENABLED}
       VOICEBOX_URL: ${VOICEBOX_URL}
       VOICEBOX_PROFILE_ID: ${VOICEBOX_PROFILE_ID}
       VOICEBOX_ENGINE: ${VOICEBOX_ENGINE}
@@ -249,14 +238,9 @@ services:
       ARI_USER: ${ARI_USER}
       ARI_PASSWORD: ${ARI_PASSWORD}
       ARI_APP: ${ARI_APP}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      GEMINI_MODEL: ${GEMINI_MODEL}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       CALLBOT_LLM_MODEL: ${CALLBOT_LLM_MODEL:-claude-haiku-5-5}
       CALLBOT_LLM_TIMEOUT: ${CALLBOT_LLM_TIMEOUT:-8}
-      OLLAMA_URL: ${OLLAMA_URL}
-      OLLAMA_MODEL: ${OLLAMA_MODEL}
-      OLLAMA_ENABLED: ${OLLAMA_ENABLED}
     volumes:
       - recordings:/recordings
     extra_hosts:

@@ -1,0 +1,52 @@
+<section class="section">
+  <div class="herramientas">
+    <label class="buscar">
+      <span class="sr-only">Buscar en las llamadas</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="buscar-llamadas" type="search" placeholder="Buscar por nombre, teléfono o estado" autocomplete="off">
+    </label>
+    <nav class="filtros-seg" aria-label="Qué llamadas ver">
+      {% for clave, texto in [("conectadas", "Conectadas"), ("exitosas", "Exitosas"), ("todas", "Todas")] %}
+      <a href="/campaigns/{{ campaign.id }}?tab=registro&filtro={{ clave }}" {% if filtro == clave %}aria-current="page"{% endif %}>{{ texto }}</a>
+      {% endfor %}
+    </nav>
+    <a class="icono" href="/reportes/export.xlsx?campaign_id={{ campaign.id }}" title="Descargar a Excel" aria-label="Descargar a Excel"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></a>
+    <a class="icono" href="/campaigns/{{ campaign.id }}?tab=registro&filtro={{ filtro }}" title="Actualizar" aria-label="Actualizar"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/></svg></a>
+  </div>
+  <div class="tablewrap"><div class="scroll">
+    <table id="tabla-llamadas">
+      <thead><tr>
+        <th scope="col">Fecha</th><th scope="col" class="num">Duración</th><th scope="col" class="num" title="Cómo salió la llamada del lado del bot">Calidad</th>
+        <th scope="col">Número de destino</th><th scope="col">Contacto</th><th scope="col">Estado</th><th scope="col">Desconexión</th>
+        <th scope="col">Llamada exitosa</th><th scope="col" class="num">Satisfacción</th><th scope="col">Dirección</th><th scope="col"><span class="sr-only">Detalle</span></th>
+      </tr></thead>
+      <tbody>
+        {% for c in llamadas %}
+        {% set q = calidades.get(c.id) %}{% set a = c.analysis %}
+        <tr data-buscar="{{ ((c.target.contact_name or '') ~ ' ' ~ (c.dialed_number or c.target.phone or '') ~ ' ' ~ (c.outcome.value if c.outcome else '')) | lower }}">
+          <td class="tnum">{{ c.started_at.astimezone(tz).strftime("%d/%m/%Y %H:%M") if c.started_at and tz else (c.started_at.strftime("%d/%m/%Y %H:%M") if c.started_at else "—") }}</td>
+          <td class="num tnum">{% if c.duration_seconds is not none %}{{ "%02d" | format(c.duration_seconds // 60) }}:{{ "%02d" | format(c.duration_seconds % 60) }}{% else %}—{% endif %}</td>
+          <td class="num tnum">{% if q and q.puntaje is not none %}<span class="{{ 'score-bad' if q.nivel == 'bad' }}" title="{{ q.motivos | join(' · ') }}">{{ q.puntaje }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="tnum">{{ c.dialed_number or c.target.phone or "—" }}</td>
+          <td>{{ c.target.contact_name or "—" }}</td>
+          <td>{% if c.outcome %}<span class="tag {{ c.outcome.value }}">{{ c.outcome.value }}</span>{% else %}<span class="tag calling">en curso</span>{% endif %}</td>
+          <td class="muted">{{ c.hangup_cause or "—" }}</td>
+          <td>{{ "Cumplido" if c.outcome and c.outcome.value == "completed" else "No cumplido" }}</td>
+          <td class="num tnum">{% if a and a.satisfaction_score is not none %}{{ a.satisfaction_score | round(1) }}{% else %}—{% endif %}</td>
+          <td>Saliente</td>
+          <td><a class="link" href="/calls/{{ c.id }}">ver</a></td>
+        </tr>
+        {% endfor %}
+        {% if not llamadas %}<tr><td colspan="11"><p class="empty"><strong>No hay llamadas</strong>{{ " con este filtro" if filtro != "todas" }}.</p></td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div></div>
+  <p class="paginador">
+    Mostrando {{ llamadas | length }} de {{ total }} llamada{{ "s" if total != 1 }}
+    {% if paginas > 1 %}
+      · {% if page > 1 %}<a class="link" href="/campaigns/{{ campaign.id }}?tab=registro&filtro={{ filtro }}&page={{ page - 1 }}">anterior</a>{% endif %}
+      página {{ page }} de {{ paginas }}
+      {% if page < paginas %}<a class="link" href="/campaigns/{{ campaign.id }}?tab=registro&filtro={{ filtro }}&page={{ page + 1 }}">siguiente</a>{% endif %}
+    {% endif %}
+  </p>
+</section>

@@ -1,0 +1,93 @@
+<form id="ficha" method="post" action="/campaigns/{{ campaign.id }}/guardar" class="ficha-grid probar" autocomplete="off">
+  <input type="hidden" name="tab" value="probar">
+  {% include "agente/_editor.html" %}
+
+  <section class="llamada" data-llamada data-campaign="{{ campaign.id }}" aria-label="Prueba del agente">
+    <div data-paso="inicio">
+      <h2>Probá tu agente</h2>
+      <p>Hablale desde el micrófono de esta computadora: el agente hace la encuesta como en una llamada real, con su voz y su guion. No llama a nadie ni se guarda como resultado.</p>
+      <p class="hint">Conviene usar auriculares: si el agente se escucha a sí mismo por el parlante, se confunde.</p>
+      {% if not preguntas_activas %}
+      <p class="aviso error">El agente no tiene preguntas activas. Agregalas en <a class="link" href="/campaigns/{{ campaign.id }}?tab=configuracion#preguntas">Configuración</a>.</p>
+      {% endif %}
+      <button type="button" class="btn primary grande" data-iniciar {% if not preguntas_activas %}disabled{% endif %}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>Iniciar llamada web
+      </button>
+    </div>
+
+    <div data-paso="permiso" hidden>
+      <h2>Activá tu micrófono para hablar con tu agente</h2>
+      <p>El agente necesita escucharte. Tocá el botón y permití el acceso al micrófono cuando el navegador lo pida.</p>
+      <div class="acciones">
+        <button type="button" class="btn quiet" data-cancelar>Cancelar</button>
+        <button type="button" class="btn primary" data-microfono>Activar micrófono y llamar</button>
+      </div>
+    </div>
+
+    <div data-paso="llamando" hidden class="centrado">
+      <span class="girando" aria-hidden="true"></span>
+      <p>Llamando…</p>
+    </div>
+
+    <div data-paso="en-curso" hidden>
+      <div class="llamada-cab">
+        <div>
+          <h2>Transcripción de la llamada</h2>
+          <p class="hint">Seguí la conversación con el agente en tiempo real.</p>
+        </div>
+        <span class="reloj" data-reloj>00:00</span>
+      </div>
+      <ol class="transcripcion" data-transcripcion aria-live="polite"></ol>
+      <div class="acciones">
+        <span class="resto"></span>
+        <button type="button" class="btn peligro" data-colgar>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 15c5-4 13-4 18 0l-2 3-3.5-1.5V13a12 12 0 0 0-7 0v3.5L5 18z"/></svg>Finalizar llamada
+        </button>
+      </div>
+    </div>
+
+    <div data-paso="fin" hidden class="centrado">
+      <h2>Contanos cómo fue tu llamada</h2>
+      <div class="valorar">
+        <button type="button" class="btn" data-valorar="bien"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 11v9H4v-9zM7 11l4-7a2 2 0 0 1 3 2l-1 4h5a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/></svg>Bien</button>
+        <button type="button" class="btn" data-valorar="mal"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M17 13V4h3v9zM17 13l-4 7a2 2 0 0 1-3-2l1-4H6a2 2 0 0 1-2-2.3l1.2-6A2 2 0 0 1 7.2 4H17"/></svg>Malo</button>
+      </div>
+      <p class="hint" data-gracias hidden>¡Gracias! Queda registrado con la transcripción.</p>
+      <button type="button" class="btn quiet" data-otra>Probar de nuevo</button>
+    </div>
+
+    <div data-paso="error" hidden class="centrado">
+      <h2>No se pudo hacer la prueba</h2>
+      <p data-error-texto></p>
+      <button type="button" class="btn" data-otra>Volver a intentar</button>
+    </div>
+  </section>
+</form>
+
+{% if pruebas %}
+<section class="section">
+  <header><h2>Pruebas anteriores</h2><span class="note">Lo que se dijo en cada prueba desde el navegador</span></header>
+  <div class="tablewrap"><div class="scroll">
+    <table>
+      <thead><tr><th scope="col">Fecha</th><th scope="col">Quién</th><th scope="col" class="num">Duración</th><th scope="col">Valoración</th><th scope="col">Transcripción</th></tr></thead>
+      <tbody>
+        {% for p in pruebas %}
+        <tr>
+          <td class="tnum">{{ p.iniciada_en.strftime("%d/%m %H:%M") if p.iniciada_en else "—" }}</td>
+          <td>{{ p.usuario.split("@")[0] }}</td>
+          <td class="num tnum">{% if p.duracion_seconds is not none %}{{ p.duracion_seconds // 60 }}:{{ "%02d" | format(p.duracion_seconds % 60) }}{% else %}—{% endif %}</td>
+          <td>{% if p.valoracion == "bien" %}<span class="pill completed">bien</span>{% elif p.valoracion == "mal" %}<span class="pill failed">mal</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td>
+            {% if p.transcripcion %}
+            <details><summary class="link">{{ p.transcripcion | length }} líneas</summary>
+              <ol class="transcripcion compacta">{% for l in p.transcripcion %}<li class="{{ l.rol }}"><b>{{ "Agente" if l.rol == "agente" else "Vos" }}:</b> {{ l.texto }}</li>{% endfor %}</ol>
+            </details>
+            {% else %}<span class="muted">sin texto</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+</section>
+{% endif %}

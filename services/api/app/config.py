@@ -78,6 +78,10 @@ class Settings(BaseSettings):
     asterisk_context: str = "callbot-outbound"
     asterisk_extension: str = "start"
     asterisk_callerid: str = "Callbot <1000>"
+    # Dónde escucha el voice-agent (AudioSocket). La prueba desde el navegador se conecta ahí como si
+    # fuera Asterisk: ver routers/agente.py.
+    voice_agent_host: str = "voice-agent"
+    voice_agent_port: int = 8090
     asterisk_dial_timeout: int = 45
 
     # --- Voicebox (solo para el diagnóstico y los scripts de clonación;
@@ -85,16 +89,6 @@ class Settings(BaseSettings):
     voicebox_url: str = ""
     voicebox_profile_id: str = ""
     voicebox_engine: str = "qwen"
-
-    # --- Gemini (respuestas conversacionales) ---
-    # Vacío = el bot usa la frase fija cuando no entiende, como siempre.
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.5-flash"
-    # Medido contra la API desde este servidor: mediana 1,6 s con picos de
-    # 3,5 s. Con 4 s la llamada real se pasaba de largo y caía a la frase
-    # fija. La espera no se siente porque el bot dice una muletilla mientras
-    # tanto (ver dialog.py).
-    gemini_timeout_seconds: float = 8.0
 
     # --- Login con la cuenta de los dashboards (Supabase) ---
     # Es la misma cuenta que usan Meta Ads y el tablero comercial: una persona, un
@@ -110,9 +104,9 @@ class Settings(BaseSettings):
 
     # --- Claude (Anthropic) ---
     # El mismo modelo y la misma clave que usan Santa Rosa Ads, el asistente de los
-    # tableros y la Agencia IA. Si está puesta, es el LLM de Callbot para la
-    # conversación en llamada y para el análisis posterior; Gemini y Ollama quedan
-    # solo como respaldo si no hay clave.
+    # tableros y la Agencia IA. Es la única IA de Callbot: conversación en llamada, análisis
+    # posterior, instrucciones del agente, contexto de la empresa y consultas sobre las llamadas.
+    # Sin clave, el bot usa las frases fijas y el análisis queda solo con el puntaje por reglas.
     anthropic_api_key: str = Field("", validation_alias="ANTHROPIC_API_KEY")
     llm_model: str = Field("claude-haiku-5-5", validation_alias="CALLBOT_LLM_MODEL")
     # En llamada hay alguien escuchando: pasados estos segundos se usa la frase fija.
@@ -120,10 +114,6 @@ class Settings(BaseSettings):
     # El análisis corre después de colgar, sin apuro.
     llm_analysis_timeout_seconds: float = 60.0
 
-    # --- Ollama ---
-    ollama_url: str = "http://ollama:11434"
-    ollama_model: str = "llama3.1:8b"
-    ollama_enabled: bool = True
 
     @field_validator("call_window_start", "call_window_end", mode="before")
     @classmethod

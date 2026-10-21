@@ -1,0 +1,145 @@
+<form id="ficha" method="post" action="/campaigns/{{ campaign.id }}/guardar" class="ficha-grid" autocomplete="off">
+  <input type="hidden" name="tab" value="configuracion">
+  <input type="hidden" name="dias_enviados" value="1">
+  <div class="ficha-izq">
+    <details class="bloque" open>
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg>Configuración de voz</summary>
+      <label class="etiqueta" for="c-voz">Voz</label>
+      <select id="c-voz" name="voice_profile_id">
+        <option value="" {% if not campaign.voice_profile_id %}selected{% endif %}>La del servidor (predeterminada)</option>
+        {% for p in perfiles %}<option value="{{ p.id }}" {% if p.id == campaign.voice_profile_id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+        {% if campaign.voice_profile_id and campaign.voice_profile_id != "piper" and campaign.voice_profile_id not in perfiles | map(attribute="id") | list %}
+        <option value="{{ campaign.voice_profile_id }}" selected>{{ campaign.voice_profile_id }} (no disponible ahora)</option>
+        {% endif %}
+        <option value="piper" {% if campaign.voice_profile_id == "piper" %}selected{% endif %}>Piper (respaldo, más robótica)</option>
+      </select>
+      <p class="hint">Para escuchar cada voz o clonar una nueva, entrá a <a class="link" href="/voices">Voces</a>.</p>
+      <div class="deslizadores">
+        {% for campo, titulo, minimo, maximo, paso, ayuda in [
+          ("voice_speed", "Velocidad", 0.6, 1.6, 0.05, "1 = normal"),
+          ("voice_pitch", "Tono", 0.8, 1.25, 0.01, "menos es más grave"),
+          ("voice_expressiveness", "Expresividad", 0, 1.2, 0.02, "0 es plano"),
+          ("voice_volume", "Volumen", 0.4, 1.2, 0.05, "arriba de 1 satura")] %}
+        <label class="desliza">{{ titulo }}
+          <input type="range" name="{{ campo }}" min="{{ minimo }}" max="{{ maximo }}" step="{{ paso }}" value="{{ campaign[campo] }}" data-salida>
+          <output>{{ campaign[campo] }}</output> <span class="hint">{{ ayuda }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <label class="etiqueta" for="c-llm">Modelo de IA</label>
+      <select id="c-llm" disabled><option>Claude · {{ modelo_llm }}</option></select>
+      <p class="hint">Toda la IA de Callbot usa Claude por la API de Anthropic.</p>
+    </details>
+
+    <details class="bloque" open>
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>Configuración de llamadas</summary>
+      <div class="fila-campos">
+        <label>Desde <input type="time" name="call_window_start" value="{{ campaign.call_window_start }}" required></label>
+        <label>Hasta <input type="time" name="call_window_end" value="{{ campaign.call_window_end }}" required></label>
+        <label>Intentos <input type="number" name="max_attempts" min="1" max="10" value="{{ campaign.max_attempts }}" required></label>
+        <label>Reintento (min) <input type="number" name="retry_interval_minutes" min="5" max="1440" value="{{ campaign.retry_interval_minutes }}" required></label>
+      </div>
+      <fieldset class="dias">
+        <legend class="etiqueta">Días para llamar</legend>
+        {% for d in range(7) %}
+        <label class="dia"><input type="checkbox" name="dias" value="{{ d }}" {% if d in dias_activos %}checked{% endif %}><span>{{ dias_semana[d] }}</span></label>
+        {% endfor %}
+      </fieldset>
+      <div class="opcion-off">
+        <div><strong>Detección de buzón de voz</strong><p class="hint">Colgar o dejar un mensaje si atiende el contestador.</p></div>
+        <span class="chip-pronto">Pronto</span>
+      </div>
+      <div class="opcion-off">
+        <div><strong>Enlace público de la llamada</strong><p class="hint">Compartir la grabación y la transcripción con un enlace.</p></div>
+        <span class="chip-pronto">Pronto</span>
+      </div>
+    </details>
+
+    <details class="bloque" open>
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Guion</summary>
+      <p class="hint">Podés usar <code>{nombre}</code>: se cambia por el primer nombre del cliente. Si no hay nombre, desaparece y la frase queda natural.</p>
+      <label class="etiqueta" for="c-intro">Saludo <span class="hint">· lo primero que escucha; que termine en pregunta</span></label>
+      <textarea id="c-intro" name="intro_script" rows="3" required maxlength="2000">{{ campaign.intro_script }}</textarea>
+      <label class="etiqueta" for="c-outro">Despedida</label>
+      <textarea id="c-outro" name="outro_script" rows="2" required maxlength="2000">{{ campaign.outro_script }}</textarea>
+      <label class="etiqueta" for="c-fallback">Cuando no entiende la respuesta</label>
+      <textarea id="c-fallback" name="fallback_script" rows="2" required maxlength="2000">{{ campaign.fallback_script }}</textarea>
+      <label class="etiqueta" for="c-optout">Cuando el cliente no quiere responder</label>
+      <textarea id="c-optout" name="optout_script" rows="2" required maxlength="2000">{{ campaign.optout_script }}</textarea>
+    </details>
+
+    <details class="bloque" open id="preguntas">
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Preguntas <span class="hint">· se hacen en este orden</span></summary>
+      {% if campaign.questions %}
+      <ol class="preguntas">
+        {% for q in campaign.questions %}
+        <li {% if not q.is_active %}class="inactiva"{% endif %}>
+          <div class="texto">
+            <strong>{{ q.position }}.</strong> {{ q.text }}
+            <span class="sub-line">{{ etiquetas_tipo.get(q.qtype, q.qtype.value) }} · {{ q.max_answer_seconds }} s · {{ q.max_retries }} repregunta{{ "s" if q.max_retries != 1 }}{% if q.counts_for_score %} · puntúa{% endif %}</span>
+          </div>
+          <div class="botones">
+            <button type="submit" class="mini" form="q-sube-{{ q.id }}" {% if loop.first %}disabled{% endif %} aria-label="Subir la pregunta {{ q.position }}">↑</button>
+            <button type="submit" class="mini" form="q-baja-{{ q.id }}" {% if loop.last %}disabled{% endif %} aria-label="Bajar la pregunta {{ q.position }}">↓</button>
+            <button type="submit" class="mini danger" form="q-borra-{{ q.id }}" aria-label="Borrar la pregunta {{ q.position }}">Borrar</button>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="empty">Sin preguntas. Agregá la primera: el agente no se puede activar sin al menos una.</p>
+      {% endif %}
+      <div class="nueva-pregunta">
+        <label class="etiqueta" for="q-texto">Nueva pregunta</label>
+        <input id="q-texto" type="text" name="text" form="q-nueva" required maxlength="500" placeholder="Del cero al diez, ¿qué tan satisfecho quedó con…?">
+        <div class="fila-campos">
+          <label>Tipo
+            <select name="qtype" form="q-nueva">
+              {% for t in tipos %}<option value="{{ t.value }}" {% if t.value == "scale_1_10" %}selected{% endif %}>{{ etiquetas_tipo.get(t, t.value) }}</option>{% endfor %}
+            </select>
+          </label>
+          <label>Segundos <input type="number" name="max_answer_seconds" form="q-nueva" value="20" min="5" max="120"></label>
+          <label>Repreguntas <input type="number" name="max_retries" form="q-nueva" value="1" min="0" max="3"></label>
+        </div>
+        <label class="check"><input type="checkbox" name="counts_for_score" value="true" form="q-nueva" checked> Cuenta para el puntaje <span class="hint">· menos de 9 dispara seguimiento</span></label>
+        <button type="submit" class="btn" form="q-nueva">Agregar pregunta</button>
+      </div>
+    </details>
+
+    <details class="bloque">
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>Origen de los clientes</summary>
+      <p class="hint">Los clientes se cargan en <a class="link" href="/targets#cargar">Destinatarios</a> (Excel o lista) o llegan solos desde Bitrix24 con esta regla:</p>
+      <div class="fila-campos">
+        <label>entityTypeId <input type="number" name="bitrix_entity_type_id" value="{{ campaign.bitrix_entity_type_id }}" required></label>
+        <label>Campo disparador <input type="text" name="trigger_field" value="{{ campaign.trigger_field }}" required spellcheck="false"></label>
+        <label>Demora (horas) <input type="number" name="delay_hours" min="0" max="720" value="{{ campaign.delay_hours }}" required></label>
+      </div>
+    </details>
+
+    <details class="bloque">
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 14.2H3a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>Acciones del agente</summary>
+      <ul class="acciones-agente">
+        <li><span><strong>Terminar la llamada</strong> · cuando el cliente se despide o pide no seguir</span><span class="pill completed">activa</span></li>
+        <li><span><strong>Transferir a una persona</strong> · pasar la llamada a un asesor</span><span class="chip-pronto">Pronto</span></li>
+        <li><span><strong>Agendar en el calendario</strong> · reservar un turno</span><span class="chip-pronto">Pronto</span></li>
+      </ul>
+    </details>
+
+    <details class="bloque">
+      <summary><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1V5a2 2 0 0 0-3-2zM15 3a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1"/></svg>Base de conocimiento</summary>
+      <p class="hint">Conectar documentos (catálogo, precios, preguntas frecuentes) para que el agente responda con datos. Por ahora lo que sabe está en las instrucciones de la derecha.</p>
+      <span class="chip-pronto">Pronto</span>
+    </details>
+  </div>
+  {% include "agente/_editor.html" %}
+</form>
+
+{#- Formularios de las preguntas, fuera del de la ficha (un form no puede ir adentro de otro): los
+    botones de arriba los usan con el atributo form. -#}
+<form id="q-nueva" method="post" action="/campaigns/{{ campaign.id }}/questions" hidden></form>
+{% for q in campaign.questions %}
+<form id="q-sube-{{ q.id }}" method="post" action="/questions/{{ q.id }}/move" hidden><input type="hidden" name="direction" value="up"></form>
+<form id="q-baja-{{ q.id }}" method="post" action="/questions/{{ q.id }}/move" hidden><input type="hidden" name="direction" value="down"></form>
+<form id="q-borra-{{ q.id }}" method="post" action="/questions/{{ q.id }}/delete" hidden
+      onsubmit="return confirm('¿Borrar esta pregunta? Las respuestas ya guardadas se borran también.')"></form>
+{% endfor %}

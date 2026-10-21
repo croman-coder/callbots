@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% set nav = "campaigns" %}
+{% block title %}{{ campaign.name }} · Agentes de voz · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar ficha-cab">
+  <div>
+    <p class="crumb"><a class="link" href="/campaigns">← Agentes de voz</a></p>
+    <h1>{{ campaign.name }}{% if campaign.description %} <span class="proposito">· {{ campaign.description }}</span>{% endif %}</h1>
+  </div>
+  <div class="right">
+    <span class="pill {{ 'completed' if campaign.is_active else 'no_answer' }}">{{ "activo" if campaign.is_active else "pausado" }}</span>
+    <form method="post" action="/campaigns/{{ campaign.id }}/estado" class="inline">
+      <input type="hidden" name="activo" value="{{ 'false' if campaign.is_active else 'true' }}">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <button type="submit" class="btn">{{ "Pausar" if campaign.is_active else "Activar" }}</button>
+    </form>
+    {% if con_formulario %}<button type="submit" form="ficha" class="btn primary">Guardar cambios</button>{% endif %}
+  </div>
+</div>
+<nav class="pestanas" aria-label="Secciones del agente">
+  {% for clave, titulo in pestanas %}
+  <a href="/campaigns/{{ campaign.id }}?tab={{ clave }}" {% if clave == tab %}aria-current="page"{% endif %}>{{ titulo }}</a>
+  {% endfor %}
+</nav>
+{% endblock %}
+
+{% block content %}
+{% if error %}<p class="aviso error" role="alert">{{ error }}</p>{% endif %}
+{% if ok %}<p class="aviso ok" role="status">{{ ok }}</p>{% endif %}
+{% include "agente/_" ~ tab ~ ".html" %}
+<script src="/static/agente.js?v={{ js_v }}" defer></script>
+{% endblock %}

@@ -39,6 +39,9 @@ async def handle_connection(
     try:
         session_uuid = await socket.read_uuid()
         log.info("Sesión %s", session_uuid)
+        # Prueba desde el navegador (ver routers/agente.py de la API): UUID chico y distinto de cero.
+        # Solo ahí se manda la transcripción en vivo.
+        socket.eventos = 1 <= session_uuid.int < 2**32
 
         # Desde acá la lectura del socket corre sola. Es lo que sostiene el
         # reloj de las tramas cuando el otro extremo no manda audio.

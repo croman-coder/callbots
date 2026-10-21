@@ -60,6 +60,16 @@ def require_internal_token(x_callbot_token: str = Header(default="")) -> None:
 
 
 def _credencial_basic(request: Request) -> Principal | None:
+    return _credencial_basic_de(request.headers)
+
+
+def principal_ws(ws) -> Principal | None:
+    """Quién abre un WebSocket (la prueba del agente desde el navegador): la misma sesión o credencial
+    que el resto del panel. `require_admin` no sirve acá, trabaja sobre un Request."""
+    return sso.leer_sesion(ws.cookies.get(sso.COOKIE)) or _credencial_basic_de(ws.headers)
+
+
+def _credencial_basic_de(headers) -> Principal | None:
     """HTTP Basic con la credencial de operación (ADMIN_USER/ADMIN_PASSWORD).
 
     Se parsea a mano en vez de usar `HTTPBasic()`: ese siempre responde 401 con
@@ -68,7 +78,7 @@ def _credencial_basic(request: Request) -> Principal | None:
     aparece un carácter no ASCII, y eso convertiría una contraseña con "ñ" en un
     error 500 en vez de un 401.
     """
-    esquema, _, dato = request.headers.get("authorization", "").partition(" ")
+    esquema, _, dato = headers.get("authorization", "").partition(" ")
     if esquema.lower() != "basic" or not dato:
         return None
     try:

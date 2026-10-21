@@ -32,6 +32,7 @@ abre el NAT, y el conteo de tramas del que dependen los timeouts no se detiene.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid as uuid_mod
 
@@ -43,6 +44,9 @@ TYPE_TERMINATE = 0x00
 TYPE_UUID = 0x01
 TYPE_DTMF = 0x03
 TYPE_AUDIO = 0x10
+# Texto hacia quien prueba el agente desde el navegador (la transcripción en vivo). Solo viaja en esas
+# sesiones: una llamada real de Asterisk nunca lo recibe.
+TYPE_EVENT = 0x20
 TYPE_ERROR = 0xFF
 
 HEADER_SIZE = 3
@@ -65,6 +69,7 @@ class AudioSocket:
         self.session_uuid: uuid_mod.UUID | None = None
         self.peer = writer.get_extra_info("peername")
         self.dtmf_digits: list[str] = []
+        self.eventos = False
         # Lo que va leyendo la tarea de fondo, a la espera de que alguien lo
         # consuma. Sin tope: a 20 ms por trama, una llamada larga entra de
         # sobra en memoria, y descartar audio del cliente en silencio sería
@@ -197,6 +202,17 @@ class AudioSocket:
 
             self._write_frame(TYPE_AUDIO, chunk)
             await self._writer.drain()
+
+    async def send_event(self, rol: str, texto: str) -> None:
+        """Una línea de la transcripción para el navegador (rol: «agente» o «cliente»)."""
+        if not self.eventos or not texto:
+            return
+        payload = json.dumps({"rol": rol, "texto": texto}, ensure_ascii=False).encode()[:60000]
+        try:
+            self._write_frame(TYPE_EVENT, payload)
+            await self._writer.drain()
+        except (ConnectionResetError, BrokenPipeError):
+            pass
 
     async def play_silence(self, milliseconds: int) -> None:
         """Silencio activo: mantiene el canal y deja hablar al cliente."""

@@ -1,0 +1,64 @@
+<form class="herramientas" method="get" action="/campaigns/{{ campaign.id }}">
+  <input type="hidden" name="tab" value="metrica">
+  <label class="periodo">Período
+    <select name="dias" onchange="this.form.submit()">
+      {% for clave, texto in periodos.items() %}<option value="{{ clave }}" {% if clave == dias %}selected{% endif %}>{{ texto }}</option>{% endfor %}
+    </select>
+  </label>
+  <noscript><button type="submit" class="btn">Ver</button></noscript>
+</form>
+
+<div class="kpis">
+  <div class="kpi"><span class="k">Total de llamadas</span><span class="v">{{ kpi.total }}</span></div>
+  <div class="kpi"><span class="k">Contactos llamados</span><span class="v">{{ kpi.contactos_llamados }}</span></div>
+  <div class="kpi"><span class="k">Tasa de conexión</span><span class="v">{{ kpi.tasa_conexion }}<small> %</small></span></div>
+  <div class="kpi"><span class="k">Duración promedio</span><span class="v">{% if kpi.duracion is not none %}{{ "%02d" | format(kpi.duracion // 60) }}<small>m </small>{{ "%02d" | format(kpi.duracion % 60) }}<small>s</small>{% else %}—{% endif %}</span></div>
+  <div class="kpi"><span class="k">Metas logradas</span><span class="v">{{ kpi.metas }}</span></div>
+  <div class="kpi {% if kpi.satisfaccion is not none and kpi.satisfaccion < satisfactory_min %}malo{% endif %}"><span class="k">Satisfacción media</span><span class="v">{% if kpi.satisfaccion is not none %}{{ kpi.satisfaccion }}<small> /10</small>{% else %}—{% endif %}</span></div>
+</div>
+
+<div class="dos-graficos">
+  <section class="section grafico">
+    <header><h2>Llamadas realizadas</h2><span class="note">Por día · <span class="leyenda total">total</span> <span class="leyenda atendidas">atendidas</span></span></header>
+    {% if por_dia %}
+    <div class="barras" role="img" aria-label="Llamadas por día en el período">
+      {% for d in por_dia %}
+      <div class="barra" title="{{ d.dia }}: {{ d.llamadas }} llamadas, {{ d.atendidas }} atendidas">
+        <span class="n">{{ d.llamadas }}</span>
+        <span class="col" style="height:{{ (100 * d.llamadas / maximo_dia) | round(0) | int if maximo_dia else 0 }}%"><span class="at" style="height:{{ (100 * d.atendidas / d.llamadas) | round(0) | int if d.llamadas else 0 }}%"></span></span>
+        <span class="d">{{ d.dia }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}<p class="empty">Sin llamadas en el período.</p>{% endif %}
+  </section>
+
+  <section class="section grafico">
+    <header><h2>Embudo de contacto</h2><span class="note">De cada 100 contactos cargados</span></header>
+    <div class="embudo">
+      {% for e in embudo %}
+      <div class="escalon">
+        <span class="t">{{ e.titulo }}</span>
+        <span class="track"><span class="fill" style="width:{{ e.pct }}%"></span></span>
+        <span class="v tnum">{{ e.valor }} <small>({{ e.pct }} %)</small></span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<section class="section">
+  <header><h2>Dónde se cae el puntaje</h2><span class="note">Promedio de cada pregunta que puntúa · 9 o 10 es conforme</span></header>
+  {% if por_pregunta %}
+  <div class="chart">
+    {% for p in por_pregunta %}
+    <div class="chart-row">
+      <div class="lbl">{{ p.pos }}. {{ p.texto }} <span class="muted">· {{ p.n }} respuesta{{ "s" if p.n != 1 }}</span>
+        <div class="track"><span class="fill {{ 'ok' if p.promedio >= satisfactory_min else 'warn' if p.promedio >= 7 else 'bad' }}" style="width:{{ (p.promedio * 10) | round(0) | int }}%"></span></div>
+      </div>
+      <div class="val">{{ p.promedio }}<small>/10</small></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}<p class="empty">Todavía no hay respuestas con puntaje en el período.</p>{% endif %}
+</section>

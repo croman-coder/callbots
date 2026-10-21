@@ -5,7 +5,7 @@ necesita saber al instante si entendió o tiene que repreguntar. Un LLM acá
 metería latencia; para "del cero al diez" y "sí/no" alcanzan las reglas.
 
 Lo que las reglas no resuelven queda como `understood=False` y lo levanta
-después el análisis con Ollama.
+después el análisis con Claude.
 """
 
 from __future__ import annotations

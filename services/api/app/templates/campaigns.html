@@ -182,21 +182,7 @@
   </form>
 </dialog>
 
-{% if recien_creado %}
-<dialog id="agente-listo" class="asistente" aria-labelledby="listo-titulo" data-abrir="1">
-  {{ pasos(4) }}
-  <section class="listo">
-    <h3 id="listo-titulo">¡{{ recien_creado.name }} está creado!</h3>
-    <p>Quedó <strong>pausado</strong>: todavía no llama a nadie. Probalo en el simulador, completá el guion y las preguntas, cargá los destinatarios y recién ahí activalo.</p>
-    <ul class="siguientes">
-      <li><a class="btn primary" href="/simulador">Probar en el simulador</a></li>
-      <li><a class="btn" href="/campaigns/{{ recien_creado.id }}">Completar guion y preguntas</a></li>
-      <li><a class="btn" href="/targets#cargar">Cargar destinatarios</a></li>
-    </ul>
-  </section>
-  <footer class="acciones"><span class="resto"></span><button type="button" class="btn quiet" data-cerrar>Cerrar</button></footer>
-</dialog>
-{% endif %}
+
 
 <script>
 (function () {
@@ -281,13 +267,6 @@
   });
 })();
 
-(function () {
-  var listo = document.getElementById("agente-listo");
-  if (listo && typeof listo.showModal === "function") {
-    listo.showModal();
-    /* La URL queda limpia: recargar no vuelve a abrir el mensaje. */
-    try { history.replaceState(null, "", "/campaigns"); } catch (e) {}
-  }
-})();
+
 </script>
 {% endblock %}

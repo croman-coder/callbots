@@ -17,10 +17,10 @@ from __future__ import annotations
 import logging
 import re
 import uuid as uuid_mod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
@@ -59,6 +59,16 @@ router = APIRouter(
 DEMO_UUID = uuid_mod.UUID("00000000-0000-0000-0000-000000000000")
 
 
+def es_demo(session_uuid: uuid_mod.UUID) -> bool:
+    """Sesiones de prueba, que no guardan nada: 0 es la extensión 9000 (la primera campaña activa)
+    y N es la prueba desde el navegador del agente N, aunque esté pausado (ver routers/agente.py)."""
+    return 0 <= session_uuid.int < 2**32
+
+
+def sesion_de_prueba(campaign_id: int) -> uuid_mod.UUID:
+    return uuid_mod.UUID(int=campaign_id)
+
+
 def _load_call(db: Session, session_uuid: uuid_mod.UUID) -> CallAttempt:
     call = db.scalar(
         select(CallAttempt).where(CallAttempt.session_uuid == session_uuid)
@@ -78,14 +88,19 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
     """Devuelve el guion completo. Es lo primero que pide el voice-agent."""
 
     # --- modo demo (extensión 9000) ---
-    if session_uuid == DEMO_UUID:
-        campaign = db.scalar(
-            select(Campaign)
-            .where(Campaign.is_active.is_(True))
-            .order_by(Campaign.id)
-        )
-        if campaign is None:
-            raise HTTPException(404, "No hay ninguna campaña activa para demostrar")
+    if es_demo(session_uuid):
+        if session_uuid.int == 0:
+            campaign = db.scalar(
+                select(Campaign)
+                .where(Campaign.is_active.is_(True))
+                .order_by(Campaign.id)
+            )
+            if campaign is None:
+                raise HTTPException(404, "No hay ninguna campaña activa para demostrar")
+        else:
+            campaign = db.get(Campaign, session_uuid.int)
+            if campaign is None:
+                raise HTTPException(404, "Ese agente no existe")
 
         return SurveyScript(
             session_uuid=session_uuid,
@@ -146,7 +161,7 @@ def session_started(
     db: Session = Depends(get_db),
 ) -> dict:
     """El AudioSocket se conectó: el cliente atendió de verdad."""
-    if session_uuid == DEMO_UUID:
+    if es_demo(session_uuid):
         return {"demo": True}
 
     call = _load_call(db, session_uuid)
@@ -181,7 +196,7 @@ def submit_answer(
         and payload.retries_used < question.max_retries
     )
 
-    if session_uuid == DEMO_UUID:
+    if es_demo(session_uuid):
         return AnswerResult(
             understood=result.understood,
             value=result.value,
@@ -239,7 +254,7 @@ def session_finished(
     db: Session = Depends(get_db),
 ) -> dict:
     """Cierra la llamada y encola el análisis."""
-    if session_uuid == DEMO_UUID:
+    if es_demo(session_uuid):
         return {"demo": True}
 
     call = _load_call(db, session_uuid)
@@ -301,10 +316,10 @@ async def conversational_reply(
     Solo se llama en la rama de excepción: si el cliente contestó bien, el
     voice-agent sigue de largo sin pasar por acá y sin pagar la latencia.
 
-    Devuelve `{"reply": null}` cuando Gemini no está configurado, tarda de más
+    Devuelve `{"reply": null}` cuando Claude no está configurado, tarda de más
     o falla. El voice-agent usa entonces la frase fija de la campaña.
     """
-    if session_uuid == DEMO_UUID:
+    if es_demo(session_uuid):
         campaign = db.scalar(
             select(Campaign).where(Campaign.is_active.is_(True)).order_by(Campaign.id)
         )
@@ -351,7 +366,14 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
     campaigns = db.scalars(
         select(Campaign)
         .options(selectinload(Campaign.questions))
-        .where(Campaign.is_active.is_(True))
+        # Los agentes nuevos (pausados) también: quien los prueba desde el navegador los tiene que
+        # escuchar con la voz buena, no con la de respaldo.
+        .where(
+            or_(
+                Campaign.is_active.is_(True),
+                Campaign.updated_at >= datetime.now(timezone.utc) - timedelta(days=3),
+            )
+        )
     ).all()
 
     # Se agrupa por campaña porque cada una tiene su propia modulación de voz:
@@ -417,7 +439,7 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
 @router.get("/targets/{session_uuid}/context")
 def get_context(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> dict:
     """Datos del registro de Bitrix, por si el guion los menciona."""
-    if session_uuid == DEMO_UUID:
+    if es_demo(session_uuid):
         return {"demo": True}
 
     call = _load_call(db, session_uuid)

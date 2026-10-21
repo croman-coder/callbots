@@ -244,15 +244,12 @@ def _metricas_agentes(db: Session, desde: datetime | None) -> dict[int, dict]:
 
 
 @router.get("/campaigns", response_class=HTMLResponse)
-def list_campaigns(
-    request: Request, dias: str = "30", probar: int | None = None, db: Session = Depends(get_db)
-) -> HTMLResponse:
+def list_campaigns(request: Request, dias: str = "30", db: Session = Depends(get_db)) -> HTMLResponse:
     dias = dias if dias in PERIODOS else "30"
     desde = datetime.now(timezone.utc) - timedelta(days=PERIODOS[dias]) if PERIODOS[dias] else None
     campaigns = db.scalars(
         select(Campaign).options(selectinload(Campaign.questions)).order_by(Campaign.id)
     ).all()
-    recien_creado = db.get(Campaign, probar) if probar else None
 
     return templates.TemplateResponse(
         request,
@@ -264,7 +261,6 @@ def list_campaigns(
             "periodos": {"7": "Últimos 7 días", "30": "Últimos 30 días", "90": "Últimos 90 días", "todo": "Todo"},
             "plantillas": list(agentes.PLANTILLAS.values()),
             "propositos": agentes.PROPOSITOS,
-            "recien_creado": recien_creado,
             "empresa_por_defecto": "Santa Rosa Paraguay",
         },
     )
@@ -302,6 +298,9 @@ def create_campaign(
         max_attempts=settings.max_call_attempts,
         retry_interval_minutes=settings.retry_interval_minutes,
         conversation_prompt=agentes.armar_contexto(empresa[:160], empresa_descripcion[:2000], instrucciones[:2000]),
+        empresa_nombre=empresa.strip()[:160] or None,
+        empresa_descripcion=empresa_descripcion.strip()[:4000] or None,
+        instrucciones_importantes=instrucciones.strip()[:4000] or None,
         is_active=False,  # se activa a mano recién cuando tiene preguntas
     )
     if base.intro:
@@ -321,8 +320,9 @@ def create_campaign(
     db.add(campaign)
     db.commit()
     log.info("Agente creado: %s (id=%s, plantilla=%s)", campaign.name, campaign.id, plantilla)
-    # El último paso del asistente («Prueba tu agente») se muestra en la lista, ya con el agente creado.
-    return _redirect(f"/campaigns?probar={campaign.id}")
+    # El último paso del asistente («Prueba tu agente») es la pestaña Probar de la ficha: ahí Claude
+    # redacta las instrucciones y se habla con el agente desde el navegador.
+    return _redirect(f"/campaigns/{campaign.id}?tab=probar&nuevo=1")
 
 
 @router.post("/agentes/contexto-empresa")
@@ -335,97 +335,6 @@ async def contexto_empresa(request: Request, url: str = Form("")) -> JSONRespons
         return JSONResponse({"descripcion": await agentes.contexto_desde_sitio(url)})
     except agentes.SitioInvalido as exc:
         return JSONResponse({"error": str(exc)}, 400)
-
-
-@router.get("/campaigns/{campaign_id}", response_class=HTMLResponse)
-def campaign_detail(
-    campaign_id: int, request: Request, db: Session = Depends(get_db)
-) -> HTMLResponse:
-    campaign = db.get(Campaign, campaign_id)
-    if campaign is None:
-        raise HTTPException(404, "Campaña inexistente")
-
-    target_counts = dict(
-        db.execute(
-            select(SurveyTarget.status, func.count(SurveyTarget.id))
-            .where(SurveyTarget.campaign_id == campaign_id)
-            .group_by(SurveyTarget.status)
-        ).all()
-    )
-
-    return templates.TemplateResponse(
-        request,
-        "campaign_detail.html",
-        {
-            "campaign": campaign,
-            "question_types": list(QuestionType),
-            "type_labels": QUESTION_TYPE_LABELS,
-            "target_counts": target_counts,
-            "total_targets": sum(target_counts.values()),
-        },
-    )
-
-
-@router.post("/campaigns/{campaign_id}")
-def update_campaign(
-    campaign_id: int,
-    name: str = Form(...),
-    description: str = Form(""),
-    bitrix_entity_type_id: int = Form(...),
-    trigger_field: str = Form(...),
-    delay_hours: int = Form(48),
-    call_window_start: str = Form("09:00"),
-    call_window_end: str = Form("19:00"),
-    call_window_days: str = Form("0,1,2,3,4,5"),
-    max_attempts: int = Form(3),
-    retry_interval_minutes: int = Form(180),
-    intro_script: str = Form(...),
-    outro_script: str = Form(...),
-    fallback_script: str = Form(...),
-    optout_script: str = Form(...),
-    conversation_prompt: str = Form(""),
-    analysis_prompt: str = Form(""),
-    voice_speed: float = Form(1.0),
-    voice_pitch: float = Form(1.0),
-    voice_expressiveness: float = Form(0.667),
-    voice_volume: float = Form(1.0),
-    is_active: bool = Form(False),
-    db: Session = Depends(get_db),
-) -> RedirectResponse:
-    campaign = db.get(Campaign, campaign_id)
-    if campaign is None:
-        raise HTTPException(404, "Campaña inexistente")
-
-    active_questions = [q for q in campaign.questions if q.is_active]
-    if is_active and not active_questions:
-        raise HTTPException(400, "No se puede activar una campaña sin preguntas activas")
-
-    campaign.name = name.strip()
-    campaign.description = description.strip() or None
-    campaign.bitrix_entity_type_id = bitrix_entity_type_id
-    campaign.trigger_field = trigger_field.strip()
-    campaign.delay_hours = delay_hours
-    campaign.call_window_start = call_window_start
-    campaign.call_window_end = call_window_end
-    campaign.call_window_days = call_window_days
-    campaign.max_attempts = max_attempts
-    campaign.retry_interval_minutes = retry_interval_minutes
-    campaign.intro_script = intro_script
-    campaign.outro_script = outro_script
-    campaign.fallback_script = fallback_script
-    campaign.optout_script = optout_script
-    # Se acotan acá y no solo en el HTML: el form se puede saltear, y un
-    # length_scale absurdo deja la voz irreconocible o tarda una eternidad.
-    campaign.conversation_prompt = conversation_prompt.strip() or None
-    campaign.analysis_prompt = analysis_prompt.strip() or None
-    campaign.voice_speed = min(max(voice_speed, 0.5), 2.0)
-    campaign.voice_pitch = min(max(voice_pitch, 0.7), 1.4)
-    campaign.voice_expressiveness = min(max(voice_expressiveness, 0.0), 1.5)
-    campaign.voice_volume = min(max(voice_volume, 0.2), 1.5)
-    campaign.is_active = is_active
-
-    db.commit()
-    return _redirect(f"/campaigns/{campaign_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +370,7 @@ def add_question(
         )
     )
     db.commit()
-    return _redirect(f"/campaigns/{campaign_id}")
+    return _redirect(f"/campaigns/{campaign_id}?tab=configuracion#preguntas")
 
 
 @router.post("/questions/{question_id}/delete")
@@ -484,7 +393,7 @@ def delete_question(question_id: int, db: Session = Depends(get_db)) -> Redirect
         q.position = index
 
     db.commit()
-    return _redirect(f"/campaigns/{campaign_id}")
+    return _redirect(f"/campaigns/{campaign_id}?tab=configuracion#preguntas")
 
 
 @router.post("/questions/{question_id}/move")
@@ -505,7 +414,7 @@ def move_question(
     swap_with = index - 1 if direction == "up" else index + 1
 
     if not 0 <= swap_with < len(siblings):
-        return _redirect(f"/campaigns/{question.campaign_id}")
+        return _redirect(f"/campaigns/{question.campaign_id}?tab=configuracion#preguntas")
 
     siblings[index], siblings[swap_with] = siblings[swap_with], siblings[index]
 
@@ -518,7 +427,7 @@ def move_question(
         q.position = i
     db.commit()
 
-    return _redirect(f"/campaigns/{question.campaign_id}")
+    return _redirect(f"/campaigns/{question.campaign_id}?tab=configuracion#preguntas")
 
 
 # ---------------------------------------------------------------------------
@@ -1403,7 +1312,7 @@ def sync_now() -> RedirectResponse:
 
 @router.get("/health-detail", response_class=HTMLResponse)
 def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    """Diagnóstico: verifica Bitrix, Asterisk y Ollama de una sola pasada."""
+    """Diagnóstico: verifica Bitrix, Asterisk, Claude y Voicebox de una sola pasada."""
     checks: list[dict] = []
 
     # Postgres
@@ -1467,9 +1376,9 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
             "name": "Claude (LLM)",
             "ok": True,
             "detail": (
-                f"{settings.llm_model}: conversa en la llamada y analiza después"
+                f"{settings.llm_model}: conversa, analiza, redacta instrucciones y responde consultas"
                 if llm.is_configured()
-                else "sin clave (ANTHROPIC_API_KEY): conversa Gemini si está configurado y analiza Ollama"
+                else "sin clave (ANTHROPIC_API_KEY): el bot usa frases fijas y no hay análisis ni IA en el panel"
             ),
         }
     )
@@ -1514,28 +1423,6 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
                     "detail": f"{str(exc)[:160]} — el bot va a hablar con Piper",
                 }
             )
-
-    # Ollama
-    if settings.ollama_enabled:
-        try:
-            import httpx
-
-            response = httpx.get(f"{settings.ollama_url.rstrip('/')}/api/tags", timeout=10)
-            models = [m["name"] for m in response.json().get("models", [])]
-            has_model = any(settings.ollama_model.split(":")[0] in m for m in models)
-            checks.append(
-                {
-                    "name": "Ollama",
-                    "ok": has_model,
-                    "detail": (
-                        f"modelo {settings.ollama_model} disponible"
-                        if has_model
-                        else f"falta {settings.ollama_model}. Modelos: {', '.join(models) or 'ninguno'}"
-                    ),
-                }
-            )
-        except Exception as exc:  # noqa: BLE001
-            checks.append({"name": "Ollama", "ok": False, "detail": str(exc)[:200]})
 
     return templates.TemplateResponse(
         request, "health.html", {"checks": checks, "settings": settings}

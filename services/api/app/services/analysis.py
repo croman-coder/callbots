@@ -1,20 +1,18 @@
-"""Análisis post-llamada con el LLM local (Ollama).
+"""Análisis post-llamada con Claude (la API de Anthropic).
 
 Corre después de colgar, así que la latencia no importa. Hace dos cosas:
 
 1. Calcula el puntaje de satisfacción con las respuestas ya interpretadas por
    reglas (esto no depende del LLM y siempre funciona).
 2. Le pide al LLM sentimiento, resumen, temas y si el caso necesita que
-   alguien vuelva a llamar. Si Ollama no responde, el punto 1 igual se guarda.
+   alguien vuelva a llamar. Si Claude no responde, el punto 1 igual se guarda.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -128,54 +126,19 @@ def build_system_prompt(extra: str | None) -> str:
 def query_llm(
     transcript: str, timeout: float = 120.0, extra_prompt: str | None = None
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Analiza la transcripción. Devuelve (resultado, modelo usado).
-
-    Claude Haiku si hay clave; si no, el Ollama local. (None, None) si ninguno contesta.
-    """
-    if llm.is_configured():
-        texto = llm.complete_sync(
-            build_system_prompt(extra_prompt) + "\n\nRespondé SOLO con el objeto JSON, sin texto antes ni después.",
-            f"Transcripción de la encuesta:\n\n{transcript}",
-            max_tokens=500,
-        )
-        resultado = llm.parse_json_object(texto)
-        if resultado is not None:
-            return resultado, settings.llm_model
-        log.warning("Claude no devolvió un JSON analizable: se prueba con Ollama")
-    resultado = query_ollama(transcript, timeout=timeout, extra_prompt=extra_prompt)
-    return resultado, (settings.ollama_model if resultado else None)
-
-
-def query_ollama(
-    transcript: str, timeout: float = 120.0, extra_prompt: str | None = None
-) -> dict[str, Any] | None:
-    """Consulta el LLM local. Devuelve None si no está disponible."""
-    if not settings.ollama_enabled:
-        return None
-
-    payload = {
-        "model": settings.ollama_model,
-        "format": "json",
-        "stream": False,
-        "options": {"temperature": 0.1, "num_predict": 400},
-        "messages": [
-            {"role": "system", "content": build_system_prompt(extra_prompt)},
-            {"role": "user", "content": f"Transcripción de la encuesta:\n\n{transcript}"},
-        ],
-    }
-
-    try:
-        response = httpx.post(
-            f"{settings.ollama_url.rstrip('/')}/api/chat",
-            json=payload,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        content = response.json().get("message", {}).get("content", "")
-        return json.loads(content)
-    except (httpx.HTTPError, json.JSONDecodeError, KeyError, ValueError) as exc:
-        log.warning("Ollama no pudo analizar la llamada: %s", exc)
-        return None
+    """Analiza la transcripción con Claude. Devuelve (resultado, modelo usado) o (None, None)."""
+    if not llm.is_configured():
+        return None, None
+    texto = llm.complete_sync(
+        build_system_prompt(extra_prompt) + "\n\nRespondé SOLO con el objeto JSON, sin texto antes ni después.",
+        f"Transcripción de la encuesta:\n\n{transcript}",
+        max_tokens=500,
+    )
+    resultado = llm.parse_json_object(texto)
+    if resultado is None:
+        log.warning("Claude no devolvió un JSON analizable: queda solo el puntaje por reglas")
+        return None, None
+    return resultado, settings.llm_model
 
 
 def enrich_open_answers(call: CallAttempt) -> None:

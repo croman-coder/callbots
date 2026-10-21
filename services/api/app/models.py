@@ -112,6 +112,12 @@ class Campaign(Base):
         Float, default=0.667, nullable=False
     )
     voice_volume: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    # Lo que se escribe en la pestaña «Contexto» de la ficha del agente. De acá sale (con Claude) el
+    # texto de `conversation_prompt`, que es lo que el agente sabe al conversar.
+    empresa_nombre: Mapped[str | None] = mapped_column(String(160))
+    empresa_descripcion: Mapped[str | None] = mapped_column(Text)
+    instrucciones_importantes: Mapped[str | None] = mapped_column(Text)
+
     # Qué voz usa esta campaña. Vacío = la del servidor (VOICEBOX_PROFILE_ID, o Piper si no
     # hay); "piper" = Piper a propósito; otro valor = el id de un perfil de Voicebox.
     voice_profile_id: Mapped[str | None] = mapped_column(String(64))
@@ -153,6 +159,26 @@ class Campaign(Base):
     targets: Mapped[list[SurveyTarget]] = relationship(
         back_populates="campaign", cascade="all, delete-orphan"
     )
+
+
+class PruebaAgente(Base):
+    """Una prueba del agente hablando desde el navegador (pestaña «Probar agente»).
+
+    No es una llamada real: no toca destinatarios ni resultados. Guarda lo que se dijo y cómo le
+    pareció a quien probó, para mejorar el guion con lo que se escuchó.
+    """
+
+    __tablename__ = "pruebas_agente"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    campaign_id: Mapped[int] = mapped_column(
+        ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    usuario: Mapped[str] = mapped_column(String(160), nullable=False)
+    iniciada_en: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    duracion_seconds: Mapped[int | None] = mapped_column(Integer)
+    valoracion: Mapped[str | None] = mapped_column(String(10))  # "bien" | "mal"
+    transcripcion: Mapped[list | None] = mapped_column(JSON, default=list)
 
 
 class Question(Base):

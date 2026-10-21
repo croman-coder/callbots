@@ -11,8 +11,8 @@ hasta ahora el bot contestaba con una frase fija. Ahí sí conviene un LLM, y
 ahí el segundo o dos que tarda no molesta porque la alternativa era sonar como
 una máquina.
 
-Si Claude no está configurado (queda Gemini de respaldo), tarda de más o falla, se devuelve None y el
-que llama usa la frase fija de siempre. Nunca se deja al cliente escuchando
+Usa Claude (la API de Anthropic), como toda la IA de la plataforma. Si no está configurado, tarda de
+más o falla, se devuelve None y el que llama usa la frase fija de siempre. Nunca se deja al cliente escuchando
 silencio por esperar a un tercero.
 """
 
@@ -20,14 +20,9 @@ from __future__ import annotations
 
 import logging
 
-import httpx
-
-from app.config import settings
 from app.services import llm
 
 log = logging.getLogger(__name__)
-
-ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 INSTRUCCION_BASE = """Sos el asistente telefónico de un taller mecánico en Paraguay. \
 Estás en medio de una encuesta de satisfacción y el cliente dijo algo que no es \
@@ -55,7 +50,7 @@ incluís, se queda sin saber qué contestar."""
 
 
 def is_configured() -> bool:
-    return llm.is_configured() or bool(settings.gemini_api_key)
+    return llm.is_configured()
 
 
 def _build_prompt(pregunta: str, dijo: str, intento: int) -> str:
@@ -88,55 +83,8 @@ async def reply(
             f"{extra_prompt.strip()}"
         )
 
-    if llm.is_configured():
-        # Un máximo de tokens corto de verdad: esto se sintetiza y se dice por teléfono.
-        texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200)
-        return _acortar(texto)
-
-    payload = {
-        "systemInstruction": {"parts": [{"text": instruccion}]},
-        "contents": [{"role": "user", "parts": [{"text": _build_prompt(pregunta, dijo, intento)}]}],
-        "generationConfig": {
-            # Corto de verdad: esto se sintetiza y se reproduce por teléfono.
-            "maxOutputTokens": 200,
-            "temperature": 0.4,
-            # Sin razonamiento previo. Los modelos 2.5 gastan tokens de salida
-            # pensando antes de contestar: con el presupuesto acotado la
-            # respuesta salía truncada a media oración ("Entiendo"), y encima
-            # acá lo que importa es contestar rápido, no razonar.
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
-    }
-
-    url = ENDPOINT.format(model=settings.gemini_model)
-
-    try:
-        async with httpx.AsyncClient(timeout=settings.gemini_timeout_seconds) as client:
-            # La key va en cabecera y NO como ?key=: httpx loguea la URL
-            # completa de cada request, así que por query param la credencial
-            # terminaba escrita en texto plano en el log del contenedor, en
-            # cada llamada.
-            response = await client.post(
-                url,
-                headers={"x-goog-api-key": settings.gemini_api_key},
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-    except httpx.TimeoutException:
-        log.warning("Gemini no contestó en %ss: se usa la frase fija", settings.gemini_timeout_seconds)
-        return None
-    except httpx.HTTPError as exc:
-        log.warning("Gemini falló: %s", exc)
-        return None
-
-    try:
-        texto = data["candidates"][0]["content"]["parts"][0]["text"]
-    except (KeyError, IndexError, TypeError):
-        # Respuesta bloqueada por los filtros de seguridad, o formato distinto
-        log.warning("Gemini devolvió algo inesperado: %s", str(data)[:200])
-        return None
-
+    # Un máximo de tokens corto de verdad: esto se sintetiza y se dice por teléfono.
+    texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200)
     return _acortar(texto)
 
 
