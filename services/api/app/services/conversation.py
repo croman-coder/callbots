@@ -46,7 +46,9 @@ nombre es peor que no decirlo: el cliente se queda con el dato equivocado.
 - Si el cliente pide no seguir, no insistas.
 - Terminá SIEMPRE volviendo a hacer la pregunta pendiente, con tus palabras. \
 Tu respuesta es todo lo que el cliente va a escuchar en ese turno: si no la \
-incluís, se queda sin saber qué contestar."""
+incluís, se queda sin saber qué contestar.
+- Al volver a la pregunta respetá su escala tal cual: si dice «del cero al diez», \
+es del cero al diez (no «del 1 al 10»)."""
 
 
 def is_configured() -> bool:
