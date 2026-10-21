@@ -59,6 +59,10 @@ def catalogo() -> tuple[list[dict], str | None]:
             continue
         motor = voicebox.engine_de(p)
         datos = MOTORES.get(motor, {"nombre": motor, "detalle": "", "en_vivo": False})
+        # Los motores de clonación (Qwen, Chatterbox) en el procesador tardan minutos por frase y
+        # al cargarse pueden tumbar Voicebox: no se ofrecen hasta que la voz tenga GPU.
+        if not datos["en_vivo"] and not settings.voces_con_gpu:
+            continue
         clonada = p.get("voice_type") == "cloned"
         voces.append(
             {

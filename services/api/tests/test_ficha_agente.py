@@ -233,3 +233,21 @@ def test_vaciar_un_texto_lo_borra(cliente, base):
     cliente.post("/campaigns/1/guardar", data={"tab": "analisis", "analysis_prompt": "Algo"}, headers=H)
     cliente.post("/campaigns/1/guardar", data={"tab": "analisis", "analysis_prompt": ""}, headers=H)
     assert base().get(Campaign, 1).analysis_prompt is None
+
+
+def test_sin_gpu_el_selector_no_ofrece_voces_que_tumban_voicebox(monkeypatch):
+    from app import voces
+    from app.services import voicebox
+
+    perfiles = [
+        {"id": "a", "name": "Alex (Kokoro, hombre)", "language": "es", "voice_type": "preset", "preset_engine": "kokoro", "preset_voice_id": "em_alex"},
+        {"id": "r", "name": "Ryan (Qwen CustomVoice)", "language": "es", "voice_type": "preset", "preset_engine": "qwen_custom_voice"},
+        {"id": "c", "name": "Carlos", "language": "es", "voice_type": "cloned", "default_engine": "chatterbox"},
+    ]
+    monkeypatch.setattr(voicebox, "is_configured", lambda: True)
+    monkeypatch.setattr(voicebox, "list_profiles", lambda: perfiles)
+    monkeypatch.setattr(settings, "voces_con_gpu", False)
+    lista, _ = voces.catalogo()
+    assert [v["id"] for v in lista] == ["a", "piper"] and lista[0]["genero"] == "Hombre" and lista[0]["nombre"] == "Alex"
+    monkeypatch.setattr(settings, "voces_con_gpu", True)
+    assert {v["id"] for v in voces.catalogo()[0]} == {"a", "r", "c", "piper"}
