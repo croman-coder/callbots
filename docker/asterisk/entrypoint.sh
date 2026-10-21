@@ -7,7 +7,7 @@ CONF_DIR=/etc/asterisk
 # Variables que se sustituyen en las plantillas. Se listan explícitamente para
 # que envsubst no toque las variables propias del dialplan de Asterisk
 # (${SESSION_UUID}, ${EXTEN}, ${CHANNEL}, etc.).
-VARS='${ARI_USER} ${ARI_PASSWORD} ${AUDIOSOCKET_HOST} ${AUDIOSOCKET_PORT} ${RTP_START} ${RTP_END} ${SOFTPHONE_PASSWORD} ${TRUNK_HOST} ${TRUNK_USER} ${TRUNK_PASSWORD} ${SIP_NAT_SETTINGS} ${TRUNK_SETTINGS}'
+VARS='${ARI_USER} ${ARI_PASSWORD} ${AUDIOSOCKET_HOST} ${AUDIOSOCKET_PORT} ${RTP_START} ${RTP_END} ${SOFTPHONE_PASSWORD} ${TRUNK_HOST} ${TRUNK_USER} ${TRUNK_PASSWORD} ${SIP_NAT_SETTINGS} ${TRUNK_SETTINGS} ${INTERNAL_TOKEN} ${ENTRANTE_RESPALDO}'
 
 : "${AUDIOSOCKET_HOST:=voice-agent}"
 : "${AUDIOSOCKET_PORT:=8090}"
@@ -17,6 +17,10 @@ VARS='${ARI_USER} ${ARI_PASSWORD} ${AUDIOSOCKET_HOST} ${AUDIOSOCKET_PORT} ${RTP_
 : "${TRUNK_HOST:=}"
 : "${TRUNK_USER:=}"
 : "${TRUNK_PASSWORD:=}"
+# Línea entrante: el token con que Asterisk le avisa a la API (el mismo INTERNAL_TOKEN del voice-agent) y el
+# número al que va una llamada que ningún agente atiende (vacío = ocupado). Solo dígitos.
+: "${INTERNAL_TOKEN:=}"
+ENTRANTE_RESPALDO="$(printf '%s' "${ENTRANTE_RESPALDO:-}" | tr -cd '0-9')"
 
 : "${SIP_EXTERNAL_ADDRESS:=}"
 
@@ -43,9 +47,11 @@ fi
 # Troncal SIP: solo si hay proveedor cargado. Sin esto Asterisk no tiene
 # salida a la red pública y el bot únicamente puede llamar a los softphones.
 if [ -n "$TRUNK_HOST" ]; then
+    # Lo que entra por la troncal va a callbot-entrante (el agente de recepción), no al contexto de los
+    # softphones: desde afuera no se llega a las extensiones de prueba.
     TRUNK_SETTINGS="[trunk-proveedor]
 type = endpoint
-context = callbot-inbound
+context = callbot-entrante
 disallow = all
 allow = ulaw
 allow = alaw
@@ -96,7 +102,7 @@ fi
 
 export AUDIOSOCKET_HOST AUDIOSOCKET_PORT RTP_START RTP_END \
        SOFTPHONE_PASSWORD TRUNK_HOST TRUNK_USER TRUNK_PASSWORD \
-       ARI_USER ARI_PASSWORD SIP_NAT_SETTINGS TRUNK_SETTINGS
+       ARI_USER ARI_PASSWORD SIP_NAT_SETTINGS TRUNK_SETTINGS INTERNAL_TOKEN ENTRANTE_RESPALDO
 
 mkdir -p "$CONF_DIR"
 

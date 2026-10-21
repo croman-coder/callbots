@@ -11,12 +11,28 @@
     <p>Hablar con el agente desde la pestaña <a class="link" href="/campaigns/{{ campaign.id }}?tab=probar">Probar agente</a>, sin llamar a nadie.</p>
     <span class="pill completed">activo</span>
   </article>
-  <article class="canal off">
-    <span class="canal-ico"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 5l4 4M19 5l-4 4M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg></span>
+  {% if es_recepcion %}
+  <article class="canal canal-entrante{% if not campaign.entrante %} off{% endif %}" id="entrantes">
+    <span class="canal-ico"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 3l-5 5M11 3v5h5M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg></span>
     <h2>Teléfono · llamadas entrantes</h2>
-    <p>Que el cliente pueda devolver la llamada y lo atienda el agente.</p>
-    <span class="chip-pronto">Pronto</span>
+    <p>El cliente llama al número de Santa Rosa y lo atiende este agente: resuelve, agenda o deriva el caso. Lo que ningún agente atiende va al número de respaldo o da ocupado.</p>
+    <form method="post" action="/campaigns/{{ campaign.id }}/entrantes" class="panel-form" autocomplete="off">
+      <label class="check"><input type="checkbox" name="entrante" value="1" {% if campaign.entrante %}checked{% endif %}> Atender llamadas entrantes</label>
+      <label for="e-numeros">Números que atiende <span class="hint">· uno por línea; vacío = cualquiera que entre por la troncal</span></label>
+      <textarea id="e-numeros" name="numeros_entrantes" rows="2" maxlength="400" spellcheck="false" placeholder="021 123 456">{{ campaign.numeros_entrantes or "" }}</textarea>
+      {% if otros_entrantes %}<p class="hint">También atienden llamadas: {{ otros_entrantes | join(", ") }}. Si dos atienden el mismo número, lo toma el primero que lo nombra.</p>{% endif %}
+      <div class="actions"><button type="submit" class="btn">Guardar</button></div>
+    </form>
+    <p class="hint">Para probarla sin la troncal: desde un softphone registrado, marcá <span class="mono">9100</span> (con «9100» en los números, o la lista vacía). La voz del cliente que llama desde afuera necesita la regla del FortiGate (<span class="mono">docs/diagnostico-audio-2026-10-20.md</span>).</p>
+    {% if campaign.entrante %}<span class="pill completed">atiende</span>{% else %}<span class="pill">apagada</span>{% endif %}
   </article>
+  {% else %}
+  <article class="canal off">
+    <span class="canal-ico"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16 3l-5 5M11 3v5h5M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg></span>
+    <h2>Teléfono · llamadas entrantes</h2>
+    <p>Las atiende un agente de recepción (plantilla «Recepción de posventa»). Este agente hace encuestas: llama, no atiende.</p>
+  </article>
+  {% endif %}
   <article class="canal off">
     <span class="canal-ico"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 21l1.6-4.6A8.5 8.5 0 1 1 7.6 19.4z"/></svg></span>
     <h2>WhatsApp Business</h2>

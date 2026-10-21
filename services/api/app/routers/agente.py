@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, conocimiento, datos_cliente, fuentes, recepcion, revision, versiones, vocabulario, voces, webhooks
+from app import agentes, conocimiento, datos_cliente, entrantes, fuentes, recepcion, revision, versiones, vocabulario, voces, webhooks
 from app.fuentes import cotizador
 from app.bitrix.client import normalize_phone_py
 from app.config import settings
@@ -349,6 +349,9 @@ def ficha(
         ctx.update(_datos_versiones(db, campaign))
     elif tab == "analisis":
         ctx.update(_datos_webhooks(db, campaign))
+    elif tab == "canales":
+        ctx["otros_entrantes"] = db.scalars(select(Campaign.name).where(
+            Campaign.modo == "recepcion", Campaign.entrante.is_(True), Campaign.id != campaign.id)).all()
     return templates.TemplateResponse(request, "agente.html", ctx)
 
 
@@ -641,6 +644,24 @@ def restaurar_version(campaign_id: int, version_id: int, request: Request, db: S
     if not cambiaron:
         return _volver(campaign_id, "versiones", ok="El agente ya estaba así: no se cambió nada.")
     return _volver(campaign_id, "versiones", ok="Listo, el agente volvió a esa versión. Las llamadas que ya empezaron siguen con la anterior.")
+
+
+@router.post("/campaigns/{campaign_id}/entrantes")
+def guardar_entrantes(request: Request, campaign_id: int, entrante: str = Form(""), numeros_entrantes: str = Form(""),
+                      db: Session = Depends(get_db)) -> RedirectResponse:
+    """Línea entrante del agente de recepción: si atiende y a qué números (app/entrantes.py)."""
+    campaign = _agente(db, campaign_id)
+    if not recepcion.es_recepcion(campaign):
+        return _volver(campaign_id, "canales", error="Solo un agente de recepción atiende llamadas entrantes.")
+    antes = versiones.instantanea(campaign)
+    numeros = entrantes.numeros(numeros_entrantes)
+    campaign.entrante = bool(entrante)
+    campaign.numeros_entrantes = "\n".join(numeros) or None
+    versiones.registrar(db, campaign, antes, _usuario(request))
+    db.commit()
+    estado = "atiende " + (", ".join(numeros) if numeros else "cualquier número de la troncal") if campaign.entrante \
+        else "no atiende llamadas entrantes"
+    return _volver(campaign_id, "canales", ok=f"Listo: {estado}.")
 
 
 @router.post("/campaigns/{campaign_id}/estado")

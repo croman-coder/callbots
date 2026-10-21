@@ -387,6 +387,10 @@ services:
       TRUNK_HOST: ${TRUNK_HOST}
       TRUNK_USER: ${TRUNK_USER}
       TRUNK_PASSWORD: ${TRUNK_PASSWORD}
+      # Línea entrante (docs/linea-entrante.md): Asterisk le avisa a la API con este token, y lo que ningún
+      # agente atiende va al número de respaldo (vacío = ocupado).
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      ENTRANTE_RESPALDO: ${ENTRANTE_RESPALDO:-}
       TZ: ${TZ}
     ports:
       - "${SIP_PORT}:5060/udp"

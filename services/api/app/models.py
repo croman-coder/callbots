@@ -127,6 +127,10 @@ class Campaign(Base):
     limites: Mapped[str | None] = mapped_column(Text)
     # Sistemas que consulta en vivo en cada turno (app/fuentes/): {"repuestos": bool, "precios": bool}.
     fuentes: Mapped[dict | None] = mapped_column(JSON)
+    # Línea entrante (app/entrantes.py): atiende las llamadas que entran por la troncal, a estos números (uno por
+    # línea; vacío = cualquiera).
+    entrante: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    numeros_entrantes: Mapped[str | None] = mapped_column(Text)
 
     # --- Voz del bot ---
     # Se mandan al voice-agent en el guion de cada llamada, así se ajustan

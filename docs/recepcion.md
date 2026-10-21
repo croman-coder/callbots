@@ -45,9 +45,8 @@ qué se contestó y qué se venció.
 
 ## Lo que falta
 
-- **Línea entrante**: una regla en Asterisk que mande las llamadas del número de posventa al agente de recepción.
-  Está bloqueado por lo mismo que el audio saliente: el FortiGate no deja entrar la voz de Personal
-  (`diagnostico-audio-2026-10-20.md`).
+- **Línea entrante**: armada (`linea-entrante.md`). Los números reales esperan la regla del FortiGate para que llegue
+  la voz del cliente (`diagnostico-audio-2026-10-20.md`).
 - **Datos vivos**: ✅ repuestos del Cotizador (pedidos, plazo aproximado y stock), ver `datos-en-vivo.md`. Faltan
   embarques con fecha real (COMEX), patentamiento y PDI.
 - **Agendar turnos**: ✅ ver `agenda-taller.md`. Falta avisar al cliente por WhatsApp.

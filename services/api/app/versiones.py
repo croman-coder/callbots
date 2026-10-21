@@ -61,6 +61,8 @@ CAMPOS: dict[str, str] = {
     "areas": "Recepción: áreas y responsables",
     "limites": "Recepción: lo que no puede decir",
     "fuentes": "Recepción: datos en vivo",
+    "entrante": "Línea entrante: atiende",
+    "numeros_entrantes": "Línea entrante: números",
 }
 
 

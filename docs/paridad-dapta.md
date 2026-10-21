@@ -40,7 +40,8 @@ replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera
   y plazo (`recepcion.md`).
 - ✅ Bandeja de casos para Calidad, con vencidos, respondidos en plazo y recorrido.
 - ✅ Chat de texto y simulación (la IA hace de cliente) para probar sin teléfono.
-- ⬜ Línea entrante en Asterisk (depende del FortiGate).
+- 🟡 Línea entrante: Asterisk + API + agente listos y probados por la extensión 9100 (`linea-entrante.md`); los
+  números reales esperan la regla del FortiGate para que llegue la voz del cliente.
 - ✅ Datos vivos de repuestos: el agente consulta el Cotizador (pedidos, plazo aproximado, stock), `datos-en-vivo.md`.
 - ⬜ Datos vivos de embarques (COMEX), patentamiento y PDI.
 - ✅ Agendar turnos de taller con tiempos por etapa, marca y modelo (`agenda-taller.md`).

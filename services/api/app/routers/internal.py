@@ -20,11 +20,12 @@ import unicodedata
 import uuid as uuid_mod
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import conocimiento, datos_cliente, fuentes, pronunciaciones, recepcion, vocabulario
+from app import conocimiento, datos_cliente, entrantes, fuentes, pronunciaciones, recepcion, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -177,7 +178,30 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             **_modo(campaign),
         )
 
-    # --- llamada real ---
+    # --- llamada entrante: el caso lo abrió Asterisk al entrar (ver /internal/entrantes) ---
+    entrante = entrantes.caso_de_sesion(db, session_uuid)
+    if entrante is not None:
+        campaign = entrante.campaign
+        return SurveyScript(
+            session_uuid=session_uuid,
+            call_id=None,
+            demo=False,
+            campaign_id=campaign.id,
+            campaign_name=campaign.name,
+            contact_name=None,
+            voice_speed=campaign.voice_speed,
+            voice_pitch=campaign.voice_pitch,
+            voice_expressiveness=campaign.voice_expressiveness,
+            voice_volume=campaign.voice_volume,
+            voice_profile_id=campaign.voice_profile_id,
+            **_opciones_de_llamada(campaign, {}),
+            **_textos_del_guion(campaign, [], {}),
+            pronunciaciones=pronunciaciones.lista(db),
+            vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
+            **_modo(campaign),
+        )
+
+    # --- llamada saliente ---
     call = _load_call(db, session_uuid)
     target = call.target
     campaign = target.campaign
@@ -234,6 +258,8 @@ def session_started(
     """El AudioSocket se conectó: el cliente atendió de verdad."""
     if es_demo(session_uuid):
         return {"demo": True}
+    if entrantes.caso_de_sesion(db, session_uuid) is not None:
+        return {"entrante": True}
 
     call = _load_call(db, session_uuid)
     call.answered_at = payload.answered_at or datetime.now(timezone.utc)
@@ -407,8 +433,8 @@ def transfer(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> dict
     if es_demo(session_uuid):
         return {"ok": True, "demo": True}
 
-    call = _load_call(db, session_uuid)
-    campaign = call.target.campaign
+    entrante = entrantes.caso_de_sesion(db, session_uuid)
+    campaign = entrante.campaign if entrante is not None else _load_call(db, session_uuid).target.campaign
     if not campaign.transfer_number:
         return {"ok": False, "motivo": "el agente no tiene un teléfono de asesor"}
 
@@ -642,6 +668,8 @@ def _campaign_de_sesion(db: Session, session_uuid: uuid_mod.UUID) -> Campaign:
         campaign = (db.get(Campaign, session_uuid.int) if session_uuid.int else None) or db.scalar(
             select(Campaign).where(Campaign.is_active.is_(True)).order_by(Campaign.id)
         )
+    elif (entrante := entrantes.caso_de_sesion(db, session_uuid)) is not None:
+        campaign = entrante.campaign
     else:
         target = _load_call(db, session_uuid).target
         campaign = target.campaign if target else None
@@ -661,12 +689,29 @@ def conocimiento_del_caso(db: Session, caso: Caso, dijo: str) -> str:
     return conocimiento.para_respuesta(db, caso.campaign, f"{caso.resumen or ''} {dijo}".strip())
 
 
+@router.post("/entrantes", response_class=PlainTextResponse)
+def llamada_entrante(uuid: uuid_mod.UUID = Form(...), de: str = Form(""), a: str = Form(""),
+                     db: Session = Depends(get_db)) -> PlainTextResponse:
+    """Asterisk avisa que entró una llamada (contexto `callbot-entrante`, por CURL). «ok» = la atiende un agente de
+    recepción (el caso queda abierto con esta sesión); «no» = ningún agente atiende ese número y Asterisk la pasa al
+    número de respaldo o da ocupado. Texto plano: es lo que lee el dialplan."""
+    caso = entrantes.abrir(db, uuid, de, a)
+    if caso is None:
+        log.warning("Llamada entrante de %s al %s: ningún agente atiende ese número", de or "?", a or "?")
+        return PlainTextResponse("no")
+    db.commit()
+    log.info("Llamada entrante de %s al %s: caso %s (%s)", de or "?", a or "?", caso.id, caso.campaign.name)
+    return PlainTextResponse("ok")
+
+
 @router.post("/sessions/{session_uuid}/recepcion")
 def recepcion_inicio(session_uuid: uuid_mod.UUID, body: RecepcionInicio, db: Session = Depends(get_db)) -> dict:
     """Abre el caso de esta llamada, con el saludo que ya dijo el agente como primera línea."""
     campaign = _campaign_de_sesion(db, session_uuid)
     if not recepcion.es_recepcion(campaign):
         raise HTTPException(409, "Este agente no es de recepción")
+    if (entrante := entrantes.caso_de_sesion(db, session_uuid)) is not None:
+        return {"caso_id": entrante.id}  # llamada entrante: el caso ya existe, con el saludo
     demo = es_demo(session_uuid)
     caso = recepcion.nuevo(
         campaign, "prueba" if demo else "telefono",
