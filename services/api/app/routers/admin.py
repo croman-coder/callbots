@@ -26,7 +26,7 @@ from app.db import get_db
 from app.deps import require_admin
 from app.routers.simulator import emitir_ticket
 from app.bitrix.client import normalize_phone_py
-from app.scheduling import next_call_slot, parse_days, parse_hhmm
+from app.scheduling import next_call_slot, parse_days, parse_hhmm, texto_dias
 from app.services import calidad, contactabilidad, importar, preguntar, voicebox, voicestudio
 from app.services.export import construir_excel
 from app.services.scoring import SATISFACTORY_MIN
@@ -320,7 +320,7 @@ def create_campaign(
     db.add(campaign)
     db.commit()
     log.info("Agente creado: %s (id=%s, plantilla=%s)", campaign.name, campaign.id, plantilla)
-    # El último paso del asistente («Prueba tu agente») es la pestaña Probar de la ficha: ahí Claude
+    # El último paso del asistente («Probá tu agente») es la pestaña Probar de la ficha: ahí Claude
     # redacta las instrucciones y se habla con el agente desde el navegador.
     return _redirect(f"/campaigns/{campaign.id}?tab=probar&nuevo=1")
 
@@ -1408,6 +1408,8 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
         {
             "name": "Claude (LLM)",
             "ok": True,
+            # Sin clave el bot funciona, pero peor: no es una falla y tampoco está bien.
+            "aviso": not llm.is_configured(),
             "detail": (
                 f"{settings.llm_model}: conversa, analiza, redacta instrucciones y responde consultas"
                 if llm.is_configured()
@@ -1453,10 +1455,24 @@ def health_detail(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
                 {
                     "name": "Voicebox (voz clonada)",
                     "ok": False,
-                    "detail": f"{str(exc)[:160]} — el bot va a hablar con Piper",
+                    "detail": f"{str(exc)[:160]}: el bot va a hablar con Piper",
                 }
             )
 
+    # VoiceStudio (voces clonadas en vivo). Sin instalar no es falla: clonar figura como «Pronto».
+    if not voicestudio.is_configured():
+        checks.append({"name": "VoiceStudio (clonar voces)", "ok": True, "detail": "no instalado; clonar voces figura como «Pronto»"})
+    else:
+        try:
+            perfiles = voicestudio.list_profiles()
+            n = sum(1 for p in perfiles if p.get("verified_own_voice") and p.get("kind", "clone") == "clone")
+            checks.append({"name": "VoiceStudio (clonar voces)", "ok": True,
+                           "detail": f"responde; {n} {'voz clonada' if n == 1 else 'voces clonadas'} con permiso"})
+        except voicestudio.VoiceStudioError as exc:
+            checks.append({"name": "VoiceStudio (clonar voces)", "ok": False,
+                           "detail": f"{exc} Las voces clonadas hablan con la voz del servidor."})
+
+    dias = parse_days(settings.call_window_days)
     return templates.TemplateResponse(
-        request, "health.html", {"checks": checks, "settings": settings}
+        request, "health.html", {"checks": checks, "settings": settings, "dias_texto": texto_dias(dias)}
     )

@@ -1,8 +1,12 @@
 {#- Marca de Callbot: un auricular con una onda, en el azul de marca. Decorativa (aria-hidden):
-    el nombre va al lado, en texto. Hereda `currentColor` para el trazo. -#}
+    el nombre va al lado, en texto. Hereda `currentColor` para el trazo.
+    El id del degradado lleva `marca_id`: la marca aparece dos veces por página (menú y cabecera) y con
+    un id repetido la segunda pinta con el degradado de la primera; si esa está oculta (el menú en el
+    celular), queda sin relleno. -#}
+{%- set gid = "cb-g-" ~ (marca_id | default("x")) -%}
 <svg class="marca-svg" viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true" focusable="false">
-  <rect width="32" height="32" rx="9" fill="url(#cb-g)"/>
-  <defs><linearGradient id="cb-g" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+  <rect width="32" height="32" rx="9" fill="url(#{{ gid }})"/>
+  <defs><linearGradient id="{{ gid }}" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
     <stop stop-color="#1E3A8A"/><stop offset="1" stop-color="#3B82F6"/></linearGradient></defs>
   <path d="M9 18v-2a7 7 0 0 1 14 0v2" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
   <rect x="7.5" y="17.5" width="4" height="6" rx="2" fill="#fff"/>

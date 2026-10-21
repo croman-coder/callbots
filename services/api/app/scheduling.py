@@ -24,6 +24,21 @@ def parse_days(value: str) -> set[int]:
     return days or {0, 1, 2, 3, 4, 5}
 
 
+DIAS_CORTOS = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+
+def texto_dias(dias: set[int]) -> str:
+    """{0,1,2,3,4,5} → «lun a sáb»; {0,2,4} → «lun, mié, vie». Para leer, no para guardar."""
+    orden = sorted(d for d in dias if 0 <= d <= 6)
+    if not orden:
+        return "ninguno"
+    if len(orden) == 7:
+        return "todos los días"
+    if len(orden) > 2 and orden == list(range(orden[0], orden[-1] + 1)):
+        return f"{DIAS_CORTOS[orden[0]]} a {DIAS_CORTOS[orden[-1]]}"
+    return ", ".join(DIAS_CORTOS[d] for d in orden)
+
+
 def next_call_slot(
     moment: datetime,
     window_start: time,

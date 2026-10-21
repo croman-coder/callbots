@@ -23,18 +23,18 @@
       <tbody>
         {% for c in llamadas %}
         {% set q = calidades.get(c.id) %}{% set a = c.analysis %}
-        <tr data-buscar="{{ ((c.target.contact_name or '') ~ ' ' ~ (c.dialed_number or c.target.phone or '') ~ ' ' ~ (c.outcome.value if c.outcome else '')) | lower }}">
-          <td class="tnum">{{ c.started_at | fecha }}</td>
-          <td class="num tnum">{% if c.duration_seconds is not none %}{{ "%02d" | format(c.duration_seconds // 60) }}:{{ "%02d" | format(c.duration_seconds % 60) }}{% else %}—{% endif %}</td>
+        <tr data-buscar="{{ ((c.target.contact_name or '') ~ ' ' ~ (c.dialed_number or c.target.phone or '') ~ ' ' ~ (c.outcome | estado if c.outcome else '')) | lower }}">
+          <td class="tnum nowrap">{{ c.started_at | fecha("%d/%m/%y %H:%M") }}</td>
+          <td class="num tnum">{{ c.duration_seconds | duracion }}</td>
           <td class="num tnum">{% if q and q.puntaje is not none %}<span class="{{ 'score-bad' if q.nivel == 'bad' }}" title="{{ q.motivos | join(' · ') }}">{{ q.puntaje }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td class="tnum">{{ c.dialed_number or c.target.phone or "—" }}</td>
-          <td>{{ c.target.contact_name or "—" }}</td>
-          <td>{% if c.outcome %}<span class="tag {{ c.outcome.value }}">{{ c.outcome.value }}</span>{% else %}<span class="tag calling">en curso</span>{% endif %}</td>
-          <td class="muted">{{ c.hangup_cause or "—" }}</td>
+          <td class="nowrap">{{ c.target.contact_name or "—" }}</td>
+          <td>{% if c.outcome %}<span class="tag {{ c.outcome.value }}">{{ c.outcome | estado }}</span>{% else %}<span class="tag calling">en curso</span>{% endif %}</td>
+          <td class="muted">{{ c.hangup_cause | estado("corte") if c.hangup_cause else "—" }}</td>
           <td>{{ "Cumplido" if c.outcome and c.outcome.value == "completed" else "No cumplido" }}</td>
           <td class="num tnum">{% if a and a.satisfaction_score is not none %}{{ a.satisfaction_score | dec }}{% else %}—{% endif %}</td>
           <td>Saliente</td>
-          <td><a class="link" href="/calls/{{ c.id }}">ver</a></td>
+          <td class="num"><a class="link" href="/calls/{{ c.id }}" aria-label="Ver la llamada de {{ c.target.contact_name or c.target.phone or c.id }}">Ver</a></td>
         </tr>
         {% endfor %}
         {% if not llamadas %}<tr><td colspan="11"><p class="empty"><strong>No hay llamadas</strong>{{ " con este filtro" if filtro != "todas" }}.</p></td></tr>{% endif %}

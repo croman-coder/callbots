@@ -78,7 +78,7 @@
       vista.innerHTML = ta.value.trim()
         ? markdown(ta.value)
         : '<p class="muted">Todavía no hay instrucciones. Tocá «Generar con IA» o escribilas en Markdown.</p>';
-      tokens.textContent = "~" + Math.floor(ta.value.length / 4) + " tokens";
+      var n = Math.floor(ta.value.length / 4); tokens.textContent = n ? "~" + n + " tokens" : "";
     };
     pintar();
     ta.addEventListener("input", pintar);
@@ -169,11 +169,12 @@
   $$("[data-copiar-texto]").forEach(function (b) { b.addEventListener("click", function () { copiar(b.dataset.copiarTexto, b); }); });
   $$("input[type=range][data-salida]").forEach(function (r) {
     var out = r.nextElementSibling;
-    r.addEventListener("input", function () { if (out) out.textContent = r.value; });
+    // Coma decimal y sin ceros de más, igual que el filtro `corto` del servidor: 0,67 y no 0.667.
+    r.addEventListener("input", function () { if (out) out.textContent = Number(r.value).toLocaleString("es-PY", { maximumFractionDigits: 2 }); });
   });
   $$("[data-contar]").forEach(function (t) {
     var destino = document.getElementById(t.dataset.contar);
-    t.addEventListener("input", function () { if (destino) destino.textContent = "~" + Math.floor(t.value.length / 4) + " tokens"; });
+    t.addEventListener("input", function () { var n = Math.floor(t.value.length / 4); if (destino) destino.textContent = n ? "~" + n + " tokens" : ""; });
   });
   var buscar = $("#buscar-llamadas");
   if (buscar) buscar.addEventListener("input", function () {
@@ -252,7 +253,7 @@
       campoVoz.value = f.dataset.voz;
       $("[data-voz-nombre]").textContent = f.dataset.nombre;
       $("[data-voz-chips]").innerHTML = "";
-      [f.dataset.genero, f.dataset.tipo, "Gratis"].forEach(function (t) { var c = document.createElement("span"); c.className = "chip-dato"; c.textContent = t; $("[data-voz-chips]").appendChild(c); });
+      [f.dataset.genero, f.dataset.tipo, "Gratis"].filter(Boolean).forEach(function (t) { var c = document.createElement("span"); c.className = "chip-dato"; c.textContent = t; $("[data-voz-chips]").appendChild(c); });
       $("[data-voz-modelo]").textContent = f.dataset.motor + " · " + f.dataset.detalle;
       var b = $("[data-voz-elegida] [data-escuchar]"); b.dataset.escuchar = f.dataset.escucha ? f.dataset.voz : ""; b.disabled = !f.dataset.escucha;
       if (window.callbotMarcarSucio) window.callbotMarcarSucio();

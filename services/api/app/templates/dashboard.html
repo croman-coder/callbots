@@ -79,7 +79,7 @@
               {%- if avg_score is not none and avg_score < satisfactory_min %} is-bad{% endif %}">
     <div class="k">Satisfacción</div>
     {% if avg_score is not none %}
-      <div class="v">{{ avg_score }}<small> /10</small></div>
+      <div class="v">{{ avg_score | dec }}<small> /10</small></div>
       <div class="f">{{ "Sobre el umbral" if avg_score >= satisfactory_min else "Bajo el umbral" }}</div>
     {% else %}
       <div class="v pending">Sin datos</div>
@@ -89,7 +89,7 @@
   <div class="metric t-menta">
     <div class="k">Respuesta</div>
     {% if contacted %}
-      <div class="v">{{ response_rate }}<small> %</small></div>
+      <div class="v">{{ response_rate | dec(0) }}<small> %</small></div>
       <div class="f">{{ counts.get(TargetStatus.COMPLETED, 0) }} de {{ contacted }} contactado{{ "s" if contacted != 1 }}</div>
     {% else %}
       <div class="v pending">—</div>
@@ -221,12 +221,12 @@
             {%- set low = c.analysis and c.analysis.satisfaction_score is not none
                           and c.analysis.satisfaction_score < satisfactory_min -%}
           <tr>
-            <td class="muted tnum">{{ c.started_at | fecha("%d/%m %H:%M") }}</td>
+            <td class="muted tnum nowrap">{{ c.started_at | fecha("%d/%m/%y %H:%M") }}</td>
             <td class="name">{{ c.target.contact_name or "Sin nombre" }}</td>
-            <td class="mono muted">{{ c.target.phone or "—" }}</td>
-            <td><span class="pill {{ c.outcome.value if c.outcome else 'calling' }}">{{ c.outcome.value if c.outcome else "en curso" }}</span></td>
+            <td class="tnum nowrap muted">{{ c.target.phone or "—" }}</td>
+            <td><span class="pill {{ c.outcome.value if c.outcome else 'calling' }}">{{ c.outcome | estado if c.outcome else "en curso" }}</span></td>
             <td class="num">
-              {%- if c.duration_seconds %}{{ c.duration_seconds // 60 }}:{{ "%02d" | format(c.duration_seconds % 60) }}
+              {%- if c.duration_seconds %}{{ c.duration_seconds | duracion }}
               {%- else %}<span class="muted">—</span>{% endif -%}
             </td>
             <td class="num">{{ c.questions_answered }}<span class="muted">/{{ c.questions_asked }}</span></td>
@@ -235,7 +235,7 @@
                 <span {% if low %}class="score-bad"{% endif %}>{{ c.analysis.satisfaction_score | dec }}</span>
               {%- else -%}<span class="muted">—</span>{%- endif -%}
             </td>
-            <td class="num"><a class="link" href="/calls/{{ c.id }}">Ver</a></td>
+            <td class="num"><a class="link" href="/calls/{{ c.id }}" aria-label="Ver la llamada de {{ c.target.contact_name or c.target.phone or c.id }}">Ver</a></td>
           </tr>
           {% endfor %}
         </tbody>

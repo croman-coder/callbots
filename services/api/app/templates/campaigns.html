@@ -4,7 +4,7 @@
 
 {% macro pasos(actual) %}
 <ol class="pasos" aria-label="Pasos para crear el agente">
-  {% for n, titulo in [(1, "Selecciona el agente"), (2, "Contexto del agente"), (3, "Contexto de la empresa"), (4, "Prueba tu agente")] %}
+  {% for n, titulo in [(1, "Elegí el agente"), (2, "Contexto del agente"), (3, "Contexto de la empresa"), (4, "Probá tu agente")] %}
   <li data-paso="{{ n }}" class="{{ 'actual' if n == actual else 'hecho' if n < actual }}" {% if n == actual %}aria-current="step"{% endif %}>
     <span class="num">{% if n < actual %}<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>{% else %}{{ n }}{% endif %}</span>
     <span class="tit">{{ titulo }}</span>
@@ -95,7 +95,7 @@
     {{ pasos(1) }}
 
     <section data-paso="1">
-      <h3 class="pregunta">Escoge una plantilla <span class="req" aria-hidden="true">*</span></h3>
+      <h3 class="pregunta">Elegí una plantilla <span class="req" aria-hidden="true">*</span></h3>
       <div class="plantillas" role="radiogroup" aria-label="Plantilla">
         {% for p in plantillas %}
         <label class="plantilla {{ 'off' if not p.disponible }}">

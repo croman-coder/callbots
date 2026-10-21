@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from app.config import settings
+from app.etiquetas import etiqueta
 
 _AQUI = Path(__file__).resolve().parent
 
@@ -48,5 +49,24 @@ def dec(valor, decimales: int = 1) -> str:
     return texto.replace(",", "\u2009").replace(".", ",").replace("\u2009", ".")
 
 
+def corto(valor, decimales: int = 2) -> str:
+    """Hasta `decimales` decimales con coma y sin ceros de más: 1 · 0,67 · 1,05."""
+    if valor is None:
+        return "—"
+    texto = dec(valor, decimales)
+    return texto.rstrip("0").rstrip(",") if "," in texto else texto
+
+
+def duracion(segundos) -> str:
+    """Segundos → «1:35». Un solo formato en todas las tablas (antes convivían 1:35, 01:35 y 1m 35s)."""
+    if segundos is None:
+        return "—"
+    segundos = int(segundos)
+    return f"{segundos // 60}:{segundos % 60:02d}"
+
+
 templates.env.filters["fecha"] = fecha
 templates.env.filters["dec"] = dec
+templates.env.filters["estado"] = etiqueta
+templates.env.filters["duracion"] = duracion
+templates.env.filters["corto"] = corto

@@ -71,6 +71,7 @@
   --active-soft: rgba(243, 244, 246, 0.08);
 
   --tinta: #f3f4f6; --tinta-hover: #ffffff; --tinta-texto: #111214;
+  --sobre-marca: oklch(98.6% 0.006 278); /* texto sobre el azul de marca o el rojo: blanco apenas teñido */
 
   --ok:   #4ade80;  --ok-bg:   #183122;
   --warn: #fbbf24;  --warn-bg: #352b18;
@@ -114,6 +115,7 @@
   --active-soft: rgba(17, 18, 20, 0.06);
 
   --tinta: #111214; --tinta-hover: #26282c; --tinta-texto: #ffffff;
+  --sobre-marca: oklch(98.6% 0.006 278);
 
   --ok:   #15803d;  --ok-bg:   #dcfce7;
   --warn: #92400e;  --warn-bg: #fef3c7;
@@ -156,12 +158,12 @@ h1, h2, h3 { text-wrap: balance; font-family: var(--font-titulo); }
 /* Salto al contenido: primera parada del tabulador, invisible hasta recibir
    foco. Sin él, cada página obliga a recorrer toda la barra lateral. */
 .skip {
-  position: absolute; left: var(--s3); top: -48px; z-index: 100;
+  position: absolute; left: var(--s3); top: var(--s3); z-index: 100; transform: translateY(-64px);
   padding: var(--s2) var(--s4); border-radius: var(--r-sm);
   background: var(--tinta); color: var(--tinta-texto); font-weight: 700; font-size: var(--t-sm);
-  transition: top var(--dur-fast) var(--ease);
+  transition: transform var(--dur-fast) var(--ease);
 }
-.skip:focus { top: var(--s3); }
+.skip:focus { transform: none; }
 main:focus { outline: none; }
 
 :where(a,button,input,select,textarea,summary,[tabindex]):focus-visible {
@@ -208,7 +210,7 @@ main:focus { outline: none; }
   min-height: 0; padding: 6px 12px; border: 0; border-radius: var(--r-pill); background: transparent;
   color: var(--ink-3); font-size: var(--t-xs); font-weight: 700; display: inline-flex; align-items: center; gap: 6px;
 }
-.tema button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.tema button[aria-pressed="true"] { background: var(--brand); color: var(--sobre-marca); }
 :root[data-theme="dark"] .tema button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .tema button:hover:not([aria-pressed="true"]):not(:disabled) { background: var(--active-soft); }
 
@@ -310,7 +312,18 @@ h3 { font-size: var(--t-base); font-weight: 600; margin: 0; }
   background: var(--surface); overflow: hidden;
 }
 .urgent .tablewrap, .tablewrap.bare { border: 0; border-radius: 0; }
-.scroll { overflow-x: auto; overscroll-behavior-x: contain; }
+/* position: relative la hace contenedora de lo absoluto de adentro (los .sr-only de las celdas): si no,
+   se escapan del recorte y ensanchan la página entera. */
+.scroll {
+  position: relative; overflow-x: auto; overscroll-behavior-x: contain;
+  /* Sombra en el borde que tiene más columnas escondidas: sin ella, una tabla cortada parece terminada.
+     Las capas «local» tapan la sombra cuando ya se llegó a ese borde. */
+  background:
+    linear-gradient(to right, var(--surface) 40%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--surface) 40%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in oklch, var(--ink) 14%, transparent), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in oklch, var(--ink) 14%, transparent), transparent) right / 10px 100% no-repeat scroll;
+}
 table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
 thead th {
   text-align: left; padding: var(--s2) var(--s4);
@@ -329,7 +342,7 @@ tbody tr:last-child td { border-bottom: 0; }
 tbody tr { transition: background var(--dur-fast) var(--ease); }
 tbody tr:hover { background: var(--raised); }
 .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-td.name { font-weight: 550; }
+td.name { font-weight: 550; white-space: nowrap; }
 
 /* ═══════════════════════════════════════════════════ estados */
 /* Texto siempre; el punto es refuerzo, no la señal. */
@@ -401,7 +414,11 @@ button.mini, .btn.mini { padding: 5px var(--s3); min-height: 0; font-size: var(-
 
 label { display: block; font-size: var(--t-sm); font-weight: 600; margin: var(--s4) 0 5px; }
 label .hint, .hint { font-weight: 400; color: var(--ink-3); font-size: var(--t-sm); }
-input[type=text],input[type=email],input[type=number],input[type=time],input[type=password],select,textarea {
+/* Todos los campos de texto comparten forma. Antes faltaban search, date, url y tel: la búsqueda de
+   Agentes y las fechas de Historial salían con el control crudo del navegador. */
+input:not([type]),
+input:is([type=text],[type=email],[type=number],[type=time],[type=password],[type=search],[type=date],
+         [type=datetime-local],[type=url],[type=tel]),select,textarea {
   width: 100%; padding: 9px var(--s3); min-height: 42px;
   border: 1px solid var(--campo); border-radius: var(--r);
   font: inherit; background: var(--surface); color: var(--ink);
@@ -410,6 +427,8 @@ input[type=text],input[type=email],input[type=number],input[type=time],input[typ
 input:hover:not(:disabled),select:hover:not(:disabled),textarea:hover:not(:disabled) { border-color: var(--ink-3); }
 input:disabled,select:disabled,textarea:disabled { opacity:.5; cursor:not-allowed; background: var(--raised); }
 textarea { min-height: 80px; resize: vertical; }
+input[type=search]::-webkit-search-cancel-button { cursor: pointer; }
+input[type=checkbox], input[type=radio] { accent-color: var(--brand); width: 16px; height: 16px; }
 .row { display: grid; gap: var(--s4); grid-template-columns: repeat(auto-fit, minmax(190px,1fr)); }
 .check { display:flex; align-items:center; gap: var(--s2); margin-top: var(--s4); font-size: var(--t-sm); }
 .check input { width:auto; min-height:0; }
@@ -439,8 +458,11 @@ textarea { min-height: 80px; resize: vertical; }
 .nowrap { white-space: nowrap; }
 
 /* Filtros: viven pegados a lo que filtran, no en una tarjeta aparte. */
-.filters { display:flex; gap: var(--s2); flex-wrap: wrap; }
-.filters select { width:auto; min-width: 168px; min-height: 32px; padding: 4px var(--s2); font-size: var(--t-sm); }
+.filters { display:flex; gap: var(--s2); flex-wrap: wrap; align-items: center; }
+.filters label { margin: 0; }
+.filters select, .filters input:is([type=date],[type=search]) { width:auto; min-height: 40px; padding: 6px var(--s3); font-size: var(--t-sm); }
+.filters select { min-width: 168px; }
+.filters .check { margin: 0 var(--s2); }
 
 .pager { display:flex; align-items:center; gap: var(--s3); margin-top: var(--s4); font-size: var(--t-sm); }
 .pager .muted { margin-inline: auto; }
@@ -482,11 +504,19 @@ input[type=range] { width: 100%; accent-color: var(--brand-2); min-height: 0; pa
 
 input[type=file] {
   width:100%; padding: var(--s2); font: inherit; font-size: var(--t-sm);
-  border: 1px dashed var(--campo); border-radius: var(--r-sm);
-  background: var(--raised); color: var(--ink-2);
+  border: 1px dashed var(--campo); border-radius: var(--r);
+  background: var(--raised); color: var(--ink-2); cursor: pointer;
 }
+input[type=file]::file-selector-button {
+  margin-right: var(--s3); padding: 7px 14px; border: 1px solid var(--line-2); border-radius: var(--r-pill);
+  background: var(--surface); color: var(--ink); font: inherit; font-weight: 600; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+input[type=file]:hover::file-selector-button { background: var(--active-soft); }
 
-.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path: inset(50%); white-space:nowrap; border:0; }
+/* Utilidad: gana siempre (un `input` dentro de un formulario no puede volver a ocupar todo el ancho). */
+.sr-only { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important;
+           overflow:hidden !important; clip-path: inset(50%) !important; white-space:nowrap !important; border:0 !important; }
 
 /* Compatibilidad con las pantallas que todavía no se rehicieron. */
 .card {
@@ -538,7 +568,7 @@ select option { background: var(--surface); color: var(--ink); }
 .quien p { margin: 0; min-width: 0; font-size: var(--t-sm); color: var(--ink-2); overflow-wrap: anywhere; line-height: 1.3; }
 .quien p span { display: block; font-size: var(--t-xs); color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; margin-top: 2px; }
 .avatar { flex: none; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
-  background: var(--brand); color: #fff;
+  background: var(--brand); color: var(--sobre-marca);
   font-family: var(--font-titulo); font-weight: 800; font-size: var(--t-base); }
 button.quiet { border-color: transparent; background: transparent; color: var(--ink-3); }
 button.quiet:hover:not(:disabled) { background: var(--active-soft); color: var(--ink); }
@@ -559,13 +589,13 @@ html[data-embed] body { background: var(--paper); }
 /* Como la entrada de la Agencia: a la izquierda el azul Santa Rosa con el mensaje, a la derecha el formulario. */
 .entrada { min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--paper); }
 .entrada-hero {
-  background-color: var(--entrada-hero); color: #fff; padding: var(--s8) var(--s7);
+  background-color: var(--entrada-hero); color: var(--sobre-marca); padding: var(--s8) var(--s7);
   display: flex; flex-direction: column; justify-content: space-between;
   border-radius: 0 56px 56px 0;
   background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
   background-size: 44px 44px;
 }
-.entrada-hero .entrada-marca { color: #fff; }
+.entrada-hero .entrada-marca { color: var(--sobre-marca); }
 .entrada-hero h2 { font-size: clamp(28px, 3.4vw, 44px); font-weight: 800; letter-spacing: -0.035em; line-height: 1.08; margin: 0 0 var(--s4); max-width: 14ch; }
 .entrada-hero p { margin: 0; color: #d6d6f5; max-width: 38ch; font-size: var(--t-md); }
 .entrada-hero small { color: #c9c8f2; }
@@ -592,9 +622,9 @@ html[data-embed] body { background: var(--paper); }
    ahí navega la cápsula de arriba, que vuelve también en pantallas angostas. */
 .menu {
   position: fixed; inset: 0 auto 0 0; width: var(--banda-w); z-index: 20;
-  display: flex; flex-direction: column; gap: var(--s4);
+  display: flex; flex-direction: column; gap: var(--s3);
   padding: var(--s5) var(--s4) var(--s4);
-  background: var(--brand); color: #fff;
+  background: var(--brand); color: var(--sobre-marca);
   border-radius: 0 var(--r-card) var(--r-card) 0;
   overflow-y: auto; overscroll-behavior: contain;
 }
@@ -610,14 +640,14 @@ html[data-embed] body { background: var(--paper); }
 }
 .menu-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .menu .it {
-  display: flex; align-items: center; gap: var(--s3); min-height: 40px; padding: 8px var(--s3);
+  display: flex; align-items: center; gap: var(--s3); min-height: 37px; padding: 7px var(--s3);
   border-radius: var(--r-sm); font-size: var(--t-sm); font-weight: 600; cursor: pointer; list-style: none;
   color: rgba(255,255,255,0.88);
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .menu summary.it::-webkit-details-marker { display: none; }
-.menu .it:hover { background: rgba(255,255,255,0.12); color: #fff; }
-.menu .it[aria-current="page"] { background: #fff; color: var(--brand); }
+.menu .it:hover { background: rgba(255,255,255,0.12); color: var(--sobre-marca); }
+.menu .it[aria-current="page"] { background: var(--sobre-marca); color: var(--brand); }
 :root[data-theme="dark"] .menu .it[aria-current="page"] { color: var(--entrada-hero); }
 .menu .it.off { opacity: 0.6; cursor: default; }
 .menu .it.off:hover { background: transparent; color: rgba(255,255,255,0.88); }
@@ -625,42 +655,43 @@ html[data-embed] body { background: var(--paper); }
 .menu details[open] > summary .chev { transform: rotate(180deg); }
 .chip {
   margin-left: auto; padding: 2px 8px; border-radius: var(--r-pill); font-size: var(--t-xs); font-weight: 700;
-  background: rgba(255,255,255,0.18); color: #fff; letter-spacing: 0.02em;
+  background: rgba(255,255,255,0.18); color: var(--sobre-marca); letter-spacing: 0.02em;
 }
 .menu .sub { display: flex; flex-direction: column; gap: 1px; margin: 2px 0 var(--s2) 22px; padding-left: var(--s3); border-left: 1px solid rgba(255,255,255,0.28); }
 .menu .sub a {
-  display: block; padding: 8px var(--s3); border-radius: var(--r-sm); font-size: var(--t-sm); font-weight: 550;
+  display: block; padding: 7px var(--s3); border-radius: var(--r-sm); font-size: var(--t-sm); font-weight: 550;
   color: rgba(255,255,255,0.82);
 }
-.menu .sub a:hover { background: rgba(255,255,255,0.12); color: #fff; }
-.menu .sub a[aria-current="page"] { background: rgba(255,255,255,0.2); color: #fff; font-weight: 700; }
+.menu .sub a:hover { background: rgba(255,255,255,0.12); color: var(--sobre-marca); }
+.menu .sub a[aria-current="page"] { background: rgba(255,255,255,0.2); color: var(--sobre-marca); font-weight: 700; }
 
 .menu-pie { display: flex; flex-direction: column; gap: var(--s3); padding-top: var(--s3); border-top: 1px solid rgba(255,255,255,0.2); }
 .menu-acciones { display: flex; flex-direction: column; gap: var(--s2); }
 .menu-acciones form { margin: 0; }
 .menu-acciones a, .menu-acciones button {
   width: 100%; min-height: 38px; padding: 8px var(--s3); border-radius: var(--r-sm); display: flex; align-items: center; gap: var(--s2);
-  font-size: var(--t-sm); font-weight: 600; background: transparent; color: #fff; border: 1px solid rgba(255,255,255,0.3);
+  font-size: var(--t-sm); font-weight: 600; background: transparent; color: var(--sobre-marca); border: 1px solid rgba(255,255,255,0.3);
 }
-.menu-acciones .principal { background: #fff; color: var(--brand); border-color: #fff; }
+.menu-acciones .principal { background: var(--sobre-marca); color: var(--brand); border-color: var(--sobre-marca); }
 :root[data-theme="dark"] .menu-acciones .principal { color: var(--entrada-hero); }
 .menu-acciones a:hover:not(.principal), .menu-acciones button:hover { background: rgba(255,255,255,0.12); }
 .menu .tema { align-self: stretch; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
 .menu .tema button { flex: 1; justify-content: center; color: rgba(255,255,255,0.8); }
-.menu .tema button[aria-pressed="true"] { background: #fff; color: var(--brand); }
+.menu .tema button[aria-pressed="true"] { background: var(--sobre-marca); color: var(--brand); }
 :root[data-theme="dark"] .menu .tema button[aria-pressed="true"] { color: var(--entrada-hero); }
 .menu-yo { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
 .menu-yo form { margin: 0; }
 .menu-yo .quien { display: flex; align-items: center; gap: var(--s2); min-width: 0; margin: 0; }
-.menu-yo .quien p { margin: 0; font-weight: 700; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff; }
+.menu-yo .quien p { margin: 0; font-weight: 700; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--sobre-marca); }
 .menu-yo .quien p span { display: block; font-weight: 500; font-size: var(--t-xs); color: rgba(255,255,255,0.7); }
-.menu-yo .salir { color: #fff; border-color: rgba(255,255,255,0.3); background: transparent; }
+.menu-yo .salir { color: var(--sobre-marca); border-color: rgba(255,255,255,0.3); background: transparent; }
 .menu-yo .salir:hover { background: rgba(255,255,255,0.12); }
 /* Con el menú, la cabecera de arriba sobra: solo queda donde el menú no está (CRM y pantallas angostas). */
 @media (min-width: 1001px) { html:not([data-embed]) .cab { display: none; } }
 
 /* ═══════════════════════════════════════════════════ agentes: herramientas y asistente «Nuevo agente» */
 .herramientas { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s3); margin: 0 0 var(--s4); }
+.herramientas .icono { width: 42px; height: 42px; } /* misma altura que el buscador y el select de al lado */
 .herramientas svg, .asistente svg { width: 17px; height: 17px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .buscar { position: relative; flex: 1 1 260px; max-width: 420px; display: block; }
 .buscar svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
@@ -685,8 +716,8 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .pasos li.hecho + li::before, .pasos li.actual::before { border-top-color: var(--brand-2); }
 .pasos .num { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line-2); font-weight: 800; position: relative; z-index: 1; }
 .pasos .actual { color: var(--ink); }
-.pasos .actual .num { background: var(--brand); border-color: var(--brand); color: #fff; }
-.pasos .hecho .num { background: var(--brand-2); border-color: var(--brand-2); color: #fff; }
+.pasos .actual .num { background: var(--brand); border-color: var(--brand); color: var(--sobre-marca); }
+.pasos .hecho .num { background: var(--brand-2); border-color: var(--brand-2); color: var(--sobre-marca); }
 .pasos .num svg { width: 16px; height: 16px; stroke-width: 2.5; }
 .asistente h3 { margin: 0; font-size: var(--t-lg); letter-spacing: -0.02em; }
 .asistente .pregunta { margin: 0 0 var(--s3); font-size: var(--t-base); }
@@ -705,7 +736,7 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .plantilla input:focus-visible + .tarjeta { outline: 2px solid var(--focus); outline-offset: 2px; }
 .plantilla.off { cursor: not-allowed; }
 .plantilla.off .tarjeta { opacity: 0.55; }
-.avatar-p { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: #fff; }
+.avatar-p { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: var(--sobre-marca); }
 .avatar-p svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .plantilla .desc { font-size: var(--t-sm); color: var(--ink-3); }
 .plantilla .chip { position: absolute; top: var(--s3); right: var(--s3); margin: 0; background: var(--warn-bg); color: var(--warn); }
@@ -742,6 +773,8 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
    configura en bloques plegables; a la derecha las instrucciones de la IA, siempre a la vista. */
 .ficha-cab h1 .proposito { color: var(--ink-3); font-weight: 600; font-size: 0.6em; letter-spacing: -0.01em; }
 .ficha-cab .right { flex-wrap: wrap; }
+/* En angosto el propósito baja a su propia línea: el punto separador quedaría colgando al principio. */
+@media (max-width: 700px) { .ficha-cab h1 .proposito { display: block; margin-top: var(--s1); } .ficha-cab h1 .sep { display: none; } }
 .ficha-cab .right form { margin: 0; }
 .ficha-cab .right .btn:not(.primary) { background: var(--surface); color: var(--ink); border-color: var(--line-2); }
 .ficha-cab .right .btn:not(.primary):hover { background: var(--active-soft); }
@@ -786,7 +819,7 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .dia { position: relative; cursor: pointer; }
 .dia input { position: absolute; opacity: 0; inset: 0; }
 .dia span { display: inline-block; padding: 7px 14px; border-radius: var(--r-pill); border: 1px solid var(--line-2); font-size: var(--t-sm); font-weight: 600; color: var(--ink-3); }
-.dia input:checked + span { background: var(--brand); border-color: var(--brand); color: #fff; }
+.dia input:checked + span { background: var(--brand); border-color: var(--brand); color: var(--sobre-marca); }
 .dia input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
 .deslizadores { display: grid; gap: var(--s3); margin: var(--s3) 0; }
 .desliza { display: grid; grid-template-columns: 110px minmax(0, 1fr) 46px; align-items: center; gap: var(--s3); font-size: var(--t-sm); font-weight: 600; }
@@ -818,7 +851,7 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .editor-barra { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
 .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-sm); background: var(--paper); border: 1px solid var(--line); }
 .seg button { min-height: 0; padding: 5px 10px; border: 0; background: transparent; font-size: var(--t-xs); font-weight: 700; color: var(--ink-3); }
-.seg button[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.seg button[aria-pressed="true"] { background: var(--brand); color: var(--sobre-marca); }
 .herr { display: inline-flex; flex-wrap: wrap; gap: 2px; }
 .herr button { min-height: 0; padding: 4px 8px; font-size: var(--t-xs); font-weight: 700; border-color: transparent; background: transparent; }
 .editor-barra .icono { margin-left: auto; width: 34px; height: 34px; }
@@ -832,7 +865,7 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .markdown ul, .markdown ol { margin: 0 0 var(--s3); padding-left: 1.3em; line-height: 1.6; color: var(--ink-2); }
 .markdown li > ul, .markdown li > ol { margin: var(--s1) 0 0; }
 .markdown code { font-size: 0.88em; padding: 1px 5px; border-radius: 5px; background: var(--active-soft); }
-.markdown blockquote { margin: 0 0 var(--s3); padding-left: var(--s3); border-left: 3px solid var(--line-2); color: var(--ink-3); }
+.markdown blockquote { margin: 0 0 var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--raised); color: var(--ink-2); }
 .editor-pie { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; padding-top: var(--s2); border-top: 1px solid var(--line); }
 .editor-pie .btn { display: inline-flex; align-items: center; gap: var(--s2); }
 .editor-pie input[data-pedido] { flex: 1 1 200px; }
@@ -847,7 +880,7 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .llamada .centrado { align-items: center; justify-content: center; text-align: center; }
 .llamada .acciones { margin-top: auto; display: flex; gap: var(--s3); align-items: center; }
 .btn.grande { align-self: flex-start; display: inline-flex; align-items: center; gap: var(--s2); padding: 12px 20px; margin-top: var(--s3); }
-.btn.peligro, button.peligro { background: var(--bad); border-color: var(--bad); color: #fff; display: inline-flex; align-items: center; gap: var(--s2); }
+.btn.peligro, button.peligro { background: var(--bad); border-color: var(--bad); color: var(--sobre-marca); display: inline-flex; align-items: center; gap: var(--s2); }
 .btn.peligro:hover, button.peligro:hover:not(:disabled) { filter: brightness(1.08); background: var(--bad); }
 .girando { width: 44px; height: 44px; border-radius: 50%; border: 4px solid var(--line-2); border-top-color: var(--brand); animation: girar 0.9s linear infinite; }
 @keyframes girar { to { transform: rotate(360deg); } }
@@ -901,12 +934,15 @@ dialog.asistente::backdrop { background: rgba(10, 12, 30, 0.55); }
 .canal h2 { margin: 0; font-size: var(--t-base); }
 .canal p { margin: 0; color: var(--ink-2); font-size: var(--t-sm); line-height: 1.55; }
 .canal .pill, .canal .chip-pronto { align-self: flex-start; margin-top: auto; }
-.canal-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--brand); color: #fff; }
+.canal-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--brand); color: var(--sobre-marca); }
 .canal.off .canal-ico { background: var(--line-2); color: var(--ink-2); }
 @media (max-width: 1100px) {
   .ficha-grid, .ficha-grid.probar { grid-template-columns: 1fr; }
   .editor, .llamada { position: static; }
+  .llamada { min-height: 0; }
 }
+/* Lo que viene debajo de la grilla de la ficha (Pruebas anteriores) necesita aire para leerse aparte. */
+.ficha-grid + .section { margin-top: var(--s7); }
 @media (prefers-reduced-motion: reduce) { .girando { animation-duration: 3s; } }
 
 /* Pautas de interfaz: textos largos que no rompen el diseño, scroll que no arrastra la página,
@@ -928,8 +964,15 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .filtros-voces { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s3); }
 .filtros-voces .buscar { flex: 1 1 240px; max-width: none; }
 .filtros-voces select { width: auto; }
+/* En el celular los tres filtros comparten una fila, debajo de la búsqueda, en vez de quedar desparejos. */
+@media (max-width: 600px) {
+  .filtros-voces .buscar { flex-basis: 100%; }
+  .filtros-voces > label:not(.buscar) { flex: 1 1 0; min-width: 0; margin: 0; }
+  .filtros-voces select { width: 100%; padding-inline: var(--s2); }
+}
 .tabla-voces tbody tr { cursor: pointer; }
-.tabla-voces tbody tr[aria-selected="true"] { background: var(--active-soft); box-shadow: inset 3px 0 0 var(--brand); }
+.tabla-voces tbody tr[aria-selected="true"] { background: var(--active-soft); }
+.tabla-voces tbody tr[aria-selected="true"] td:first-child strong { color: var(--brand); }
 .tabla-voces tbody tr:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .elegir-voz { display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; }
 .tabla-voces .icono.sonando { color: var(--brand); border-color: var(--brand); }
@@ -941,7 +984,7 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .clonar h3:first-child { margin-top: 0; }
 .grabador { padding: var(--s3) var(--s4); border: 1px solid var(--line-2); border-radius: var(--r-lg); display: flex; flex-direction: column; gap: var(--s2); }
 .grabador .leer { margin: 0; font-size: var(--t-sm); color: var(--ink-2); }
-.texto-leer { margin: 0; padding: var(--s3) var(--s4); border-left: 3px solid var(--brand); background: var(--active-soft); border-radius: 0 var(--r-sm) var(--r-sm) 0; font-size: 1.05rem; line-height: 1.6; text-wrap: pretty; }
+.texto-leer { margin: 0; padding: var(--s3) var(--s4); border: 1px solid var(--line-2); background: var(--active-soft); border-radius: var(--r); font-size: 1.05rem; line-height: 1.6; text-wrap: pretty; max-width: 70ch; }
 .grabador .controles { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); }
 .grabador .controles .resto { flex: 1; }
 .grabador .reloj { font-variant-numeric: tabular-nums; color: var(--ink-2); font-size: var(--t-sm); }
@@ -949,8 +992,22 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .grabador .nivel::after { content: ""; position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--nivel)); background: var(--ok); transition: transform 80ms linear; }
 .grabador [data-grabar].grabando { color: var(--bad); border-color: var(--bad); }
 .grabador audio { width: 100%; }
-.check { display: flex; align-items: flex-start; gap: var(--s2); margin: var(--s3) 0; font-size: var(--t-sm); line-height: 1.5; cursor: pointer; }
-.check input { margin-top: 3px; }
-.subir { cursor: pointer; }
+.grabador [data-aviso]:empty { display: none; }
+.clonar .check { align-items: flex-start; margin: var(--s3) 0; font-weight: 500; line-height: 1.5; cursor: pointer; }
+.clonar .check input { margin-top: 3px; flex: none; }
+.subir { position: relative; cursor: pointer; }
 .subir:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .grabador .nivel::after { transition: none; } }
+
+/* Simulador: llamar, medidores de nivel y registro */
+.sim-fila { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s3); }
+.sim-medidor { margin-top: var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
+.sim-nivel { display: flex; align-items: center; gap: var(--s3); font-size: var(--t-sm); color: var(--ink-3); }
+.sim-nivel > span { width: 64px; flex: none; }
+.barra-nivel { flex: 1; height: 8px; border-radius: 4px; background: var(--line-2); overflow: hidden; }
+.barra-nivel .relleno { --nivel: 0; height: 100%; transform-origin: left; transform: scaleX(var(--nivel)); transition: transform 60ms linear; }
+.barra-nivel .mic { background: var(--brand-2); }
+.barra-nivel .bot { background: var(--ok); }
+.sim-log { margin: 0; max-height: 260px; overflow: auto; white-space: pre-wrap; font-size: var(--t-sm); }
+.sim-log:empty::before { content: attr(data-vacio); color: var(--ink-3); font-family: var(--font); }
+@media (prefers-reduced-motion: reduce) { .barra-nivel .relleno { transition: none; } }

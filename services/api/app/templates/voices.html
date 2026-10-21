@@ -35,7 +35,7 @@
         <tr>
           <td><strong>{{ v.nombre }}</strong>{% if v.predeterminada %} <span class="hint">· predeterminada</span>{% endif %}
             {% if v.descripcion %}<span class="sub-line">{{ v.descripcion }}</span>{% endif %}</td>
-          <td><span class="chip-dato">{{ v.genero }}</span> <span class="chip-dato">{{ v.tipo }}</span> <span class="chip-dato">Gratis</span></td>
+          <td>{% if v.genero %}<span class="chip-dato">{{ v.genero }}</span>{% endif %} <span class="chip-dato">{{ v.tipo }}</span> <span class="chip-dato">Gratis</span></td>
           <td><span class="sub-line">{{ v.motor_nombre }}</span><span class="hint">{{ v.detalle }}</span></td>
           <td>{% set agentes_voz = en_uso.get(v.id, []) %}{% if agentes_voz %}{{ agentes_voz | join(", ") }}{% else %}<span class="hint">—</span>{% endif %}</td>
           <td class="num nowrap">
@@ -52,7 +52,7 @@
       </tbody>
     </table>
   </div></div>
-  <p class="hint" data-estado-biblioteca role="status" aria-live="polite">Tocá ▶ para escuchar cada voz.</p>
+  <p class="hint" data-estado-biblioteca role="status" aria-live="polite">{% if voces | selectattr("escuchar") | list %}Tocá ▶ para escuchar cada voz.{% endif %}</p>
 </section>
 
 <section class="section" id="clonar">
@@ -77,9 +77,9 @@
     <h3>1. Quién habla</h3>
     <div class="row">
       <div><label for="cl-nombre">Nombre de la voz</label>
-        <input id="cl-nombre" name="nombre" maxlength="40" placeholder="Lucía, taller" required></div>
+        <input id="cl-nombre" type="text" name="nombre" maxlength="40" placeholder="Lucía, taller" required></div>
       <div><label for="cl-persona">Nombre y apellido de la persona</label>
-        <input id="cl-persona" name="persona" maxlength="80" placeholder="Lucía Benítez" required></div>
+        <input id="cl-persona" type="text" name="persona" maxlength="80" placeholder="Lucía Benítez" required></div>
       <div><label for="cl-genero">Voz de</label>
         <select id="cl-genero" name="genero" required><option value="">Elegí</option><option>Mujer</option><option>Hombre</option></select></div>
     </div>

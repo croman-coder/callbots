@@ -73,9 +73,9 @@
       <tbody>
         {% for p in pruebas %}
         <tr>
-          <td class="tnum">{{ p.iniciada_en | fecha("%d/%m %H:%M") }}</td>
+          <td class="tnum nowrap">{{ p.iniciada_en | fecha("%d/%m/%y %H:%M") }}</td>
           <td>{{ p.usuario.split("@")[0] }}</td>
-          <td class="num tnum">{% if p.duracion_seconds is not none %}{{ p.duracion_seconds // 60 }}:{{ "%02d" | format(p.duracion_seconds % 60) }}{% else %}—{% endif %}</td>
+          <td class="num tnum">{{ p.duracion_seconds | duracion }}</td>
           <td>{% if p.valoracion == "bien" %}<span class="pill completed">bien</span>{% elif p.valoracion == "mal" %}<span class="pill failed">mal</span>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td>
             {% if p.transcripcion %}

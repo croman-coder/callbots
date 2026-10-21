@@ -31,36 +31,28 @@
     <strong>modo demo</strong>: no toca Bitrix, no marca destinatarios y no
     guarda resultados.
   </p>
-  <p style="color:var(--muted);margin-bottom:0">
+  <p class="hint" style="margin-bottom:0">
     Mientras el bot habla, el micrófono queda en pausa: evita que se escuche
     a sí mismo por los parlantes y se conteste solo. Esperá a que termine la
     pregunta para responder. Con auriculares la conversación es más natural.
   </p>
 </div>
 
-<div class="card">
-  <button id="btn" class="btn">Llamar</button>
-  <span id="estado" style="margin-left:14px;color:var(--muted)">Listo para llamar</span>
+<div class="card sim">
+  <div class="sim-fila">
+    <button id="btn" class="btn primary">Llamar</button>
+    <span id="estado" class="hint" role="status" aria-live="polite">Listo para llamar</span>
+  </div>
 
-  <div id="medidor" style="margin-top:18px;display:none">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <span style="width:70px;color:var(--muted);font-size:13px">Tu voz</span>
-      <div style="flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden">
-        <div id="nivel-mic" style="height:100%;width:0;background:var(--accent);transition:width .06s"></div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:10px">
-      <span style="width:70px;color:var(--muted);font-size:13px">El bot</span>
-      <div style="flex:1;height:8px;background:var(--line);border-radius:4px;overflow:hidden">
-        <div id="nivel-bot" style="height:100%;width:0;background:var(--ok);transition:width .06s"></div>
-      </div>
-    </div>
+  <div id="medidor" class="sim-medidor" hidden>
+    <div class="sim-nivel"><span>Tu voz</span><div class="barra-nivel"><div id="nivel-mic" class="relleno mic"></div></div></div>
+    <div class="sim-nivel"><span>El bot</span><div class="barra-nivel"><div id="nivel-bot" class="relleno bot"></div></div></div>
   </div>
 </div>
 
 <div class="card">
   <h2 style="margin-top:0">Registro</h2>
-  <pre id="log" style="margin:0;max-height:260px;overflow:auto;font-size:13px;white-space:pre-wrap"></pre>
+  <pre id="log" class="sim-log" data-vacio="Acá se va anotando la llamada: lo que dice el bot, lo que entendió de tu respuesta y cuándo corta."></pre>
 </div>
 
 <script>
@@ -219,7 +211,7 @@
       var salida = ev.outputBuffer.getChannelData(0);
 
       var picoBot = llenarSalida(salida, ctx.sampleRate);
-      nivelBot.style.width = Math.min(100, picoBot * 250) + "%";
+      nivelBot.style.setProperty("--nivel", Math.min(1, picoBot * 2.5));
 
       // El bot está hablando si lo que acabamos de reproducir tiene energía.
       // NO se puede usar "hay audio en la cola": el voice-agent escribe una
@@ -236,10 +228,10 @@
         // micrófono lo capta por los parlantes, el VAD lo toma por respuesta
         // y el bot se contesta solo.
         muestras.fill(0);
-        nivelMic.style.width = "0";
+        nivelMic.style.setProperty("--nivel", 0);
         estado.textContent = "El bot está hablando…";
       } else {
-        nivelMic.style.width = Math.min(100, rms(entrada) * 300) + "%";
+        nivelMic.style.setProperty("--nivel", Math.min(1, rms(entrada) * 3));
         estado.textContent = "Te escucho";
       }
       ws.send(muestras.buffer);
@@ -250,15 +242,15 @@
 
     enCurso = true;
     btn.textContent = "Cortar";
-    medidor.style.display = "block";
+    medidor.hidden = false;
   }
 
   function cortar() {
     enCurso = false;
     estado.textContent = "Llamada terminada";
-    medidor.style.display = "none";
-    nivelMic.style.width = "0";
-    nivelBot.style.width = "0";
+    medidor.hidden = true;
+    nivelMic.style.setProperty("--nivel", 0);
+    nivelBot.style.setProperty("--nivel", 0);
 
     if (proc) { proc.disconnect(); proc.onaudioprocess = null; proc = null; }
     if (fuente) { fuente.disconnect(); fuente = null; }

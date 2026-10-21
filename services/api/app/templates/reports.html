@@ -51,7 +51,7 @@
     <select name="outcome" aria-label="Resultado">
       <option value="">Todos los resultados</option>
       {% for o in outcomes %}
-      <option value="{{ o.value }}" {% if f.outcome == o.value %}selected{% endif %}>{{ o.value }}</option>
+      <option value="{{ o.value }}" {% if f.outcome == o.value %}selected{% endif %}>{{ o | estado }}</option>
       {% endfor %}
     </select>
 
@@ -192,19 +192,17 @@
           {% set s = a.satisfaction_score if a else none %}
           <tr>
             <td class="nowrap">{{ c.started_at | fecha("%d/%m/%y %H:%M") }}</td>
-            <td>{{ c.target.contact_name or "—" }}</td>
-            <td><span class="mono">{{ c.target.phone or "—" }}</span></td>
+            <td class="nowrap">{{ c.target.contact_name or "—" }}</td>
+            <td class="tnum nowrap">{{ c.target.phone or "—" }}</td>
             <td>{{ c.target.campaign.name if c.target.campaign else "—" }}</td>
             <td>
               <span class="tag {{ c.outcome.value if c.outcome else '' }}">
-                {{ c.outcome.value if c.outcome else "en curso" }}
+                {{ c.outcome | estado if c.outcome else "en curso" }}
               </span>
               {% if a and a.requires_followup %}<span class="flag" title="{{ a.followup_reason or '' }}">⚠</span>{% endif %}
             </td>
             <td class="num tnum nowrap">
-              {%- if c.duration_seconds -%}
-                {{ c.duration_seconds // 60 }}m {{ c.duration_seconds % 60 }}s
-              {%- else -%}—{%- endif -%}
+              {{- c.duration_seconds | duracion if c.duration_seconds else "—" -}}
             </td>
             <td class="num tnum">{{ c.questions_answered }}/{{ c.questions_asked }}</td>
             <td class="num tnum">
@@ -223,7 +221,7 @@
                 <span class="tag {{ a.sentiment }}">{{ a.sentiment }}</span>
               {%- else -%}—{%- endif -%}
             </td>
-            <td><a class="link" href="/calls/{{ c.id }}">ver</a></td>
+            <td class="num"><a class="link" href="/calls/{{ c.id }}" aria-label="Ver la llamada de {{ c.target.contact_name or c.target.phone or c.id }}">Ver</a></td>
           </tr>
         {% endfor %}
         </tbody>
@@ -260,10 +258,10 @@
   <div class="howto">
     <p>Dos hojas, porque son dos preguntas distintas:</p>
     <ul>
-      <li><strong>Llamadas</strong> — una fila por llamada y <strong>una columna por
+      <li><strong>Llamadas:</strong> una fila por llamada y <strong>una columna por
         pregunta</strong>, con puntaje, sentimiento, motivo de la advertencia y el
         registro de Bitrix. Es la hoja para filtrar y leer.</li>
-      <li><strong>Respuestas</strong> — una fila por respuesta, con la
+      <li><strong>Respuestas:</strong> una fila por respuesta, con la
         transcripción textual de lo que dijo el cliente y la confianza del
         reconocimiento de voz. Es la que sirve para tablas dinámicas.</li>
     </ul>

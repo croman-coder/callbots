@@ -25,6 +25,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from app import etiquetas
+from app.etiquetas import con_mayuscula
 from app.models import CallAttempt, QuestionType
 from app.services.scoring import SATISFACTORY_MIN, is_satisfactory, to_scale_10
 
@@ -38,14 +40,7 @@ MAX_FILAS = 20_000
 ENCABEZADO_FONDO = PatternFill("solid", fgColor="1F2933")
 ENCABEZADO_FUENTE = Font(bold=True, color="FFFFFF", size=11)
 
-RESULTADO_ES = {
-    "completed": "Completada",
-    "partial": "Parcial",
-    "no_answer": "No atendió",
-    "busy": "Ocupado",
-    "rejected": "Rechazada",
-    "failed": "Error técnico",
-}
+RESULTADO_ES = {clave: con_mayuscula(texto) for clave, texto in etiquetas.RESULTADO.items()}
 
 
 def _local(momento: datetime | None, tz: ZoneInfo) -> datetime | None:

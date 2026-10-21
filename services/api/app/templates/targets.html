@@ -35,7 +35,7 @@
         <select name="status" onchange="this.form.submit()" aria-label="Filtrar por estado">
           <option value="">Todos los estados</option>
           {% for s in statuses %}
-          <option value="{{ s.value }}" {% if current_status == s.value %}selected{% endif %}>{{ s.value }}</option>
+          <option value="{{ s.value }}" {% if current_status == s.value %}selected{% endif %}>{{ s | estado("destinatario") }}</option>
           {% endfor %}
         </select>
         <select name="campaign_id" onchange="this.form.submit()" aria-label="Filtrar por campaña">
@@ -59,7 +59,7 @@
             <th scope="col">Ingreso al taller</th>
             <th scope="col">Agendado</th>
             <th scope="col">Estado</th>
-            <th scope="col" class="num">Int.</th>
+            <th scope="col" class="num">Intentos</th>
             <th scope="col"><span class="sr-only">Acciones</span></th>
           </tr>
         </thead>
@@ -71,11 +71,11 @@
               {% if t.bitrix_title %}<span class="sub-line">{{ t.bitrix_title }}</span>{% endif %}
               {% if t.bitrix_entity_id %}<span class="sub-line mono">{{ t.bitrix_entity_type_id }}#{{ t.bitrix_entity_id }}</span>{% endif %}
             </td>
-            <td class="mono">{{ t.phone or "—" }}</td>
-            <td class="muted tnum">{{ t.trigger_at | fecha("%d/%m/%y %H:%M") }}</td>
-            <td class="tnum">{{ t.scheduled_at | fecha("%d/%m/%y %H:%M") }}</td>
+            <td class="tnum nowrap">{{ t.phone or "—" }}</td>
+            <td class="muted tnum nowrap">{{ t.trigger_at | fecha("%d/%m/%y %H:%M") }}</td>
+            <td class="tnum nowrap">{{ t.scheduled_at | fecha("%d/%m/%y %H:%M") }}</td>
             <td>
-              <span class="pill {{ t.status.value }}">{{ t.status.value }}</span>
+              <span class="pill {{ t.status.value }}">{{ t.status | estado("destinatario") }}</span>
               {% if t.last_error %}<span class="sub-line err">{{ t.last_error[:80] }}</span>{% endif %}
             </td>
             <td class="num">{{ t.attempts }}</td>

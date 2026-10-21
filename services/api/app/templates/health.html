@@ -37,7 +37,7 @@
           {% for c in checks %}
           <tr>
             <td class="name">{{ c.name }}</td>
-            <td><span class="pill {{ 'completed' if c.ok else 'failed' }}">{{ "ok" if c.ok else "falla" }}</span></td>
+            <td>{% if not c.ok %}<span class="pill failed">falla</span>{% elif c.aviso %}<span class="pill pending">aviso</span>{% else %}<span class="pill completed">ok</span>{% endif %}</td>
             <td class="muted">{{ c.detail }}</td>
           </tr>
           {% endfor %}
@@ -61,7 +61,7 @@
           <tr><th scope="row">Ventana horaria</th>
               <td>
                 <span class="tnum">{{ settings.call_window_start.strftime("%H:%M") }} – {{ settings.call_window_end.strftime("%H:%M") }}</span>
-                <span class="muted">· días</span> <span class="mono">{{ settings.call_window_days }}</span>
+                <span class="muted">·</span> {{ dias_texto }}
               </td></tr>
           <tr><th scope="row">Llamadas simultáneas</th><td class="tnum">{{ settings.max_concurrent_calls }}</td></tr>
           <tr><th scope="row">Máximo de intentos</th>

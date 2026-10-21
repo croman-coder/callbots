@@ -51,7 +51,7 @@ def _genero(perfil: dict) -> str:
         return "Mujer"
     if re.search(r"\b(hombre|masculin)", texto):
         return "Hombre"
-    return "—"
+    return ""  # sin dato: no se muestra la etiqueta
 
 
 def _nombre_limpio(nombre: str) -> str:

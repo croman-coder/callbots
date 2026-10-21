@@ -6,7 +6,7 @@
 <div class="bar ficha-cab">
   <div>
     <p class="crumb"><a class="link" href="/campaigns">← Agentes de voz</a></p>
-    <h1>{{ campaign.name }}{% if campaign.description %} <span class="proposito">· {{ campaign.description }}</span>{% endif %}</h1>
+    <h1>{{ campaign.name }}{% if campaign.description %} <span class="proposito"><span class="sep" aria-hidden="true">· </span>{{ campaign.description }}</span>{% endif %}</h1>
   </div>
   <div class="right">
     <span class="pill {{ 'completed' if campaign.is_active else 'no_answer' }}">{{ "activo" if campaign.is_active else "pausado" }}</span>
