@@ -119,6 +119,12 @@ services:
       ELEVENLABS_MODEL: ${ELEVENLABS_MODEL:-eleven_multilingual_v2}
       # Base del Cotizador de repuestos, usuario de solo lectura (docs/datos-en-vivo.md). Vacía = sin datos en vivo.
       REPUESTOS_DATABASE_URL: ${REPUESTOS_DATABASE_URL:-}
+      # Avisos por WhatsApp (YCloud), con un número propio de posventa (docs/avisos-whatsapp.md). Vacías = no sale nada.
+      YCLOUD_API_KEY: ${YCLOUD_API_KEY:-}
+      YCLOUD_NUMERO: ${YCLOUD_NUMERO:-}
+      YCLOUD_WABA_ID: ${YCLOUD_WABA_ID:-}
+      YCLOUD_WEBHOOK_SECRETO: ${YCLOUD_WEBHOOK_SECRETO:-}
+      PANEL_URL: ${PANEL_URL:-https://callbot.santarosa.lat}
     volumes:
       - voices:/voices
       - recordings:/recordings
@@ -196,6 +202,12 @@ services:
       ASTERISK_CALLERID: ${ASTERISK_CALLERID}
       ASTERISK_DIAL_TIMEOUT: ${ASTERISK_DIAL_TIMEOUT}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Avisos por WhatsApp (YCloud), con un número propio de posventa (docs/avisos-whatsapp.md). Vacías = no sale nada.
+      YCLOUD_API_KEY: ${YCLOUD_API_KEY:-}
+      YCLOUD_NUMERO: ${YCLOUD_NUMERO:-}
+      YCLOUD_WABA_ID: ${YCLOUD_WABA_ID:-}
+      YCLOUD_WEBHOOK_SECRETO: ${YCLOUD_WEBHOOK_SECRETO:-}
+      PANEL_URL: ${PANEL_URL:-https://callbot.santarosa.lat}
       CALLBOT_LLM_MODEL: ${CALLBOT_LLM_MODEL:-claude-haiku-5-5}
       CALLBOT_LLM_TIMEOUT: ${CALLBOT_LLM_TIMEOUT:-8}
       VOICEBOX_URL: ${VOICEBOX_URL}

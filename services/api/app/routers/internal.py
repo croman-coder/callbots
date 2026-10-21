@@ -720,9 +720,13 @@ def recepcion_fin(caso_id: int, body: RecepcionFin, db: Session = Depends(get_db
 
 
 def avisar_caso(caso: Caso) -> None:
-    """Manda el caso derivado a los webhooks del agente (en segundo plano). Las pruebas no avisan a nadie."""
+    """Avisa el caso derivado: a los webhooks del agente y, si el área tiene WhatsApp, a su responsable. Se llama
+    después del commit. Las pruebas no avisan a nadie."""
     if caso.estado != "abierto" or caso.origen in recepcion.DE_PRUEBA:
         return
+    from app import avisos
+
+    avisos.por_caso_derivado(caso.id)
     if not any(w.get("activo", True) for w in caso.campaign.webhooks or []):
         return
     from app.scheduler.tasks import enviar_caso

@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agenda
+from app import agenda, avisos
 from app.db import get_db
 from app.deps import require_admin
 from app.models import TallerServicio, TallerSucursal, TallerTurno
@@ -104,6 +104,7 @@ def nuevo_turno(request: Request, sucursal_id: int = Form(...), servicio_id: int
         db.rollback()
         return _volver(destino, **vuelta, error=str(exc))
     db.commit()
+    avisos.por_turno_reservado(turno.id)
     return _volver(destino, **vuelta, ok=f"Turno de las {agenda.hora_texto(turno.inicio)} reservado en la bahía {turno.bahia}.")
 
 
@@ -118,6 +119,8 @@ def estado(request: Request, turno_id: int, estado: str = Form(...), db: Session
     except ValueError:
         return _volver("/agenda", **vuelta, error="Elegí un estado de la lista.")
     db.commit()
+    if estado == "listo":
+        avisos.por_vehiculo_listo(turno.id)
     return _volver("/agenda", **vuelta, ok=f"Turno de {turno.cliente_nombre or 'sin nombre'}: {agenda.ESTADOS[estado].lower()}.")
 
 

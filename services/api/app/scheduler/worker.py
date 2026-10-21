@@ -75,6 +75,11 @@ celery_app.conf.update(
             "task": "callbot.watchdog",
             "schedule": 120.0,
         },
+        # Recordatorios de turnos de taller por WhatsApp (el día anterior, desde la hora elegida en Avisos)
+        "recordatorios-turnos": {
+            "task": "callbot.recordatorios_turnos",
+            "schedule": 900.0,
+        },
         # Reintenta los envíos a Bitrix que fallaron
         "retry-bitrix-sync": {
             "task": "callbot.retry_failed_writebacks",

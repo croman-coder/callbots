@@ -131,6 +131,16 @@ class Settings(BaseSettings):
     # recepción no consulta repuestos. Llega por la red interna `callbot-cotizador` (ver docs/datos-en-vivo.md).
     repuestos_database_url: str = Field("", validation_alias="REPUESTOS_DATABASE_URL")
 
+    # --- Avisos por WhatsApp (app/avisos.py, por YCloud) ---
+    # Un número propio de posventa: NO el de Botika (ventas), porque las respuestas del cliente le llegarían al bot de
+    # ventas. Sin clave o sin número, los avisos se registran como «sin configurar» y no sale nada.
+    ycloud_api_key: str = Field("", validation_alias="YCLOUD_API_KEY")
+    ycloud_numero: str = Field("", validation_alias="YCLOUD_NUMERO")  # +595…, el que manda los avisos
+    ycloud_waba_id: str = Field("", validation_alias="YCLOUD_WABA_ID")  # para pedir y consultar plantillas
+    ycloud_webhook_secreto: str = Field("", validation_alias="YCLOUD_WEBHOOK_SECRETO")
+    # Para los enlaces de los avisos internos («ver el caso»).
+    panel_url: str = Field("https://callbot.santarosa.lat", validation_alias="PANEL_URL")
+
 
     @field_validator("call_window_start", "call_window_end", mode="before")
     @classmethod

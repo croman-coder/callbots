@@ -51,7 +51,12 @@ def bloque(caso, db: Session | None = None) -> str:  # noqa: ANN001 - Caso
 
 def _agenda(pedido: dict, telefono: str | None, origen: str, cliente: str | None) -> tuple[str, int | None]:
     with session_scope() as db:
-        return agenda.consultar(db, pedido, telefono_llamada=telefono, origen=origen, cliente=cliente)
+        texto, turno_id = agenda.consultar(db, pedido, telefono_llamada=telefono, origen=origen, cliente=cliente)
+    if turno_id:
+        from app import avisos
+
+        avisos.por_turno_reservado(turno_id)  # ya con commit; un turno de prueba no avisa a nadie
+    return texto, turno_id
 
 
 def consultor(caso) -> Callable[[dict], Awaitable[str]]:  # noqa: ANN001

@@ -409,6 +409,33 @@ def enviar_caso(caso_id: int) -> dict:
     return {"enviados": enviados}
 
 
+@shared_task(name="callbot.enviar_aviso", bind=True, max_retries=3, default_retry_delay=60)
+def enviar_aviso(self, envio_id: int) -> dict:
+    """Manda un aviso por WhatsApp (app/avisos.py). Sin conexión se reintenta; un rechazo de YCloud queda como fallo."""
+    import httpx
+
+    from app import avisos
+    from app.models import WhatsappEnvio
+
+    with session_scope() as db:
+        envio = db.get(WhatsappEnvio, envio_id)
+        if envio is None or envio.estado != "pendiente":
+            return {"estado": getattr(envio, "estado", None)}
+        try:
+            avisos.enviar(envio)
+        except httpx.TransportError as exc:
+            raise self.retry(exc=exc) from exc
+        return {"estado": envio.estado}
+
+
+@shared_task(name="callbot.recordatorios_turnos")
+def recordatorios_turnos() -> dict:
+    """El día anterior a cada turno, a la hora elegida en Avisos: el recordatorio por WhatsApp."""
+    from app import avisos
+
+    return {"recordatorios": avisos.recordatorios()}
+
+
 # ---------------------------------------------------------------------------
 # 5. Watchdog
 # ---------------------------------------------------------------------------

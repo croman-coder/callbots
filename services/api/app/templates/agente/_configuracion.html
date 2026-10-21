@@ -65,6 +65,8 @@
         <input type="text" name="ar_responsable" maxlength="120" value="{{ a.responsable if a else '' }}" placeholder="Nombre y apellido" autocomplete="off"></label>
       <label class="area-correo">Correo
         <input type="email" name="ar_correo" maxlength="160" value="{{ a.correo if a else '' }}" placeholder="repuestos@santarosa.com.py" autocomplete="off" spellcheck="false"></label>
+      <label class="area-whatsapp">WhatsApp del responsable <span class="hint">· le avisa cada caso nuevo</span>
+        <input type="tel" name="ar_whatsapp" maxlength="30" inputmode="tel" value="{{ (a.whatsapp or '') if a else '' }}" placeholder="0981 123 456" autocomplete="off"></label>
       <label class="area-plazo">Plazo (h)
         <input type="number" name="ar_plazo" min="1" max="168" value="{{ a.plazo_horas if a else 24 }}" required></label>
       <button type="button" class="btn mini quiet danger area-quitar" data-area-quitar>Quitar</button>

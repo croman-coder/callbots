@@ -137,6 +137,7 @@ def normalizar_areas(filas: list[dict]) -> list[dict]:
             "atiende": _limpio(fila.get("atiende"), 300),
             "responsable": _limpio(fila.get("responsable"), 120),
             "correo": correo if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", correo) else "",
+            "whatsapp": _limpio(fila.get("whatsapp"), 30),
             "plazo_horas": _plazo(fila.get("plazo_horas")),
         })
         if len(salida) >= MAX_AREAS:

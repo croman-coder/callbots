@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% set nav = "avisos" %}
+{% block title %}Avisos por WhatsApp · Callbot{% endblock %}
+
+{% block topbar %}
+<div class="bar">
+  <div>
+    <h1>Avisos por WhatsApp</h1>
+    <p class="lede">Confirmación y recordatorio del turno, vehículo listo y casos nuevos para cada área</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block content %}
+{% if ok %}<div class="notice ok" role="status">{{ ok }}</div>{% endif %}
+{% if error %}<div class="notice bad" role="alert">{{ error }}</div>{% endif %}
+
+<section class="section">
+  <header><h2>Conexión</h2><span class="note">Por YCloud, con un número de WhatsApp Business propio de posventa</span></header>
+  {% if configurado %}
+  <p class="statement"><span class="pill completed">conectado</span> Los avisos salen del {{ numero }}.
+    {% if not hay_waba %}<span class="hint">Falta el WABA ID: sin él no se puede pedir ni ver la aprobación de las plantillas.</span>{% endif %}
+    {% if not hay_secreto %}<span class="hint">Falta el secreto del webhook: sin él no se sabe si cada aviso se entregó o falló.</span>{% endif %}</p>
+  {% else %}
+  <div class="panel-form">
+    <p style="margin-top:0"><span class="pill no_answer">sin conectar</span> Nada sale todavía: cada aviso queda anotado abajo como «sin configurar», para ver qué se habría mandado.</p>
+    <p>Hace falta un número de WhatsApp Business <strong>propio de posventa</strong> en YCloud. No el de Botika: si el cliente responde un aviso, le contestaría el bot de ventas.</p>
+    <p class="hint" style="margin-bottom:0">Para conectarlo, en una terminal: <code>ssh -t srpy-servidor ./poner-clave-ycloud.sh</code>. Pide la clave de API (sin mostrarla), el número y el WABA ID, y la guarda en el servidor. Después, en YCloud → Webhooks, apuntá <code>{{ webhook_url }}</code> al evento <code>whatsapp.message.updated</code>.</p>
+  </div>
+  {% endif %}
+  {% if error_meta %}<p class="hint err">No se pudo leer el estado de las plantillas: {{ error_meta }}</p>{% endif %}
+</section>
+
+<form method="post" action="/avisos/config" autocomplete="off">
+<section class="section">
+  <header><h2>Qué se avisa</h2><span class="note">WhatsApp solo deja escribir primero con plantillas aprobadas por Meta: cada aviso usa una</span></header>
+  <div class="avisos-lista">
+    {% for clave, e in eventos.items() %}
+    {% set c = cfg[clave] %}
+    {% set enmeta = meta.get(c.plantilla) %}
+    <article class="aviso-evento">
+      <div class="aviso-cab">
+        <label class="check"><input type="checkbox" name="activo_{{ clave }}" value="1" {% if c.activo %}checked{% endif %}> <strong>{{ e.titulo }}</strong></label>
+        <span class="hint">{{ e.a_quien }} · {{ e.cuando }}</span>
+      </div>
+      <p class="aviso-texto">{{ texto_con(clave, e.ejemplo) }}</p>
+      <div class="fila-campos">
+        <label>Plantilla <input type="text" name="plantilla_{{ clave }}" maxlength="120" value="{{ c.plantilla or e.plantilla }}" spellcheck="false"></label>
+        <label>Idioma <input type="text" name="idioma_{{ clave }}" maxlength="10" value="{{ c.idioma }}" spellcheck="false"></label>
+        {% if e.hora is not none %}<label>El día anterior a las <input type="time" name="hora_{{ clave }}" value="{{ c.hora or e.hora }}"></label>{% endif %}
+        <div class="aviso-meta">
+          {% if enmeta %}
+            {% set est = (enmeta.estado or "") | upper %}
+            <span class="pill {{ 'completed' if est == 'APPROVED' else ('failed' if est in ('REJECTED', 'DISABLED', 'PAUSED') else 'pending') }}">{{ {"APPROVED": "aprobada", "PENDING": "en revisión", "REJECTED": "rechazada"}.get(est, est | lower) }}</span>
+            {% if enmeta.motivo %}<span class="sub-line err">{{ enmeta.motivo }}</span>{% endif %}
+          {% elif configurado and hay_waba %}
+            <span class="pill no_answer">no existe en Meta</span>
+            <button type="submit" class="btn mini" form="aprobar-{{ clave }}">Pedir aprobación</button>
+          {% else %}<span class="hint">Estado en Meta: se ve al conectar el número</span>{% endif %}
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  <p class="actions"><button type="submit" class="btn primary">Guardar</button>
+    <span class="hint">Prendé cada aviso recién cuando su plantilla esté aprobada: si no, WhatsApp lo rechaza.</span></p>
+</section>
+</form>
+{% for clave in eventos %}<form id="aprobar-{{ clave }}" method="post" action="/avisos/plantillas" hidden><input type="hidden" name="evento" value="{{ clave }}"></form>{% endfor %}
+
+<section class="section">
+  <header><h2>Probar</h2><span class="note">Manda el aviso con los datos de ejemplo al número que pongas</span></header>
+  <form method="post" action="/avisos/prueba" class="fila-revision" autocomplete="off">
+    <label class="sr-only" for="p-evento">Aviso</label>
+    <select id="p-evento" name="evento">{% for clave, e in eventos.items() %}<option value="{{ clave }}">{{ e.titulo }}</option>{% endfor %}</select>
+    <label class="sr-only" for="p-tel">Celular</label>
+    <input id="p-tel" type="tel" name="telefono" inputmode="tel" maxlength="30" placeholder="0981 123 456" required>
+    <button type="submit" class="btn" {% if not configurado %}disabled{% endif %}>Mandar prueba</button>
+  </form>
+</section>
+
+<section class="section">
+  <header><h2>Últimos avisos</h2><span class="note">Lo entregado y lo leído lo informa WhatsApp por el webhook</span></header>
+  <div class="tablewrap">
+    {% if envios %}
+    <div class="scroll"><table>
+      <thead><tr><th scope="col">Cuándo</th><th scope="col">Aviso</th><th scope="col">A quién</th><th scope="col">Mensaje</th><th scope="col">Estado</th></tr></thead>
+      <tbody>
+        {% for v in envios %}
+        <tr>
+          <td class="tnum nowrap">{{ v.created_at | fecha("%d/%m %H:%M") }}</td>
+          <td>{{ eventos[v.evento].titulo if v.evento in eventos else v.evento }}{% if v.prueba %} <span class="chip-dato">prueba</span>{% endif %}
+            {% if v.turno_id %}<span class="sub-line">turno n.º {{ v.turno_id }}</span>{% endif %}
+            {% if v.caso_id %}<span class="sub-line"><a class="link" href="/casos/{{ v.caso_id }}">caso #{{ v.caso_id }}</a></span>{% endif %}</td>
+          <td>{{ v.nombre or "—" }}<span class="sub-line tnum">{{ v.destino or "sin teléfono" }}</span></td>
+          <td class="aviso-celda">{{ texto_con(v.evento, v.variables or []) if v.evento in eventos else "" }}</td>
+          <td><span class="pill {{ {'enviado':'pending','entregado':'completed','leido':'completed','fallo':'failed','pendiente':'calling'}.get(v.estado, 'no_answer') }}">{{ estados.get(v.estado, v.estado) }}</span>
+            {% if v.error %}<span class="sub-line err">{{ v.error }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <p class="empty"><strong>Todavía no hubo avisos</strong>Aparecen cuando se reserva un turno, un vehículo pasa a «listo», llega el día anterior al turno o un área recibe un caso.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -519,10 +519,10 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
     # Recepción: áreas en listas paralelas (una fila por área; sin nombre se descarta) y los límites del agente.
     if "ar_enviado" in form:
         filas = [
-            {"nombre": n, "atiende": a, "responsable": r, "correo": c, "plazo_horas": h}
-            for n, a, r, c, h in zip_longest(
+            {"nombre": n, "atiende": a, "responsable": r, "correo": c, "plazo_horas": h, "whatsapp": w}
+            for n, a, r, c, h, w in zip_longest(
                 form.getlist("ar_nombre"), form.getlist("ar_atiende"), form.getlist("ar_responsable"),
-                form.getlist("ar_correo"), form.getlist("ar_plazo"), fillvalue="",
+                form.getlist("ar_correo"), form.getlist("ar_plazo"), form.getlist("ar_whatsapp"), fillvalue="",
             )
         ]
         campaign.areas = recepcion.normalizar_areas(filas) or None

@@ -1154,6 +1154,7 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .area-fila .area-atiende { grid-column: 1 / -1; }
 .area-fila .area-resp { grid-column: 1; }
 .area-fila .area-correo { grid-column: 2 / -1; }
+.area-fila .area-whatsapp { grid-column: 1 / -1; }
 .area-fila .area-quitar { grid-column: 1 / -1; justify-self: end; }
 @media (max-width: 560px) {
   .area-fila .area-resp, .area-fila .area-correo { grid-column: 1 / -1; }
@@ -1207,3 +1208,12 @@ tr.atenuada td { color: var(--ink-3); }
 .tabla-servicios input[type="number"] { width: 72px; text-align: right; }
 .tabla-servicios tr.nueva input { background: var(--raised); }
 .tabla-servicios td:first-child input[type="text"] { min-width: 190px; }
+
+/* Avisos por WhatsApp */
+.avisos-lista { display: flex; flex-direction: column; gap: var(--s3); }
+.aviso-evento { padding: var(--s4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.aviso-cab { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s2) var(--s3); }
+.aviso-cab .check { margin: 0; }
+.aviso-texto { margin: var(--s2) 0 var(--s3); padding: var(--s3); border-radius: 12px; background: var(--active-soft); color: var(--ink); max-width: 65ch; font-size: var(--t-sm); }
+.aviso-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); align-self: end; }
+.aviso-celda { max-width: 46ch; font-size: var(--t-sm); color: var(--ink-2); }
