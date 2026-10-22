@@ -68,8 +68,13 @@ encuesta y la recepción.
 ## Recepción
 
 El agente de recepción ya contesta con Claude en cada turno. Ahora su guía le pide explícitamente que cada respuesta
-arranque mostrando que entendió (retomando lo importante), que use todos los datos que le dieron sin volver a
-preguntarlos, y expresiones naturales («Claro», «Entiendo», «¡Qué bueno!», «Uy, lo lamento mucho»).
+muestre que entendió lo último que dijo el cliente, que use todos los datos que le dieron sin volver a preguntarlos y
+expresiones naturales («Claro», «Entiendo», «¡Qué bueno!», «Uy, lo lamento mucho»).
+
+**Sin repetir:** la primera versión de esta guía hacía que el agente repitiera la empatía en tres turnos seguidos
+(«dos semanas sin novedades… es una molestia», en cada respuesta). Ahora la empatía y el resumen del problema van una
+sola vez en la llamada y el agente cambia cómo arranca cada respuesta. Se probó con Claude real sobre la conversación
+de la e2e de repuestos (dos repeticiones): la empatía aparece una vez.
 
 ## Expresión de la voz
 
