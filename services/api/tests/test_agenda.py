@@ -229,12 +229,24 @@ def test_si_da_el_turno_por_reservado_sin_reservar_se_le_corrige(base, monkeypat
 
 
 def test_si_insiste_no_le_dice_al_cliente_que_reservo(base, monkeypatch):  # noqa: F811
-    db, caso, _ = _caso_con_agenda(base, monkeypatch, [
+    db, caso, pedidos = _caso_con_agenda(base, monkeypatch, [
         {"decir": "Listo, ya le quedó reservado el turno.", "accion": "terminar", "resuelto": True},
         {"decir": "Listo, le quedó reservado.", "accion": "terminar", "resuelto": True},
+        {"decir": "Ya está, quedó reservado.", "accion": "terminar", "resuelto": True},
     ])
     r = asyncio.run(recepcion.turno(caso, "No, nada más", consultas=fuentes.bloque(caso, db)))
     assert r == {"decir": recepcion.FRASE_RESERVA_PENDIENTE, "accion": "seguir"} and caso.estado != "resuelto"
+    assert len(pedidos) == 3  # el intento y dos correcciones antes de rendirse
+
+
+def test_a_la_segunda_correccion_todavia_reserva(base, monkeypatch):  # noqa: F811
+    db, caso, pedidos = _caso_con_agenda(base, monkeypatch, [
+        {"decir": "Perfecto, ya le reservo.", "accion": "seguir", "consultar": None},
+        {"decir": "Ya lo reservo, ¿me confirma?", "accion": "seguir", "consultar": None},
+        {"decir": "Un momento.", "accion": "seguir", "consultar": RESERVAR},
+    ])
+    r = asyncio.run(recepcion.turno(caso, "Carlos, 0981 456 789", consultas=fuentes.bloque(caso, db)))
+    assert r["accion"] == "consultar" and len(pedidos) == 3
 
 
 def test_despues_de_reservar_puede_decir_que_quedo_reservado(base, monkeypatch):  # noqa: F811
