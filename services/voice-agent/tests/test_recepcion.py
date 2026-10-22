@@ -166,3 +166,38 @@ def test_voz_mientras_detecta_que_retoma(monkeypatch):
     siguio = asyncio.run(probar([nada] * 5 + [voz] * 20))
     assert siguio is not None and siguio[-1] == voz
     assert asyncio.run(probar([nada] * 30)) is None
+    # Habla con cortes (consonantes): no hay 200 ms seguidos, pero sí 200 ms dentro de 300.
+    assert asyncio.run(probar([nada] * 5 + [voz, voz, voz, nada] * 6)) is not None
+    # Un golpe suelto no es que retomó.
+    assert asyncio.run(probar([nada] * 5 + [voz, voz] + [nada] * 20)) is None
+
+
+def test_voz_mientras_espera_a_confirmar_si_ya_empezo_a_sonar(monkeypatch):
+    """La transcripción terminó justo cuando el cliente retomaba: se espera un poco para confirmarlo."""
+    from app import listener
+    from app.config import BYTES_PER_FRAME
+
+    class Vad:
+        def __init__(self, *a):
+            pass
+
+        def is_speech(self, frame, rate):
+            return listener.pico_de(frame) > 1000
+
+    monkeypatch.setattr(listener.webrtcvad, "Vad", Vad)
+    voz, nada = b"\x10\x27" * (BYTES_PER_FRAME // 2), b"\x00" * BYTES_PER_FRAME
+
+    class Fuente:  # una trama cada 20 ms, como llega de verdad
+        def __init__(self, tramas):
+            self.tramas = list(tramas)
+
+        async def siguiente_trama(self, espera):
+            await asyncio.sleep(0.02)
+            return self.tramas.pop(0) if self.tramas else None
+
+    async def probar(tramas):
+        tarea = asyncio.ensure_future(asyncio.sleep(0.1))  # la transcripción termina a las ~5 tramas
+        return await listener.voz_mientras(Fuente(tramas), tarea)
+
+    assert asyncio.run(probar([nada] * 3 + [voz] * 20)) is not None  # arrancó justo al terminar
+    assert asyncio.run(probar([nada] * 30)) is None  # silencio: no se espera

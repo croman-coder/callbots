@@ -192,3 +192,70 @@ def test_configurar_talleres_y_servicios(cliente, base):  # noqa: F811
     db = base()
     assert db.get(TallerServicio, 1).activo is False
     assert any(s.nombre == "Alineación y balanceo" for s in agenda.servicios_activos(db))
+
+
+def _caso_con_agenda(base, monkeypatch, respuestas):  # noqa: F811
+    db, _, _, _, _ = armar(base)
+    pedidos = []
+
+    async def complete(system, user, *, max_tokens=200):
+        pedidos.append(user)
+        return json.dumps(respuestas.pop(0), ensure_ascii=False)
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", complete)
+    monkeypatch.setattr(agenda, "ahora", lambda: ANTES)
+    c = Campaign(name="Recepción", modo="recepcion", bitrix_entity_type_id=2, trigger_field="x", delay_hours=48,
+                 fuentes={"turnos": True}, areas=[])
+    db.add(c)
+    db.flush()
+    caso = recepcion.nuevo(c, "telefono")
+    db.add(caso)
+    db.commit()
+    return db, caso, pedidos
+
+
+RESERVAR = {"que": "reservar", "servicio": "Service 10.000 km", "fecha": "2026-10-26", "hora": "09:00",
+            "nombre": "Carlos", "telefono": "0981456789"}
+
+
+def test_si_da_el_turno_por_reservado_sin_reservar_se_le_corrige(base, monkeypatch):  # noqa: F811
+    db, caso, pedidos = _caso_con_agenda(base, monkeypatch, [
+        {"decir": "Perfecto, Carlos. Ya le reservo el turno del lunes a las 9.", "accion": "seguir", "consultar": None},
+        {"decir": "Un momento, que lo reservo.", "accion": "seguir", "consultar": RESERVAR},
+    ])
+    r = asyncio.run(recepcion.turno(caso, "Carlos, 0981 456 789", consultas=fuentes.bloque(caso, db)))
+    assert r["accion"] == "consultar" and "no reservó nada" in pedidos[1]
+
+
+def test_si_insiste_no_le_dice_al_cliente_que_reservo(base, monkeypatch):  # noqa: F811
+    db, caso, _ = _caso_con_agenda(base, monkeypatch, [
+        {"decir": "Listo, ya le quedó reservado el turno.", "accion": "terminar", "resuelto": True},
+        {"decir": "Listo, le quedó reservado.", "accion": "terminar", "resuelto": True},
+    ])
+    r = asyncio.run(recepcion.turno(caso, "No, nada más", consultas=fuentes.bloque(caso, db)))
+    assert r == {"decir": recepcion.FRASE_RESERVA_PENDIENTE, "accion": "seguir"} and caso.estado != "resuelto"
+
+
+def test_despues_de_reservar_puede_decir_que_quedo_reservado(base, monkeypatch):  # noqa: F811
+    db, caso, pedidos = _caso_con_agenda(base, monkeypatch, [
+        {"decir": "Un momento.", "accion": "seguir", "consultar": RESERVAR},
+        {"decir": "Listo, Carlos: le quedó reservado el lunes a las 9. ¿Algo más?", "accion": "seguir"},
+    ])
+    asyncio.run(recepcion.turno(caso, "Carlos, 0981 456 789", consultas=fuentes.bloque(caso, db)))
+    r = asyncio.run(recepcion.continuar(caso, fuentes.consultor(caso)))
+    assert "quedó reservado" in r["decir"] and len(pedidos) == 2  # no hizo falta corregir
+
+
+@pytest.mark.parametrize("decir,promete", [
+    ("Perfecto, Carlos. Ya le reservo el turno del lunes a las 9.", True),
+    ("Listo, ya le quedó reservado el turno.", True),
+    ("Perfecto, lo dejo reservado para el lunes. ¿Me dice su nombre?", True),
+    ("Su turno está agendado para el lunes.", True),
+    ("Perfecto, para reservarle el turno de las 7 necesito su nombre y un teléfono.", False),
+    ("¿Ya tenía un turno reservado con nosotros?", False),
+    ("Tengo libres las 7, las 9 y las 11. ¿Cuál le queda mejor?", False),
+])
+def test_que_cuenta_como_dar_el_turno_por_reservado(decir, promete):
+    caso = recepcion.nuevo(Campaign(name="R", modo="recepcion"), "telefono")
+    assert recepcion._promete_reserva(caso, {"decir": decir}, None) is promete

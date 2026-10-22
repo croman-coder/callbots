@@ -151,12 +151,17 @@ for a, b in zip(conv, conv[1:]):
     if a.get("quien") == "cliente" and b.get("quien") == "agente" and a.get("at") and b.get("at"):
         tiempos.append((datetime.fromisoformat(b["at"]) - datetime.fromisoformat(a["at"])).total_seconds())
 
-def antes(texto_agente, texto_sistema):
-    """¿El agente dijo algo con `texto_agente` antes de que el sistema dijera `texto_sistema`?"""
-    for l in conv:
-        if l.get("quien") == "sistema" and texto_sistema in l.get("texto", ""):
-            return False
-        if l.get("quien") == "agente" and texto_agente in l.get("texto", "").lower():
+def promesa_falsa():
+    """¿El agente dio el turno por reservado sin que el sistema lo reservara (ni enseguida ni antes)?"""
+    from app.recepcion import RESERVA_DICHA
+    confirmado = False
+    for i, l in enumerate(conv):
+        texto = l.get("texto", "")
+        if l.get("quien") == "sistema" and texto.startswith("Turno reservado"):
+            confirmado = True
+        siguiente = conv[i + 1].get("texto", "") if i + 1 < len(conv) else ""
+        if (l.get("quien") == "agente" and not confirmado and not siguiente.startswith("Turno reservado")
+                and RESERVA_DICHA.search(re.sub(r"¿[^?]*\?", "", texto))):
             return True
     return False
 
@@ -171,7 +176,7 @@ if os.environ["ESCENARIO"] == "turno":
     checks += [
         ("Consultó los horarios libres", any("Libres" in l.get("texto", "") for l in conv if l.get("quien") == "sistema")),
         ("Reservó el turno, como prueba (no ocupa la agenda)", turno is not None and turno.estado == "prueba"),
-        ("No dio la reserva por hecha antes de que el sistema la confirmara", not antes("reservado", "Turno reservado")),
+        ("No dio la reserva por hecha antes de que el sistema la confirmara", not promesa_falsa()),
         ("Whisper escribió bien «Zeballos»", len(cliente) > 1 and "zeballos" in cliente[1].lower()),
         ("Caso resuelto", caso.estado == "resuelto"),
     ]

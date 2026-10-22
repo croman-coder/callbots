@@ -32,6 +32,9 @@ qué se contestó y qué se venció.
   nada. Estoy molesto.») y retoma mientras se transcribe lo primero, el agente lo sigue escuchando y transcribe todo
   junto: no se pierde la segunda parte y no se suma espera cuando ya terminó.
 - Whisper recibe el vocabulario del agente más los nombres de los talleres de la agenda (si consulta turnos).
+- Un turno se da por reservado solo después de que el sistema lo reserva. Si Claude dice «ya le reservo» o «quedó
+  reservado» sin haber pedido la reserva, se le corrige una vez; si insiste, el agente pide confirmar horario, nombre
+  y teléfono en vez de prometer algo que no existe (pasaba 1 de cada 8 veces en la prueba e2e).
 - Si corta a la mitad, el caso no se pierde: queda derivado al área que se venía hablando (o sin área) con lo que
   llegó a contar.
 - Si Claude falla una vez pide que repita; dos veces seguidas, dice que registró la consulta y cierra. Sin clave de

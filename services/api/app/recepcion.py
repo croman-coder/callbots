@@ -71,6 +71,8 @@ SALUDO_POR_DEFECTO = (
 )
 # Frases fijas: se dicen si Claude no contesta, si el cliente no habla o si se acaba el tiempo. Se precalientan.
 FRASE_REPETIR = "Disculpe, no llegué a entenderlo. ¿Me lo puede repetir?"
+# Si Claude insiste en dar por reservado un turno que el sistema no reservó (ver `_promete_reserva`).
+FRASE_RESERVA_PENDIENTE = "Disculpe, para reservarle el turno necesito confirmar el horario que eligió, su nombre y un teléfono."
 FRASE_REGISTRADO = (
     "Gracias. Ya registré su consulta y se la paso al equipo, que lo va a contactar a la brevedad. Que tenga buen día."
 )
@@ -514,6 +516,37 @@ def _describir(pedido: dict) -> str:
     return f"Pedidos de repuestos del cliente en el Cotizador (por {por})"
 
 
+# Lo que suena a «el turno ya está reservado». Lo puede decir solo después de que el sistema lo reservó.
+# Las preguntas («¿ya tenía un turno reservado?») se sacan antes de buscar.
+RESERVA_DICHA = re.compile(
+    r"\b(qued[oó]|queda|est[aá]|dejo|dej[eé])\b[^.!?]{0,40}\b(reservad|agendad)[oa]s?\b"
+    r"|\b(le|lo|se lo) (reserv|agend)(o|é|e)\b|\bya (le |lo )?(reserv|agend)",
+    re.IGNORECASE,
+)
+CORRECCION_RESERVA = (
+    "\n\nOjo con tu respuesta: dijiste que el turno está o queda reservado, pero no pediste «reservar» en «consultar» "
+    "y el sistema no reservó nada. Si podés reservar y el cliente ya eligió un horario de los libres y te dio nombre y "
+    "teléfono, pedí «reservar» ahora en «consultar» (y en «decir» solo que espere). Si no, no digas que está "
+    "reservado: pedí lo que falta o explicá qué pasa."
+)
+
+
+def _reserva_confirmada(caso: Caso) -> bool:
+    return any(l.get("quien") == "sistema" and str(l.get("texto", "")).startswith("Turno reservado")
+               for l in caso.conversacion or [])
+
+
+def _promete_reserva(caso: Caso, salida: dict | None, pedido: dict | None) -> bool:
+    """Claude da el turno por reservado sin haberlo pedido al sistema ni tener la confirmación.
+
+    Pasó en una prueba de punta a punta (22/10/2026): una de cada ocho veces contestaba «Ya le reservo el turno…» con
+    «consultar» vacío y en el turno siguiente decía «quedó reservado». El cliente se iba con un turno que no existía.
+    """
+    return (pedido is None and isinstance(salida, dict)
+            and bool(RESERVA_DICHA.search(re.sub(r"¿[^?]*\?", "", str(salida.get("decir") or ""))))
+            and not _reserva_confirmada(caso))
+
+
 async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str = "", transferir: bool = False,
                 consultas: str = "", ahora: datetime | None = None) -> dict[str, str]:
     """Lo que el agente contesta a lo que acaba de decir el cliente. Nunca levanta: sin Claude, frases fijas.
@@ -531,12 +564,18 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
         # Sin IA no hay conversación posible: se toma lo que contó y se lo pasa al equipo.
         respuesta = {"decir": FRASE_REGISTRADO, "accion": "terminar"}
     else:
-        texto = await llm.complete(
-            sistema(campaign, conocimiento=conocimiento, cliente=cliente, transferir=transferir, consultas=consultas),
-            pedido_a_claude(caso), max_tokens=400,
-        )
+        instrucciones = sistema(campaign, conocimiento=conocimiento, cliente=cliente, transferir=transferir,
+                                consultas=consultas)
+        texto = await llm.complete(instrucciones, pedido_a_claude(caso), max_tokens=400)
         salida = llm.parse_json_object(texto)
         pedido = _consulta_valida(salida.get("consultar")) if (salida and consultas) else None
+        if _promete_reserva(caso, salida, pedido):
+            log.warning("Caso %s: dio el turno por reservado sin reservarlo; se le corrige", caso.id)
+            texto = await llm.complete(instrucciones, pedido_a_claude(caso) + CORRECCION_RESERVA, max_tokens=400)
+            salida = llm.parse_json_object(texto) or salida
+            pedido = _consulta_valida(salida.get("consultar")) if consultas else None
+            if _promete_reserva(caso, salida, pedido):
+                salida = {**salida, "decir": FRASE_RESERVA_PENDIENTE, "accion": "seguir", "resuelto": False}
         if pedido is not None:
             # Se guarda lo demás que entendió (nombre, motivo…), sin derivar ni terminar: primero el dato.
             aplicar(caso, {**salida, "accion": "seguir"}, ahora)
