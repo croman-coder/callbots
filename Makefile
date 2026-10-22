@@ -6,7 +6,7 @@ COMPOSE_GPU := docker compose -f docker-compose.yml -f docker-compose.gpu.yml
 
 .PHONY: help setup models up up-gpu down restart logs logs-api logs-agent logs-asterisk \
         _strix-check security-install security-scan security-scan-deep \
-        ps build discover seed shell-api shell-db migrate migration sync test-call test-api \
+        ps build discover seed shell-api shell-db migrate migration sync test-call test-api e2e \
         asterisk-cli sip-status clean reset
 
 help: ## Muestra esta ayuda
@@ -118,6 +118,9 @@ asterisk-cli: ## Consola de Asterisk
 
 sip-status: ## Estado de los softphones registrados
 	$(COMPOSE) exec asterisk asterisk -rx "pjsip show endpoints"
+
+e2e: ## Prueba de punta a punta de la línea entrante en producción (llamada al 9100): make e2e [E=turno|repuestos]
+	./scripts/prueba_e2e.sh $(E)
 
 test-api: ## Pruebas de la API (acceso desde el CRM, cabeceras). Necesita uv
 	cd services/api && { [ -d .venv ] || uv venv -q .venv --python 3.12; } && uv pip install -q --python .venv/bin/python -r requirements-dev.txt \

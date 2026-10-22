@@ -373,7 +373,9 @@ def texto_para_claude(db: Session, momento: datetime | None = None) -> str:
         + "\n".join(lineas_suc) +
         "\nServicios:\n" + "\n".join(lineas_serv) +
         "\nPara agendar: preguntá qué servicio, qué vehículo y qué día y franja le quedan bien; ofrecé dos o tres "
-        "horarios de los libres; reservá recién cuando el cliente elija uno y te diga su nombre y teléfono. No digas "
+        "horarios de los libres; reservá recién cuando el cliente elija uno y te diga su nombre y teléfono. Si elige "
+        "y todavía te faltan el nombre o el teléfono, pedíselos sin dar la reserva por hecha (nada de «lo dejo "
+        "reservado» ni «ya está»: «Perfecto, para reservarlo a las 7:00 necesito su nombre y un teléfono»). No digas "
         "que quedó reservado hasta que el sistema lo confirme. Después decile día, hora, taller y desde qué hora lo "
         "retira. No ofrezcas horarios que no te haya dado el sistema y usá la fecha (AAAA-MM-DD) que te dio."
     )

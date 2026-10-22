@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import datos_cliente, recepcion
+from app.config import settings
 from app.models import Campaign, Caso
 
 
@@ -50,6 +51,12 @@ def agente_para(db: Session, numero: str) -> Campaign | None:
     return next((c for c in candidatos if not numeros(c.numeros_entrantes)), None)
 
 
+def es_de_prueba(a: str | None) -> bool:
+    """La llamada entró por una extensión interna de prueba (el 9100): lo que pase en ella es una prueba."""
+    marcado = numeros(a)
+    return bool(marcado) and marcado[0] in numeros(settings.entrante_prueba)
+
+
 def abrir(db: Session, session_uuid: uuid_mod.UUID, de: str | None, a: str | None) -> Caso | None:
     """Abre el caso de la llamada que entra. None si ningún agente atiende ese número."""
     campaign = agente_para(db, a or "")
@@ -59,8 +66,10 @@ def abrir(db: Session, session_uuid: uuid_mod.UUID, de: str | None, a: str | Non
     if existente is not None:
         return existente
     telefono = re.sub(r"[^\d+]", "", de or "")[:30] or None
-    caso = recepcion.nuevo(campaign, "telefono", session_uuid=session_uuid, telefono=telefono)
-    recepcion.evento(caso, "llamó", f"De {telefono or 'número oculto'} al {a or 'número de la troncal'}")
+    prueba = es_de_prueba(a)
+    caso = recepcion.nuevo(campaign, "prueba" if prueba else "telefono", session_uuid=session_uuid, telefono=telefono)
+    recepcion.evento(caso, "llamó", f"De {telefono or 'número oculto'} al {a or 'número de la troncal'}"
+                     + (" (extensión de prueba)" if prueba else ""))
     recepcion.decir(caso, "agente", datos_cliente.render(campaign.intro_script, {}).replace("{nombre}", "").strip())
     db.add(caso)
     db.flush()

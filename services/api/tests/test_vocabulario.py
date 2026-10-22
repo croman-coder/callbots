@@ -36,3 +36,8 @@ def test_el_guion_lleva_el_vocabulario_con_el_diccionario(Sesion, api):
     s.commit()
     g = api.get(f"/internal/sessions/{sesion}/script").json()
     assert g["vocabulario"] == ["Kardian", "Mariano Roque Alonso", "Renault"]
+
+
+def test_lo_que_suma_el_sistema_va_despues_del_agente():
+    assert vocabulario.para_whisper("Kardian", [{"palabra": "GWM"}], ["Taller Zeballos", "kardian"]) == [
+        "Kardian", "Taller Zeballos", "GWM"]

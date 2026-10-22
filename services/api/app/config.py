@@ -140,6 +140,9 @@ class Settings(BaseSettings):
     ycloud_webhook_secreto: str = Field("", validation_alias="YCLOUD_WEBHOOK_SECRETO")
     # Para los enlaces de los avisos internos («ver el caso»).
     panel_url: str = Field("https://callbot.santarosa.lat", validation_alias="PANEL_URL")
+    # Extensiones internas de prueba de la línea entrante (separadas por coma): lo que entra por ellas es una
+    # prueba (no ocupa la agenda, no avisa a nadie, no cuenta en la bandeja). Ver docs/linea-entrante.md.
+    entrante_prueba: str = Field("9100", validation_alias="ENTRANTE_PRUEBA")
 
 
     @field_validator("call_window_start", "call_window_end", mode="before")

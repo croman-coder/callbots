@@ -166,3 +166,37 @@ async def listen(
                 result=ListenResult.TIMEOUT,
                 speech_ms=speech_frames * FRAME_MS,
             )
+
+
+async def voz_mientras(socket: AudioSocket, tarea: asyncio.Future, minimo_ms: int = 300) -> list[bytes] | None:
+    """Mientras corre `tarea` (la transcripción del turno), sigue leyendo lo que manda el cliente.
+
+    Si vuelve a hablar (al menos `minimo_ms` de voz seguida), devuelve lo que llegó desde un poco antes de que
+    arrancara, para que quien llama siga escuchando y lo junte con lo anterior. Si no, None.
+
+    Por qué: el cliente que cuenta un problema hace pausas largas entre oraciones («…nadie me avisó nada. Estoy
+    molesto.»). Con el corte por silencio la segunda oración llegaba mientras el agente pensaba, y se tiraba cuando
+    empezaba a hablar. Se mira solo mientras se transcribe, antes de mandarle nada a Claude: no agrega espera y no
+    deja un turno a medias en la conversación.
+    """
+    vad = webrtcvad.Vad(config.vad_aggressiveness)
+    leidas: list[bytes] = []
+    seguidas = 0
+    necesarias = max(1, minimo_ms // FRAME_MS)
+    while not tarea.done():
+        try:
+            frame = await socket.siguiente_trama(0.05)
+        except AudioSocketClosed:
+            return None  # cortó: lo ve la próxima escucha
+        if frame is None or len(frame) != BYTES_PER_FRAME:
+            continue
+        leidas.append(frame)
+        try:
+            voz = vad.is_speech(frame, SAMPLE_RATE) and pico_de(frame) >= config.speech_floor
+        except Exception:  # noqa: BLE001 - trama malformada: silencio
+            voz = False
+        seguidas = seguidas + 1 if voz else 0
+        if seguidas >= necesarias:
+            # Desde 200 ms antes de que arrancara, para no comer la primera sílaba.
+            return leidas[-(necesarias + 10):]
+    return None

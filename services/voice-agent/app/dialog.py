@@ -31,7 +31,7 @@ from app.api_client import (
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
 from app.guion import partir_frases, personalizar
-from app.listener import ListenResult, listen
+from app.listener import ListenResult, listen, voz_mientras
 
 log = logging.getLogger(__name__)
 
@@ -92,6 +92,9 @@ def voz_de(script: Script) -> tts.VoiceParams:
 RECEPCION_MAX_SEGUNDOS = 8 * 60
 RECEPCION_TURNO_SEGUNDOS = 40
 RECEPCION_ESPERA_VOZ = 6
+# Si retoma después de la pausa (ver `_transcribir_turno`): cuántas veces se junta y cuánto se espera que siga.
+RECEPCION_CONTINUACIONES = 2
+RECEPCION_ESPERA_SEGUIR = 1
 # Si Claude tarda más que esto en contestar, se dice la muletilla («Déjeme ver.») para no dejar un silencio. Una
 # respuesta rápida sale sin muletilla: decirla en cada turno suena a robot.
 ESPERA_ANTES_DE_MULETILLA = 0.9
@@ -216,7 +219,7 @@ class SurveyDialog:
                     raise AudioSocketClosed("cortó")
                 texto = ""
                 if grabacion.has_audio:
-                    texto = (await stt.transcribe(grabacion.pcm, self.script.vocabulario)).text.strip()
+                    texto = await self._transcribir_turno(grabacion.pcm)
                 if not texto:
                     silencios += 1
                     if silencios >= 2:
@@ -257,6 +260,24 @@ class SurveyDialog:
             raise
         finally:
             await asyncio.shield(self.api.recepcion_fin(caso, self.hangup_cause))
+
+    async def _transcribir_turno(self, pcm: bytes) -> str:
+        """Transcribe el turno del cliente; si mientras tanto retoma (hizo una pausa larga a la mitad), lo sigue
+        escuchando y transcribe todo junto. Ver `voz_mientras`."""
+        for _ in range(RECEPCION_CONTINUACIONES):
+            tarea = asyncio.ensure_future(stt.transcribe(pcm, self.script.vocabulario))
+            siguio = await voz_mientras(self.socket, tarea)
+            if siguio is None:
+                return (await tarea).text.strip()
+            tarea.cancel()
+            resto = await listen(
+                self.socket, max_seconds=RECEPCION_TURNO_SEGUNDOS, no_speech_timeout=RECEPCION_ESPERA_SEGUIR
+            )
+            if resto.result is ListenResult.HANGUP:
+                raise AudioSocketClosed("cortó")
+            log.info("[%s] Recepción: siguió hablando después de la pausa, se junta", self.session_uuid)
+            pcm = pcm + b"".join(siguio) + resto.pcm
+        return (await stt.transcribe(pcm, self.script.vocabulario)).text.strip()
 
     async def _esperar_con_muletilla(self, pedido_api) -> dict:  # noqa: ANN001 - corrutina del ApiClient
         """Espera la respuesta de la API; si tarda, dice la muletilla mientras tanto (no después)."""

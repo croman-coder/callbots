@@ -33,6 +33,22 @@ API: ¿algún agente de recepción atiende ese número?
 Desde un softphone registrado (1001/1002), marcar **9100**: entra por el mismo camino que una llamada de afuera. El
 agente tiene que atender «9100» o cualquier número.
 
+Lo que entra por el 9100 es **una prueba** (`ENTRANTE_PRUEBA`, por defecto `9100`): el caso queda con origen
+«prueba», los turnos que reserve no ocupan la agenda, no se avisa al área ni se transfiere, y no cuenta en la
+bandeja.
+
+### Prueba de punta a punta (sin softphone)
+
+```bash
+make e2e                # o ./scripts/prueba_e2e.sh [turno|repuestos]
+```
+
+Un cliente con voz IA llama al 9100 y conversa con el agente: antes de cada frase espera a que el agente termine de
+hablar. Pasa por el camino real (Asterisk → voice-agent → Whisper → Claude → agenda/Cotizador → voz) y al final
+revisa el caso: que escuchó cada frase, qué entendió, qué consultó, si reservó o derivó. Sale con 1 si algo falló:
+correrla después de cada deploy. Escenarios: `turno` (service en Zeballos, reserva) y `repuestos` (stock en el
+Cotizador y un reclamo con una pausa larga a la mitad, que se deriva). No usa cédulas: no toca datos de clientes.
+
 ## Lo que falta para atender clientes de verdad
 
 **La voz del cliente no llega al servidor** cuando la llamada viene de Personal: el FortiGate descarta el audio

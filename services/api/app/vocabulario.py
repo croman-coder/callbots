@@ -41,9 +41,10 @@ def normalizar(texto: str | None) -> str | None:
     return "\n".join(palabras) or None
 
 
-def para_whisper(vocabulario_agente: str | None, diccionario: list[dict]) -> list[str]:
-    """Las palabras que viajan al voice-agent: las del agente y después las del diccionario, sin pasarse del tope."""
-    todas = de_texto(vocabulario_agente) + [str(e.get("palabra") or "") for e in diccionario]
+def para_whisper(vocabulario_agente: str | None, diccionario: list[dict], extra: list[str] | None = None) -> list[str]:
+    """Las palabras que viajan al voice-agent: las del agente, las que suma el sistema (`extra`: por ejemplo los
+    talleres de la agenda) y después las del diccionario, sin pasarse del tope."""
+    todas = de_texto(vocabulario_agente) + list(extra or []) + [str(e.get("palabra") or "") for e in diccionario]
     salida: list[str] = []
     largo = 0
     vistas: set[str] = set()

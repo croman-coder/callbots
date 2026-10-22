@@ -27,6 +27,14 @@ def elegidas(campaign) -> dict[str, bool]:  # noqa: ANN001 - Campaign
     return {"repuestos": bool(f.get("repuestos")), "precios": bool(f.get("precios")), "turnos": bool(f.get("turnos"))}
 
 
+def vocabulario(db: Session, campaign) -> list[str]:  # noqa: ANN001 - Campaign
+    """Nombres que el agente tiene que reconocer de oído por los sistemas que consulta: los talleres de la agenda
+    («Taller Zeballos»; sin esto Whisper escribía «Ceballos»)."""
+    if not elegidas(campaign)["turnos"]:
+        return []
+    return [s.nombre for s in agenda.sucursales_activas(db)]
+
+
 def repuestos_activos(campaign) -> bool:  # noqa: ANN001
     return elegidas(campaign)["repuestos"] and cotizador.configurado()
 

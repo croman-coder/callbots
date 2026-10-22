@@ -28,6 +28,10 @@ qué se contestó y qué se venció.
 - Si Claude tarda más de 0,9 s dice «Déjeme ver.» mientras espera; si contesta antes, no dice nada (decirlo siempre
   suena a robot).
 - Si el cliente no habla: «¿Sigue ahí?» y, al segundo silencio, se despide. Tope de 8 minutos por llamada.
+- El turno del cliente se corta a los 0,9 s de silencio. Si hace una pausa más larga a la mitad («…nadie me avisó
+  nada. Estoy molesto.») y retoma mientras se transcribe lo primero, el agente lo sigue escuchando y transcribe todo
+  junto: no se pierde la segunda parte y no se suma espera cuando ya terminó.
+- Whisper recibe el vocabulario del agente más los nombres de los talleres de la agenda (si consulta turnos).
 - Si corta a la mitad, el caso no se pierde: queda derivado al área que se venía hablando (o sin área) con lo que
   llegó a contar.
 - Si Claude falla una vez pide que repita; dos veces seguidas, dice que registró la consulta y cierra. Sin clave de

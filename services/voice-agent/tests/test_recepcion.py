@@ -115,3 +115,54 @@ def test_consultar_dice_que_espera_y_contesta_con_el_dato(entorno):
     assert api.turnos[-1] == "(continuar)"
     assert dicho.index("Ya lo busco en el sistema") < dicho.index("llega aproximadamente")
     assert d.outcome == dialog.Outcome.COMPLETED
+
+
+def test_si_retoma_despues_de_la_pausa_se_junta_todo(entorno):
+    # «…nadie me avisó nada.» (pausa larga: la escucha corta) «Estoy bastante molesto.»: la segunda parte llega
+    # mientras se transcribe la primera. Se sigue escuchando y se transcribe todo junto, en un solo turno.
+    entorno.escuchas += [habla(2), habla(1)]
+    entorno.continuaciones += [[b"\x02\x00" * 160]]
+    entorno.textos += ["Encargué un parabrisas y nadie me avisó nada. Estoy bastante molesto."]
+    api = ApiRecepcion([{"decir": "Lo paso a Repuestos.", "accion": "terminar"}])
+    correr(recepcion(), api)
+    assert api.turnos == ["Encargué un parabrisas y nadie me avisó nada. Estoy bastante molesto."]
+    assert len(entorno.transcriptos[-1]) == (16000 * 2) + 320 + 16000  # lo primero + el arranque + lo que siguió
+
+
+def test_voz_mientras_detecta_que_retoma(monkeypatch):
+    from app import listener
+    from app.config import BYTES_PER_FRAME
+
+    class Vad:  # el detector real no es lo que se prueba acá: voz = señal fuerte
+        def __init__(self, *a):
+            pass
+
+        def is_speech(self, frame, rate):
+            return listener.pico_de(frame) > 1000
+
+    monkeypatch.setattr(listener.webrtcvad, "Vad", Vad)
+
+    class Fuente:
+        def __init__(self, tramas):
+            self.tramas = list(tramas)
+
+        async def siguiente_trama(self, espera):
+            await asyncio.sleep(0)
+            return self.tramas.pop(0) if self.tramas else None
+
+    import math
+
+    voz = b"".join(int(9000 * math.sin(i / 3)).to_bytes(2, "little", signed=True) for i in range(BYTES_PER_FRAME // 2))
+    nada = b"\x00" * BYTES_PER_FRAME
+
+    async def probar(tramas):
+        async def tarda():
+            await asyncio.sleep(0.5)
+        tarea = asyncio.ensure_future(tarda())
+        r = await listener.voz_mientras(Fuente(tramas), tarea)
+        tarea.cancel()
+        return r
+
+    siguio = asyncio.run(probar([nada] * 5 + [voz] * 20))
+    assert siguio is not None and siguio[-1] == voz
+    assert asyncio.run(probar([nada] * 30)) is None

@@ -174,7 +174,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             **_opciones_de_llamada(campaign, (datos := _datos_de_prueba(db, campaign))),
             **_textos_del_guion(campaign, _active_questions(campaign), datos),
             pronunciaciones=pronunciaciones.lista(db),
-            vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
+            vocabulario=_vocabulario(db, campaign),
             **_modo(campaign),
         )
 
@@ -197,7 +197,7 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
             **_opciones_de_llamada(campaign, {}),
             **_textos_del_guion(campaign, [], {}),
             pronunciaciones=pronunciaciones.lista(db),
-            vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
+            vocabulario=_vocabulario(db, campaign),
             **_modo(campaign),
         )
 
@@ -228,9 +228,16 @@ def get_script(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> Su
         **_opciones_de_llamada(campaign, (datos := datos_cliente.valores(target, campaign))),
         **_textos_del_guion(campaign, questions, datos),
         pronunciaciones=pronunciaciones.lista(db),
-        vocabulario=vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db)),
+        vocabulario=_vocabulario(db, campaign),
         **_modo(campaign),
     )
+
+
+def _vocabulario(db: Session, campaign: Campaign) -> list[str]:
+    """Lo que Whisper tiene que reconocer: el vocabulario del agente, lo de los sistemas que consulta (si es de
+    recepción) y el diccionario de pronunciación."""
+    extra = fuentes.vocabulario(db, campaign) if recepcion.es_recepcion(campaign) else []
+    return vocabulario.para_whisper(campaign.vocabulario, pronunciaciones.lista(db), extra)
 
 
 def _modo(campaign: Campaign) -> dict:

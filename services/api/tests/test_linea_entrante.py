@@ -78,3 +78,30 @@ def test_pestana_canales_prende_la_linea(cliente, base):  # noqa: F811
     assert c.entrante and c.numeros_entrantes == "9100\n21555666"
     assert "Atender llamadas entrantes" not in cliente.get("/campaigns/1?tab=canales").text  # una encuesta no atiende
     assert cliente.post("/campaigns/1/entrantes", data={"entrante": "1"}, headers=H).headers["location"].count("error=") == 1
+
+
+def test_la_extension_de_prueba_abre_casos_de_prueba(cliente, base):  # noqa: F811
+    _recepcion(base, "Recepción", numeros="9100\n021 555 666")
+    assert entrantes.es_de_prueba("9100") and not entrantes.es_de_prueba("021 555 666") and not entrantes.es_de_prueba("")
+    r = cliente.post("/internal/entrantes", data={"de": "", "a": "9100"}, headers=INTERNO)
+    assert r.text.startswith("ok:")
+    caso = base().scalars(__import__("sqlalchemy").select(Caso)).one()
+    # Lo de la extensión interna es una prueba: no ocupa la agenda, no avisa al área ni cuenta en la bandeja.
+    assert caso.origen == "prueba" and any("extensión de prueba" in e["texto"] for e in caso.eventos)
+    sesion = uuid.UUID(r.text.split(":", 1)[1])
+    guion = cliente.get(f"/internal/sessions/{sesion}/script", headers=INTERNO).json()
+    assert guion["modo"] == "recepcion" and guion["demo"] is False
+
+
+def test_whisper_conoce_los_talleres_de_la_agenda(cliente, base):  # noqa: F811
+    from app.models import TallerSucursal
+
+    cid = _recepcion(base, "Recepción", numeros="9100")
+    s = base()
+    s.get(Campaign, cid).fuentes = {"turnos": True}
+    s.get(Campaign, cid).vocabulario = "Kardian"
+    s.add(TallerSucursal(nombre="Taller Zeballos", horario={"0": ["07:00", "18:00"]}, intervalo_min=60, bahias=3))
+    s.commit()
+    sesion = uuid.UUID(cliente.post("/internal/entrantes", data={"de": "", "a": "9100"}, headers=INTERNO).text[3:])
+    vocab = cliente.get(f"/internal/sessions/{sesion}/script", headers=INTERNO).json()["vocabulario"]
+    assert vocab[:2] == ["Kardian", "Taller Zeballos"]  # sin esto Whisper escribía «Ceballos»
