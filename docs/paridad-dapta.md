@@ -45,6 +45,8 @@ replican **funciones**, no código ni textos: cada cosa se hace a nuestra manera
 - ✅ Datos vivos de repuestos: el agente consulta el Cotizador (pedidos, plazo aproximado, stock), `datos-en-vivo.md`.
 - ⬜ Datos vivos de embarques (COMEX), patentamiento y PDI.
 - ✅ Agendar turnos de taller con tiempos por etapa, marca y modelo (`agenda-taller.md`).
+- 🟡 Voz paraguaya: el locutor graba a distancia con un enlace personal y se aprueba en Voces
+  (`voz-de-locutor.md`); falta el locutor.
 
 **Tanda 1. Sin claves ni decisiones (se construye ya):**
 1. ✅ Vocabulario del agente para Whisper (marcas, modelos, sucursales): ataca directo «no me escucha bien».

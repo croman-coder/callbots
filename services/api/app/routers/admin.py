@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from sqlalchemy import distinct, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import agentes, pronunciaciones, recepcion, revision, versiones, voces
+from app import agentes, locutores, pronunciaciones, recepcion, revision, versiones, voces
 from app.config import settings
 from app.etiquetas import etiqueta
 from app.plantillas import templates
@@ -36,6 +36,7 @@ from app.models import (
     Answer,
     CallAnalysis,
     CallAttempt,
+    GrabacionVoz,
     CallComment,
     CallOutcome,
     Campaign,
@@ -1262,6 +1263,13 @@ def simulador_page(request: Request, db: Session = Depends(get_db)) -> HTMLRespo
     )
 
 
+def _grabaciones_ordenadas(db: Session) -> list[GrabacionVoz]:
+    """Locutores a distancia: primero lo que hay que revisar, después lo que espera la grabación, al final lo resuelto."""
+    orden = {"recibida": 0, "esperando": 1, "aprobada": 2, "rechazada": 3}
+    ultimas = db.scalars(select(GrabacionVoz).order_by(GrabacionVoz.id.desc()).limit(30)).all()
+    return sorted(ultimas, key=lambda g: orden.get(g.estado, 9))
+
+
 @router.get("/voices", response_class=HTMLResponse)
 def voices_page(
     request: Request,
@@ -1289,6 +1297,8 @@ def voices_page(
             "frase_permiso_plantilla": voces.frase_consentimiento("{persona}"),
             "pronunciaciones": pronunciaciones.lista(db),
             "voces_en_vivo": [v for v in lista if v["en_vivo"] and v["escuchar"]],
+            "grabaciones": _grabaciones_ordenadas(db),
+            "locutores": locutores,
             "error": error,
             "ok": ok,
         },

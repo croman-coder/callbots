@@ -56,8 +56,8 @@ Los nombres propios salen de la transcripción y pueden estar mal escritos.
 | Marco del agente: lo que no puede decir ni prometer, editable por agente | ✅ 21/10 |
 | Probar la recepción sin teléfono: chat, simulación (la IA hace de cliente) y voz desde el navegador | ✅ 21/10 |
 | Aviso al área cuando entra un caso | 🟡 por webhook (n8n o Make); correo directo cuando haya SMTP |
-| Línea entrante real | ⬜ depende del FortiGate (el mismo bloqueo del audio saliente, `diagnostico-audio-2026-10-20.md`) y de la regla de entrada en Asterisk |
-| Datos vivos de repuestos, patentamiento, PDI y COMEX | ⬜ hoy se cargan como base de conocimiento; lo siguiente es una consulta en vivo a esos tableros |
-| Agendar turnos de taller con tiempos por modelo | ⬜ falta la fuente de turnos (Agesta) y decidir dónde vive la agenda |
-| WhatsApp como canal del mismo agente | ⬜ YCloud (Tanda 2) |
-| Voz paraguaya de locutor | ⬜ falta el locutor y su consentimiento grabado |
+| Línea entrante real | 🟡 armada y probada por la extensión 9100 (`linea-entrante.md`); los números reales esperan la regla del FortiGate |
+| Datos vivos de repuestos, patentamiento, PDI y COMEX | 🟡 repuestos en vivo desde el Cotizador (`datos-en-vivo.md`); faltan patentamiento, PDI y COMEX |
+| Agendar turnos de taller con tiempos por modelo | ✅ la agenda vive en Callbot, con tiempos por etapa, marca y modelo (`agenda-taller.md`) |
+| WhatsApp como canal del mismo agente | 🟡 avisos por plantilla listos y apagados hasta tener el número de posventa (`avisos-whatsapp.md`) |
+| Voz paraguaya de locutor | 🟡 el locutor graba a distancia con un enlace y se aprueba en Voces (`voz-de-locutor.md`); falta el locutor |

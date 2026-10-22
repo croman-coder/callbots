@@ -166,6 +166,79 @@
   </div>
 </section>
 
+<section class="section" id="locutores">
+  <header>
+    <h2>Voz de un locutor, a distancia</h2>
+    <span class="note">Una voz de acá: la persona graba desde su celular con un enlace y acá se elige la mejor toma</span>
+  </header>
+  <div class="panel-form">
+    <p style="margin-top:0">El enlace le pide su permiso en voz alta y cinco frases de posventa con nombres de acá (Mariano Roque Alonso, Ciudad del Este), para que la voz copie la tonada. Lleva unos cinco minutos. Vence en {{ locutores.DIAS_VIGENCIA }} días y sirve una sola vez.</p>
+    <form method="post" action="/voices/locutores" class="fila-campos locutor-nuevo" autocomplete="off">
+      <label>Quién graba <input type="text" name="persona" maxlength="80" required placeholder="Nombre y apellido"></label>
+      <label>Voz de
+        <select name="genero" required><option value="">Elegí</option><option>Mujer</option><option>Hombre</option></select></label>
+      <label>Nota (opcional) <input type="text" name="nota" maxlength="300" placeholder="Locutor de radio, para recepción"></label>
+      <button type="submit" class="btn primary">Crear enlace</button>
+    </form>
+  </div>
+
+  {% if grabaciones %}
+  <div class="locutores-lista">
+    {% for g in grabaciones %}
+    {% set vigente = locutores.vigente(g) %}
+    <article class="locutor">
+      <div class="locutor-cab">
+        <strong>{{ g.persona }}</strong>
+        <span class="hint">{{ g.genero | lower }}{% if g.nota %} · {{ g.nota }}{% endif %} · creado {{ g.created_at | fecha("%d/%m %H:%M") }}{% if g.creada_por %} por {{ g.creada_por.split("@")[0] }}{% endif %}</span>
+        <span class="pill {{ {'recibida':'pending','aprobada':'completed','rechazada':'failed'}.get(g.estado, '') }}">{{ locutores.ESTADOS.get(g.estado, g.estado) if vigente or g.estado != 'esperando' else 'Venció' }}</span>
+      </div>
+
+      {% if g.estado == "esperando" %}
+        {% if vigente %}
+        <p class="locutor-enlace"><span class="mono" data-enlace>{{ locutores.enlace(g) }}</span>
+          <button type="button" class="btn mini" data-copiar="{{ locutores.enlace(g) }}">Copiar enlace</button>
+          <span class="hint">vence el {{ g.expira_at | fecha("%d/%m") }}</span></p>
+        {% endif %}
+        <form method="post" action="/voices/locutores/{{ g.id }}/borrar" data-confirmar="¿Borrar el enlace de {{ g.persona }}? Si todavía no grabó, ya no va a poder."><button type="submit" class="btn mini quiet danger">Borrar enlace</button></form>
+
+      {% elif g.estado == "recibida" %}
+        <p class="hint">Grabó el {{ g.recibida_at | fecha("%d/%m %H:%M") }}. Escuchá el permiso, elegí la toma más clara (sin ruido, sin eco, con la tonada natural) y aprobá: ahí se clona.</p>
+        <div class="locutor-audio"><span>Permiso</span><audio controls preload="none" src="/voices/locutores/{{ g.id }}/audio/consentimiento.wav"></audio></div>
+        <form method="post" action="/voices/locutores/{{ g.id }}/aprobar" class="locutor-tomas" autocomplete="off">
+          <fieldset>
+            <legend class="sr-only">Toma para clonar</legend>
+            {% for t in g.tomas or [] %}
+            <label class="locutor-toma">
+              <input type="radio" name="toma" value="{{ loop.index }}" {% if loop.first %}checked{% endif %}>
+              <span class="locutor-frase">{{ t.frase }} <span class="hint tnum">{{ t.segundos | dec }} s</span></span>
+              <audio controls preload="none" src="/voices/locutores/{{ g.id }}/audio/{{ t.archivo }}"></audio>
+            </label>
+            {% endfor %}
+          </fieldset>
+          <div class="fila-revision">
+            <label class="locutor-etiqueta" for="lv-{{ g.id }}">Nombre en la biblioteca</label>
+            <input id="lv-{{ g.id }}" type="text" name="nombre" maxlength="40" value="{{ g.persona.split(' ')[0] }}" placeholder="Nombre de la voz">
+            <button type="submit" class="btn primary" {% if not puede_clonar %}disabled{% endif %}>Aprobar y clonar</button>
+          </div>
+        </form>
+        <form method="post" action="/voices/locutores/{{ g.id }}/rechazar" class="fila-revision" autocomplete="off" data-confirmar="¿Rechazar la grabación de {{ g.persona }}? Se borran sus audios.">
+          <label class="sr-only" for="lr-{{ g.id }}">Motivo</label>
+          <input id="lr-{{ g.id }}" type="text" name="motivo" maxlength="300" placeholder="Motivo (opcional): mucho ruido, no es la persona…">
+          <button type="submit" class="btn quiet danger">Rechazar</button>
+        </form>
+
+      {% elif g.estado == "aprobada" %}
+        <p class="hint">Aprobada por {{ (g.revisada_por or "el equipo").split("@")[0] }} el {{ g.revisada_at | fecha("%d/%m %H:%M") }}. Está en la biblioteca{% if g.perfil_id %} (<span class="mono">{{ g.perfil_id }}</span>){% endif %}: elegila en la ficha de un agente.</p>
+      {% else %}
+        <p class="hint">Rechazada{% if g.motivo %}: {{ g.motivo }}{% endif %}. Sus audios se borraron.</p>
+        <form method="post" action="/voices/locutores/{{ g.id }}/borrar"><button type="submit" class="btn mini quiet">Quitar de la lista</button></form>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
 <section class="section" id="clonar">
   <header>
     <h2>Clonar una voz</h2>
@@ -244,5 +317,6 @@
   </form>
   {% endif %}
 </section>
+<script src="/static/grabador.js?v={{ grabador_js_v }}" defer></script>
 <script src="/static/voces.js?v={{ voces_js_v }}" defer></script>
 {% endblock %}

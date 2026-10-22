@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#f8f9fc">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<script>
+/* El tema del panel, si la persona ya lo usó en este navegador; si no, claro. */
+(function () {
+  var d = document.documentElement, t = "light";
+  try { t = localStorage.getItem("callbot-tema") || "light"; } catch (e) {}
+  d.setAttribute("data-theme", t === "light" ? "light" : "dark");
+})();
+</script>
+<title>Grabá tu voz · Santa Rosa</title>
+<link rel="stylesheet" href="/static/panel.css?v={{ css_v }}">
+</head>
+<body class="grabar-pagina">
+<main class="grabar" id="main">
+  <p class="grabar-marca"><span class="marca-ondas" aria-hidden="true">{% with marca_id = "gr" %}{% include "_marca.html" %}{% endwith %}</span>Santa Rosa Paraguay</p>
+
+  {% if not g %}
+  <h1>Grabá tu voz para Santa Rosa</h1>
+  <p class="grabar-motivo" role="status">{{ motivo }}</p>
+  {% else %}
+  <div data-formulario>
+    <h1>Grabá tu voz para Santa Rosa</h1>
+    <p class="grabar-intro">Hola, {{ g.persona.split(" ")[0] }}. Con estas grabaciones armamos la voz del asistente que atiende el teléfono de posventa, con una tonada de acá. Son seis grabaciones cortas: unos cinco minutos.</p>
+
+    <ul class="grabar-consejos">
+      <li><strong>Un lugar callado y sin eco.</strong> Un cuarto con muebles o cortinas; no un baño ni un pasillo.</li>
+      <li><strong>El celular a un palmo de la boca,</strong> sin tapar el micrófono con la mano.</li>
+      <li><strong>Tu voz de siempre,</strong> como en una llamada con un cliente. No hace falta voz de radio.</li>
+    </ul>
+
+    <form data-envio novalidate>
+      <section class="grabar-paso" aria-labelledby="paso-permiso">
+        <h2 id="paso-permiso"><span class="grabar-num tnum" aria-hidden="true">1</span>Tu permiso</h2>
+        <div class="grabador" data-bloque="consentimiento" data-max="{{ max_permiso }}" data-min="3">
+          <p class="leer">Leé en voz alta:</p>
+          <blockquote class="texto-leer">{{ permiso }}</blockquote>
+          <div class="controles">
+            <button type="button" class="btn primary" data-grabar>Grabar</button>
+            <span class="reloj" data-reloj>0:00 / 0:{{ "%02d" | format(max_permiso) }}</span>
+            <span class="nivel" data-nivel aria-hidden="true"></span>
+          </div>
+          <audio controls hidden></audio>
+          <p class="hint" data-aviso role="status" aria-live="polite"></p>
+        </div>
+        <label class="check grabar-acepto"><input type="checkbox" name="acepto" value="si"> Sé que mi voz se va a usar en el asistente telefónico de Santa Rosa y estoy de acuerdo.</label>
+      </section>
+
+      {% for frase in frases %}
+      <section class="grabar-paso" aria-labelledby="paso-{{ loop.index }}">
+        <h2 id="paso-{{ loop.index }}"><span class="grabar-num tnum" aria-hidden="true">{{ loop.index + 1 }}</span>Frase {{ loop.index }} de {{ frases | length }}</h2>
+        <div class="grabador" data-bloque="toma_{{ loop.index }}" data-max="{{ max_toma }}" data-min="2">
+          <blockquote class="texto-leer">{{ frase }}</blockquote>
+          <div class="controles">
+            <button type="button" class="btn primary" data-grabar>Grabar</button>
+            <span class="reloj" data-reloj>0:00 / 0:{{ "%02d" | format(max_toma) }}</span>
+            <span class="nivel" data-nivel aria-hidden="true"></span>
+          </div>
+          <audio controls hidden></audio>
+          <p class="hint" data-aviso role="status" aria-live="polite"></p>
+        </div>
+      </section>
+      {% endfor %}
+
+      <div class="grabar-final">
+        <p class="grabar-cuenta tnum" data-cuenta aria-live="polite">Grabadas: 0 de {{ frases | length + 1 }}</p>
+        <button type="submit" class="btn primary grabar-enviar" data-enviar disabled>Enviar grabaciones</button>
+        <p class="grabar-error" data-error role="alert" hidden></p>
+        <p class="hint">Las grabaciones solo las escucha el equipo de Santa Rosa que arma la voz. Si después querés que la borren, avisá a quien te mandó este enlace.</p>
+      </div>
+    </form>
+  </div>
+
+  <div class="grabar-listo" data-listo hidden tabindex="-1">
+    <h1>Listo, recibimos tus grabaciones</h1>
+    <p>Gracias, {{ g.persona.split(" ")[0] }}. El equipo las escucha y te avisa si hace falta repetir alguna. Ya podés cerrar esta página.</p>
+  </div>
+  {% endif %}
+</main>
+{% if g %}
+<script src="/static/grabador.js?v={{ grabador_js_v }}" defer></script>
+<script src="/static/grabar.js?v={{ grabar_js_v }}" defer></script>
+{% endif %}
+</body>
+</html>

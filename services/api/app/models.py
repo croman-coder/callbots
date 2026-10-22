@@ -703,3 +703,27 @@ class WhatsappEnvio(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     enviado_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class GrabacionVoz(Base):
+    """Un enlace para que un locutor grabe su permiso y sus tomas a distancia (app/locutores.py)."""
+
+    __tablename__ = "grabaciones_voz"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    persona: Mapped[str] = mapped_column(String(80), nullable=False)
+    genero: Mapped[str] = mapped_column(String(10), nullable=False)  # Mujer | Hombre
+    nota: Mapped[str | None] = mapped_column(String(300))
+    creada_por: Mapped[str | None] = mapped_column(String(160))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expira_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # esperando | recibida | aprobada | rechazada
+    estado: Mapped[str] = mapped_column(String(12), default="esperando", server_default="esperando", nullable=False)
+    recibida_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    tomas: Mapped[list | None] = mapped_column(JSON)  # [{"archivo", "frase", "segundos"}]
+    consentimiento_texto: Mapped[str | None] = mapped_column(Text)
+    perfil_id: Mapped[str | None] = mapped_column(String(80))  # vs:<id> cuando se aprueba
+    revisada_por: Mapped[str | None] = mapped_column(String(160))
+    revisada_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    motivo: Mapped[str | None] = mapped_column(String(300))
