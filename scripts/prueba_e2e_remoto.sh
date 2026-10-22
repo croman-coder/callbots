@@ -45,7 +45,7 @@ case "$ESCENARIO" in
       "Uno, muy mal. Me devolvieron el auto sucio y con un ruido nuevo."
       "Siete."
       "Diez, fueron muy puntuales."
-      "Ocho."
+      "Un ocho."  # «Ocho.» suelto, esta voz IA lo pronuncia mal (medido: ni Whisper sin guía lo entiende)
       "Seis."
       "Que me avisen cuando el auto está listo, nunca me avisan."
     ) ;;
