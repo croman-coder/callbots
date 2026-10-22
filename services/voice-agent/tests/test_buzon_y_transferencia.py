@@ -69,11 +69,17 @@ class Socket:
 
 
 class Api:
-    def __init__(self, transfer_ok=True, verdicts=None):
+    def __init__(self, transfer_ok=True, verdicts=None, acuses=None):
         self.transfer_ok = transfer_ok
         self.verdicts = list(verdicts or [])
         self.transferencias = 0
         self.finales: list = []
+        self.acuses = list(acuses or [])  # lo que devuelve /acuse en cada respuesta (vacío: sin acuse)
+        self.pedidos_acuse: list = []
+
+    async def acuse(self, session_uuid, question_id, transcript):
+        self.pedidos_acuse.append(transcript)
+        return self.acuses.pop(0) if self.acuses else None
 
     async def transfer(self, session_uuid):
         self.transferencias += 1

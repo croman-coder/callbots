@@ -15,7 +15,8 @@ VOZ_CLIENTE="${VOZ_CLIENTE:-vs:46d131b1}"   # «IA hombre adulto»: otra voz que
 APP=xg5ucgo36sqanypjxpajzyk5
 CTX=callbot-prueba-e2e
 DIR=/tmp/callbot-e2e
-EXTENSION=9100
+EXTENSION=9100     # recepción; la encuesta entra por el 9000
+SILENCIO=3500      # cuánto silencio del agente espera el cliente antes de hablar (ms)
 
 case "$ESCENARIO" in
   turno)
@@ -35,7 +36,20 @@ case "$ESCENARIO" in
       "Está bien, que me llamen de Repuestos."
       "No, nada más, gracias."
     ) ;;
-  *) echo "Escenario desconocido: $ESCENARIO (turno o repuestos)" >&2; exit 2 ;;
+  encuesta)
+    # La encuesta activa en modo demo (el mismo camino que el Simulador). Al saludo hay que contestar en menos de 3 s.
+    EXTENSION=9000
+    SILENCIO=1800
+    FRASES=(
+      "Sí, dígame."
+      "Uno, muy mal. Me devolvieron el auto sucio y con un ruido nuevo."
+      "Siete."
+      "Diez, fueron muy puntuales."
+      "Ocho."
+      "Seis."
+      "Que me avisen cuando el auto está listo, nunca me avisan."
+    ) ;;
+  *) echo "Escenario desconocido: $ESCENARIO (turno, repuestos o encuesta)" >&2; exit 2 ;;
 esac
 
 contenedor() { docker ps --format '{{.Names}}' | grep "^$1-$APP" | head -1; }
@@ -86,7 +100,7 @@ paso() { docker exec "$X" asterisk -rx "dialplan add extension s,$n,$1 into $CTX
 paso "Answer()"
 for i in $(seq 1 ${#FRASES[@]}); do
   paso "WaitForNoise(300,1,30)"
-  paso "WaitForSilence(3500,1,90)"
+  paso "WaitForSilence($SILENCIO,1,90)"
   paso "Playback($DIR/cliente-$i)"
 done
 paso "WaitForNoise(300,1,30)"
@@ -108,6 +122,41 @@ while docker exec "$X" asterisk -rx "core show channels concise" | grep -q "$CTX
   sleep 3
 done
 echo "== Llamada terminada en $(( $(date +%s) - inicio )) s"
+
+if [ "$ESCENARIO" = encuesta ]; then
+  # La encuesta de prueba no guarda nada: se revisa con el registro del voice-agent.
+  FIJAS=$(docker exec "$A" python -c 'import json; from app import acuse; print(json.dumps(acuse.todas_las_fijas(), ensure_ascii=False))')
+  docker logs --since "$DESDE" "$V" 2>&1 | grep "00000000-0000-0000-0000-000000000000" \
+    | FRASES="$FRASES_JSON" FIJAS="$FIJAS" python3 -c '
+import json, os, re, sys
+lineas = [l.split("] ", 1)[-1].rstrip() for l in sys.stdin]
+for l in lineas:
+    print("  ", l[:160])
+respuestas = [l for l in lineas if re.match(r"P\d+ .* -> ", l)]
+acuses = [l for l in lineas if l.startswith("Acuse (")]
+preguntas = {int(m.group(1)): m.group(2) for l in lineas if (m := re.match(r"P(\d+) pregunta: (.*)", l))}
+fijas = json.loads(os.environ["FIJAS"])
+def texto(l):
+    return l.split(": ", 1)[1].strip("\x27\"")
+checks = [
+    ("Escuchó el saludo y las 6 respuestas, sin pedir que repita", any(l.startswith("Saludo -> ") for l in lineas)
+     and len(respuestas) == 6 and not any("respuesta libre" in l or "ruido corto" in l for l in lineas)),
+    ("Acusó cada respuesta", len(acuses) == 6),
+    ("P1 (uno, con motivo): empatía que retoma lo que dijo", bool(acuses) and acuses[0].startswith("Acuse (baja)")
+     and texto(acuses[0]) not in fijas),
+    ("P2 (siete): acuse corto, sin Claude", len(acuses) > 1 and acuses[1].startswith("Acuse (media)")
+     and texto(acuses[1]) in fijas),
+    ("Las preguntas no arrancan con «Muy bien, gracias» ni «Perfecto»", len(preguntas) == 6 and not any(
+     re.match(r"\W*(muy bien|perfecto|gracias|excelente)\b", p.lower()) for n, p in preguntas.items() if n > 1)),
+    ("Cerró con empatía (hubo notas bajas)", any(l.startswith("Cierre con empatía") for l in lineas)),
+]
+print("\n== Verificación")
+for t, ok in checks:
+    print("   " + ("✅" if ok else "❌") + " " + t)
+sys.exit(0 if all(ok for _, ok in checks) else 1)
+'
+  exit $?
+fi
 
 # Lo que dijo el voice-agent (Whisper, continuaciones, errores).
 docker logs --since "$DESDE" "$V" 2>&1 | grep -E "Recepción <-|siguió hablando|ERROR|Traceback" | sed 's/^/   /' || true

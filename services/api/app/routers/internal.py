@@ -25,7 +25,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import conocimiento, datos_cliente, entrantes, fuentes, pronunciaciones, recepcion, vocabulario
+from app import acuse, conocimiento, datos_cliente, entrantes, fuentes, pronunciaciones, recepcion, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -39,6 +39,7 @@ from app.models import (
     TargetStatus,
 )
 from app.schemas import (
+    AcuseIn,
     AnswerIn,
     AnswerResult,
     GreetingIn,
@@ -460,6 +461,22 @@ def transfer(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> dict
 
 
 # ---------------------------------------------------------------------------
+@router.post("/sessions/{session_uuid}/acuse")
+async def acuse_de_respuesta(session_uuid: uuid_mod.UUID, body: AcuseIn, db: Session = Depends(get_db)) -> dict:
+    """Lo que dice el agente después de una respuesta, antes de la próxima pregunta: muestra que lo escuchó.
+
+    {"acuse": "...", "banda": alta|media|baja|neutra|abierta}. Con solo el puntaje, una frase fija al instante; si
+    contó algo más, Claude la retoma (con tope de tiempo). Ver app/acuse.py. No guarda nada.
+    """
+    question = db.get(Question, body.question_id)
+    if question is None:
+        raise HTTPException(404, f"Pregunta {body.question_id} inexistente")
+    valor = interpret(body.transcript, question.qtype).value
+    texto, banda = await acuse.acuse(question.text, question.qtype, body.transcript, valor, question.position)
+    log.info("Sesión %s P%s: acuse %s -> %r", session_uuid, question.position, banda, texto[:70])
+    return {"acuse": texto, "banda": banda}
+
+
 @router.post("/sessions/{session_uuid}/reply")
 async def conversational_reply(
     session_uuid: uuid_mod.UUID,
@@ -626,6 +643,9 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
             campaign.optout_script,
         ]
         textos += [q.text for q in campaign.questions if q.is_active]
+        textos += [q.texto_sin_acuse for q in campaign.questions if q.is_active and not recepcion.es_recepcion(campaign)]
+        if not recepcion.es_recepcion(campaign):
+            textos += acuse.todas_las_fijas()
         textos.append(FRASE_LLAMAR_DESPUES)
         if recepcion.es_recepcion(campaign):
             textos += list(recepcion.FRASES_FIJAS)

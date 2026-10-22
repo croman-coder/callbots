@@ -34,6 +34,9 @@ MULETILLA = "Déjeme ver."
 # La dice el agente si al saludar el cliente contesta que no puede ahora. Igual en la API (routers/internal.py), que
 # la precalienta.
 FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga un buen día."
+# Antes de la despedida, si alguna respuesta fue mala: la despedida alegre de la campaña sola suena a que no escuchó.
+# Igual en la API (app/acuse.py), que la precalienta.
+FRASE_CIERRE_DISCONFORME = "Lamento que la experiencia no haya sido la que esperaba. Le paso sus comentarios al equipo de Calidad."
 
 
 @dataclass
@@ -45,6 +48,8 @@ class Question:
     is_required: bool
     max_answer_seconds: int
     max_retries: int
+    # La pregunta sin «Muy bien, gracias.» al principio: se dice después de un acuse (ver dialog._ask).
+    texto_sin_acuse: str = ""
 
 
 @dataclass
@@ -99,7 +104,9 @@ class Script:
             self.outro_script,
             self.fallback_script,
             self.optout_script,
+            FRASE_CIERRE_DISCONFORME,
             *[q.text for q in self.questions],
+            *[q.texto_sin_acuse for q in self.questions if q.texto_sin_acuse],
             *extra,
         ]
 
@@ -176,7 +183,8 @@ class ApiClient:
             vocabulario=[str(p) for p in (data.get("vocabulario") or []) if p],
             modo=str(data.get("modo") or "encuesta"),
             frases={str(k): str(v) for k, v in (data.get("frases") or {}).items() if v},
-            questions=[Question(**q) for q in data["questions"]],
+            questions=[Question(**{k: v for k, v in q.items() if k in Question.__dataclass_fields__})
+                       for q in data["questions"]],
         )
 
     async def greeting(self, session_uuid: uuid_mod.UUID, transcript: str) -> dict:
@@ -192,6 +200,22 @@ class ApiClient:
         except (httpx.HTTPError, ValueError) as exc:
             log.warning("No se pudo clasificar la respuesta al saludo: %s", exc)
             return {"accion": "seguir"}
+
+    async def acuse(self, session_uuid: uuid_mod.UUID, question_id: int, transcript: str) -> dict | None:
+        """Lo que dice el agente después de una respuesta para mostrar que la escuchó: {"acuse", "banda"}.
+        None si falla: la encuesta sigue sin acuse (y la pregunta siguiente con su transición fija)."""
+        try:
+            response = await self._client.post(
+                f"/internal/sessions/{session_uuid}/acuse",
+                json={"question_id": question_id, "transcript": transcript},
+                timeout=3.0,
+            )
+            response.raise_for_status()
+            datos = response.json()
+            return datos if isinstance(datos, dict) and datos.get("acuse") else None
+        except (httpx.HTTPError, ValueError) as exc:
+            log.warning("No se pudo pedir el acuse: %s", exc)
+            return None
 
     async def conversational_reply(
         self,

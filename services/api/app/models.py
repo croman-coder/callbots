@@ -258,6 +258,13 @@ class Question(Base):
         back_populates="question", cascade="all, delete-orphan"
     )
 
+    @property
+    def texto_sin_acuse(self) -> str:
+        """La pregunta sin la transición fija del principio: se dice después de un acuse (ver app/acuse.py)."""
+        from app.acuse import sin_acuse
+
+        return sin_acuse(self.text)
+
 
 # ---------------------------------------------------------------------------
 # Destinatarios

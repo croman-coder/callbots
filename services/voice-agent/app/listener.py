@@ -168,6 +168,15 @@ async def listen(
             )
 
 
+def es_ruido(grabacion: Recording, transcripcion: str) -> bool:
+    """Sonó algo corto (un golpe, una respiración, el «eh» antes de hablar) y Whisper no sacó ni una palabra.
+
+    No es una respuesta: quien escucha sigue escuchando sin decir nada. En el Simulador pasó dos veces en una misma
+    encuesta (21/10/2026): 0,3 s de ruido, «¿me lo repite?», y parecía que el agente no escuchaba.
+    """
+    return grabacion.has_audio and not (transcripcion or "").strip() and grabacion.duration_seconds < 1.2
+
+
 async def voz_mientras(
     socket: AudioSocket, tarea: asyncio.Future, voz_ms: int = 200, ventana_ms: int = 300, gracia_ms: int = 400
 ) -> list[bytes] | None:

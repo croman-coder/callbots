@@ -23,6 +23,8 @@ class QuestionOut(BaseModel):
     is_required: bool
     max_answer_seconds: int
     max_retries: int
+    # Sin «Muy bien, gracias.» ni «Perfecto.» al principio: va después del acuse (app/acuse.py).
+    texto_sin_acuse: str = ""
 
 
 class SurveyScript(BaseModel):
@@ -59,6 +61,13 @@ class SurveyScript(BaseModel):
     # Frases fijas de la recepción (si el cliente no habla, si se acaba el tiempo…), para decirlas sin esperar a la API.
     frases: dict[str, str] = {}
     questions: list[QuestionOut]
+
+
+class AcuseIn(BaseModel):
+    """Lo que contestó el cliente a una pregunta de la encuesta, para que el agente muestre que lo escuchó."""
+
+    question_id: int
+    transcript: str = ""
 
 
 class ReplyRequest(BaseModel):

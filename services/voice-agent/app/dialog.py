@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 
 from app import buzon, stt, tts
 from app.api_client import (
+    FRASE_CIERRE_DISCONFORME,
     FRASE_LLAMAR_DESPUES,
     FRASE_TRANSFERENCIA_FALLIDA,
     MULETILLA,
@@ -31,7 +32,7 @@ from app.api_client import (
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
 from app.guion import partir_frases, personalizar
-from app.listener import ListenResult, listen, voz_mientras
+from app.listener import ListenResult, es_ruido, listen, voz_mientras
 
 log = logging.getLogger(__name__)
 
@@ -137,6 +138,10 @@ class SurveyDialog:
         self._voz = voz_de(script)
         self.questions_asked = 0
         self.questions_answered = 0
+        # Escucha activa (ver _ask): si ya se dijo un acuse, la próxima pregunta va sin su transición fija; si alguna
+        # respuesta fue mala, antes de la despedida va FRASE_CIERRE_DISCONFORME.
+        self._acuso = False
+        self._disconforme = False
         self.outcome = Outcome.PARTIAL
         self.hangup_cause: str | None = None
 
@@ -189,6 +194,9 @@ class SurveyDialog:
         else:
             # Recorrió todas las preguntas sin cortes
             self.outcome = Outcome.COMPLETED
+            if self._disconforme:
+                log.info("[%s] Cierre con empatía: hubo respuestas malas", self.session_uuid)
+                await _say(self.socket, FRASE_CIERRE_DISCONFORME, self._voz)
             await _say(self.socket, self.script.outro_script, self._voz)
 
     # ------------------------------------------------------------------
@@ -206,12 +214,14 @@ class SurveyDialog:
         try:
             await _say(self.socket, self.script.intro_script, self._voz)
             silencios = 0
+            reescucho = False
             while True:
                 if asyncio.get_running_loop().time() - inicio > RECEPCION_MAX_SEGUNDOS:
                     self.hangup_cause = "tiempo_maximo"
                     await _say(self.socket, frases.get("tiempo", ""), self._voz)
                     return
-                await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
+                if not reescucho:
+                    await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
                 grabacion = await listen(
                     self.socket, max_seconds=RECEPCION_TURNO_SEGUNDOS, no_speech_timeout=RECEPCION_ESPERA_VOZ
                 )
@@ -220,6 +230,10 @@ class SurveyDialog:
                 texto = ""
                 if grabacion.has_audio:
                     texto = await self._transcribir_turno(grabacion.pcm)
+                if es_ruido(grabacion, texto) and not reescucho:
+                    reescucho = True  # un ruido corto no es silencio: se sigue escuchando sin «¿sigue ahí?»
+                    continue
+                reescucho = False
                 if not texto:
                     silencios += 1
                     if silencios >= 2:
@@ -418,9 +432,18 @@ class SurveyDialog:
         if self.questions_asked > 0:
             await self.socket.play_silence(PAUSE_BEFORE_QUESTION_MS)
 
+        # Recién se dijo el acuse de la respuesta anterior: la transición fija («Muy bien, gracias.») sobra.
+        texto = question.texto_sin_acuse if (self._acuso and question.texto_sin_acuse) else question.text
+        self._acuso = False
+        reescucho = False
+
         while True:
-            if retries_used == 0:
-                prompt = question.text
+            if reescucho:
+                # Fue un ruido corto (Whisper no sacó palabras): se sigue escuchando sin decir nada. Pedir «¿me lo
+                # repite?» por un golpe o una respiración suena a que no escucha.
+                prompt = None
+            elif retries_used == 0:
+                prompt = texto
             elif respuesta_libre:
                 # El cliente preguntó algo o se fue por las ramas: se le
                 # contesta. El LLM ya termina reconduciendo a la pregunta, así
@@ -432,10 +455,13 @@ class SurveyDialog:
                 prompt = self.script.fallback_script
 
             if prompt:
+                if retries_used == 0:
+                    log.info("[%s] P%d pregunta: %r", self.session_uuid, question.position, prompt[:80])
                 await _say(self.socket, prompt, self._voz)
-            await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
+            if not reescucho:
+                await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
 
-            if retries_used == 0:
+            if retries_used == 0 and not reescucho:
                 self.questions_asked += 1
 
             recording = await listen(
@@ -455,12 +481,22 @@ class SurveyDialog:
                 transcript = result.text
                 confidence = result.confidence
 
+            if es_ruido(recording, transcript) and not reescucho:
+                log.info("[%s] P%d: ruido corto (%.1fs), se sigue escuchando", self.session_uuid, question.position,
+                         recording.duration_seconds)
+                reescucho = True
+                continue
+            reescucho = False
+
             await self.socket.send_event("cliente", transcript)
             log.info(
                 "[%s] P%d %r -> %r (%s, %.1fs)",
                 self.session_uuid, question.position, question.text[:40],
                 transcript, recording.result.value, recording.duration_seconds,
             )
+            # El acuse se pide ya, en paralelo con guardar la respuesta: con solo el puntaje vuelve al instante.
+            pedido_acuse = (asyncio.create_task(self.api.acuse(self.session_uuid, question.id, transcript))
+                            if transcript.strip() else None)
 
             audio_path = _save_wav(recording.pcm, self.session_uuid, question.position)
 
@@ -478,7 +514,12 @@ class SurveyDialog:
                 # No podemos guardar la respuesta, pero cortar la llamada es peor:
                 # seguimos preguntando y el watchdog levanta lo que quedó.
                 log.error("[%s] No se pudo guardar la respuesta: %s", self.session_uuid, exc)
+                await self._decir_acuse(pedido_acuse)
                 return True
+
+            if verdict.is_optout or verdict.should_retry or (verdict.wants_transfer and self.script.transfer_enabled):
+                if pedido_acuse is not None:
+                    pedido_acuse.cancel()  # no contestó la pregunta: no hay nada que acusar
 
             if verdict.is_optout:
                 log.info("[%s] El cliente pidió no continuar", self.session_uuid)
@@ -530,8 +571,27 @@ class SurveyDialog:
 
             if verdict.understood:
                 self.questions_answered += 1
+                await self._decir_acuse(pedido_acuse)
+            elif pedido_acuse is not None:
+                pedido_acuse.cancel()
 
             return True
+
+    async def _decir_acuse(self, pedido) -> None:  # noqa: ANN001 - Task del ApiClient o None
+        """Muestra que escuchó la respuesta («Lamento mucho escuchar eso.», «¡Qué bueno!»). Ver app/acuse.py de la API."""
+        if pedido is None:
+            return
+        try:
+            datos = await pedido
+        except asyncio.CancelledError:
+            return
+        if not datos:
+            return
+        log.info("[%s] Acuse (%s): %r", self.session_uuid, datos.get("banda"), datos["acuse"][:80])
+        await _say(self.socket, datos["acuse"], self._voz)
+        self._acuso = True
+        if datos.get("banda") == "baja":
+            self._disconforme = True
 
     # ------------------------------------------------------------------
     async def _transferir(self) -> bool:
