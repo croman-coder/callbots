@@ -10,7 +10,7 @@ import asyncio
 import logging
 import signal
 
-from app import stt, tts
+from app import ambiente, stt, tts
 from app.api_client import ApiClient, ApiError
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import config
@@ -58,6 +58,11 @@ async def handle_connection(
 
         # Antes de precalentar o decir nada: de esto depende cómo suenan las marcas y las siglas.
         tts.set_pronunciaciones(script.pronunciaciones)
+
+        # Ambiente de oficina y teclado, si el agente los tiene: desde el saludo, que no suene a línea muerta.
+        if script.sonido_fondo == "oficina" or script.teclado:
+            socket.activar_ambiente(ambiente.oficina() if script.sonido_fondo == "oficina" else None,
+                                    ambiente.teclado() if script.teclado else None)
 
         # Un agente de recepción no tiene preguntas: conversa (ver dialog._atender_recepcion).
         if not script.questions and not script.es_recepcion:

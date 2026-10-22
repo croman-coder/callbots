@@ -31,6 +31,8 @@ import json
 import logging
 import uuid as uuid_mod
 
+import numpy as np
+
 from app.config import BYTES_PER_FRAME, FRAME_MS
 
 log = logging.getLogger(__name__)
@@ -74,6 +76,15 @@ class AudioSocket:
         self._pump: asyncio.Task[None] | None = None
         # Cuándo toca escribir la próxima trama de audio (reloj del loop, en segundos).
         self._reloj: float | None = None
+        # Sonido de fondo (ver activar_ambiente): se mezcla con todo lo que sale y, mientras el agente escucha o
+        # piensa, lo manda solo el relleno.
+        self._fondo: np.ndarray | None = None
+        self._teclado: np.ndarray | None = None
+        self._pos_fondo = 0
+        self._pos_teclado = 0
+        self._tecleando = False
+        self._reproduciendo = 0
+        self._relleno: asyncio.Task[None] | None = None
 
     # ------------------------------------------------------------------ lectura
     async def read_frame(self) -> tuple[int, bytes]:
@@ -190,23 +201,84 @@ class AudioSocket:
         if espera > 0:
             await asyncio.sleep(espera)
 
+    # ----------------------------------------------------------------- sonido de fondo
+    def activar_ambiente(self, fondo: bytes | None, teclado: bytes | None) -> None:
+        """Ambiente de oficina por debajo de toda la llamada y/o tecleo mientras el agente busca (ver ambiente.py).
+
+        El relleno manda el ambiente cuando no suena nada más: mientras el cliente habla y mientras el agente piensa.
+        """
+        self._fondo = np.frombuffer(fondo, dtype=np.int16) if fondo else None
+        self._teclado = np.frombuffer(teclado, dtype=np.int16) if teclado else None
+        if (self._fondo is not None or self._teclado is not None) and self._relleno is None:
+            self._relleno = asyncio.create_task(self._relleno_loop())
+
+    def teclear(self, si: bool) -> None:
+        """Teclea (si el agente tiene teclado) hasta que se apague o el agente vuelva a hablar."""
+        self._tecleando = bool(si) and self._teclado is not None
+
+    def _tramo(self, fuente: np.ndarray, pos: int, n: int) -> tuple[np.ndarray, int]:
+        idx = (np.arange(n) + pos) % len(fuente)
+        return fuente[idx].astype(np.int32), (pos + n) % len(fuente)
+
+    def _mezclar(self, chunk: bytes) -> bytes:
+        if self._fondo is None and not self._tecleando:
+            return chunk
+        x = np.frombuffer(chunk, dtype=np.int16).astype(np.int32)
+        if self._fondo is not None:
+            tramo, self._pos_fondo = self._tramo(self._fondo, self._pos_fondo, len(x))
+            x = x + tramo
+        if self._tecleando:
+            tramo, self._pos_teclado = self._tramo(self._teclado, self._pos_teclado, len(x))
+            x = x + tramo
+        return np.clip(x, -32768, 32767).astype(np.int16).tobytes()
+
+    async def _relleno_loop(self) -> None:
+        try:
+            while self._closed is None:
+                if self._reproduciendo:
+                    await asyncio.sleep(FRAME_SECONDS / 2)
+                    continue
+                self._write_frame(TYPE_AUDIO, self._mezclar(SILENCE_FRAME))
+                await self._writer.drain()
+                await self._a_tiempo()
+        except (ConnectionResetError, BrokenPipeError, RuntimeError):
+            return
+
     # ----------------------------------------------------------------- escritura
     def _write_frame(self, frame_type: int, payload: bytes = b"") -> None:
         self._writer.write(
             bytes([frame_type]) + len(payload).to_bytes(2, "big") + payload
         )
 
-    async def play(self, pcm: bytes, drain_input: bool = True) -> None:
+    async def play(self, pcm: bytes, drain_input: bool = True, escucha=None) -> list[bytes] | None:  # noqa: ANN001
         """Reproduce PCM 8 kHz en el canal, una trama cada 20 ms de reloj real.
 
         El audio que llega durante la reproducción se descarta: si no, la voz del bot se mezclaría con la respuesta
-        del cliente en la transcripción.
+        del cliente en la transcripción. Con `escucha` (listener.Interrupcion) en vez de descartarlo se mira: si el
+        cliente empezó a hablar, se deja de reproducir y se devuelve el arranque de su voz (lo que siga queda en la
+        cola para la escucha). Sin interrupción devuelve None.
         """
-        for offset in range(0, len(pcm), BYTES_PER_FRAME):
-            chunk = pcm[offset : offset + BYTES_PER_FRAME]
-            if len(chunk) < BYTES_PER_FRAME:
-                chunk = chunk.ljust(BYTES_PER_FRAME, b"\x00")
-            await self._escribir_audio(chunk, drain_input)
+        self._reproduciendo += 1
+        try:
+            for offset in range(0, len(pcm), BYTES_PER_FRAME):
+                chunk = pcm[offset : offset + BYTES_PER_FRAME]
+                if len(chunk) < BYTES_PER_FRAME:
+                    chunk = chunk.ljust(BYTES_PER_FRAME, b"\x00")
+                if escucha is not None:
+                    if self._lo_interrumpen(escucha):
+                        return escucha.inicio()
+                    await self._escribir_audio(chunk, descartar=False)
+                else:
+                    await self._escribir_audio(chunk, drain_input)
+            return None
+        finally:
+            self._reproduciendo -= 1
+
+    def _lo_interrumpen(self, escucha) -> bool:  # noqa: ANN001 - listener.Interrupcion
+        while not self._incoming.empty():
+            if escucha.mirar(self._incoming.get_nowait()):
+                return True
+        return False
 
     async def _escribir_audio(self, chunk: bytes, descartar: bool = True) -> None:
         if self._closed is not None:
@@ -214,7 +286,7 @@ class AudioSocket:
         if descartar:
             self._descartar_entrante()
         try:
-            self._write_frame(TYPE_AUDIO, chunk)
+            self._write_frame(TYPE_AUDIO, self._mezclar(chunk))
             await self._writer.drain()
         except (ConnectionResetError, BrokenPipeError) as exc:
             # El otro extremo cortó mientras hablaba el bot: es un corte, no un error del servicio.
@@ -232,10 +304,18 @@ class AudioSocket:
         except (ConnectionResetError, BrokenPipeError):
             pass
 
-    async def play_silence(self, milliseconds: int) -> None:
-        """Silencio activo: mantiene el canal abierto y el reloj andando."""
-        for _ in range(max(0, milliseconds // 20)):
-            await self._escribir_audio(SILENCE_FRAME)
+    async def play_silence(self, milliseconds: int, escucha=None) -> list[bytes] | None:  # noqa: ANN001
+        """Silencio activo: mantiene el canal abierto y el reloj andando. `escucha`: como en `play`."""
+        return await self.play(SILENCE_FRAME * max(0, milliseconds // 20), escucha=escucha) if escucha is not None \
+            else await self._silencio(milliseconds)
+
+    async def _silencio(self, milliseconds: int) -> None:
+        self._reproduciendo += 1
+        try:
+            for _ in range(max(0, milliseconds // 20)):
+                await self._escribir_audio(SILENCE_FRAME)
+        finally:
+            self._reproduciendo -= 1
 
     async def hangup(self) -> None:
         try:
@@ -245,6 +325,9 @@ class AudioSocket:
             pass
 
     async def close(self) -> None:
+        if self._relleno is not None:
+            self._relleno.cancel()
+            self._relleno = None
         if self._pump is not None:
             self._pump.cancel()
             try:

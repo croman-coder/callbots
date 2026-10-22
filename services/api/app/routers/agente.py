@@ -476,6 +476,14 @@ async def guardar(campaign_id: int, request: Request, db: Session = Depends(get_
         if reales[campo] is not None:
             setattr(campaign, campo, _entre(reales[campo], minimo, maximo))
 
+    # Sonido de fondo: el formulario de voz manda «ambiente_enviado» para saber que el tilde del teclado vino.
+    if "ambiente_enviado" in form:
+        fondo = texto("sonido_fondo", 20) or ""
+        if fondo not in ("", "oficina"):
+            return _volver(campaign_id, tab, error="Elegí el sonido de fondo de la lista")
+        campaign.sonido_fondo = fondo or None
+        campaign.teclado = form.get("teclado") == "1"
+
     # Buzón de voz: "" = no detectar. Solo se tocan los campos que llegaron (cada pestaña manda los suyos).
     accion = texto("voicemail_action", 10)
     if accion is not None:

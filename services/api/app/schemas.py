@@ -46,6 +46,9 @@ class SurveyScript(BaseModel):
     voice_expressiveness: float = 0.667
     voice_volume: float = 1.0
     voice_profile_id: str | None = None
+    # Sonido de fondo («oficina» o nada) y tecleo mientras busca o anota (ver app/ambiente.py del voice-agent).
+    sonido_fondo: str | None = None
+    teclado: bool = False
     # Buzón de voz: None = no se detecta; "colgar" o "mensaje" (ver Campaign.voicemail_action).
     voicemail_action: str | None = None
     voicemail_script: str = ""

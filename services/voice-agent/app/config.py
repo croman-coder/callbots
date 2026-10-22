@@ -90,6 +90,8 @@ class Config:
     # abierta hasta el tope. Subirlo si el bot no corta cuando el cliente
     # termina; bajarlo si corta a gente que habla bajito.
     speech_floor: int = int(os.getenv("SPEECH_FLOOR", "700"))
+    # Si el cliente habla mientras habla el agente, el agente se calla y lo escucha (ver listener.Interrupcion).
+    barge_in: bool = os.getenv("BARGE_IN", "1") == "1"
     silence_ms_to_stop: int = int(os.getenv("SILENCE_MS_TO_STOP", "900"))
     max_answer_seconds: int = int(os.getenv("MAX_ANSWER_SECONDS", "30"))
     no_speech_timeout_seconds: int = int(os.getenv("NO_SPEECH_TIMEOUT_SECONDS", "8"))

@@ -163,8 +163,9 @@
     try {
       estado.textContent = "Pidiendo el micrófono…";
       stream = await navigator.mediaDevices.getUserMedia({
+        // Sin ganancia automática: sube el ruido de fondo cuando la persona calla y el agente no corta nunca.
         audio: { echoCancellation: true, noiseSuppression: true,
-                 autoGainControl: true, channelCount: 1 }
+                 autoGainControl: false, channelCount: 1 }
       });
     } catch (e) {
       estado.textContent = "Sin micrófono";

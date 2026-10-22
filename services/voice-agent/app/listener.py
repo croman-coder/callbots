@@ -13,8 +13,10 @@ Máquina de estados:
 
 from __future__ import annotations
 
+import array
 import asyncio
 import logging
+import math
 from dataclasses import dataclass
 from enum import Enum
 
@@ -35,6 +37,87 @@ def pico_de(frame: bytes) -> int:
         ),
         default=0,
     )
+
+
+def rms_de(frame: bytes) -> float:
+    muestras = array.array("h", frame)
+    return math.sqrt(sum(m * m for m in muestras) / max(1, len(muestras)))
+
+
+class Niveles:
+    """Qué es voz de quien habla y qué es el ambiente, por nivel: para no tomar el ruido de una oficina por voz.
+
+    webrtcvad dice «voz» con cualquier cosa que suene a voz: alguien hablando lejos, la tele, el aire. En una prueba
+    desde una oficina (22/10/2026) el cliente decía «cero» y la escucha seguía 15 segundos, hasta el tope, porque el
+    murmullo de atrás nunca dejaba juntar el silencio para cortar. Ahora una trama cuenta como voz si además:
+
+    - supera el piso de ruido del ambiente por MARGEN_RUIDO (el piso se sigue por abajo: baja enseguida, sube
+      despacio, así las voces de atrás no lo inflan), y
+    - una vez que habló, no queda por debajo de FRACCION_VOZ del nivel de su propia voz (quien habla está cerca del
+      micrófono; lo de atrás llega mucho más bajo).
+    """
+
+    MARGEN_RUIDO = 3.0     # +9,5 dB sobre el ambiente
+    FRACCION_VOZ = 0.25    # −12 dB bajo la voz de quien habla
+
+    def __init__(self) -> None:
+        self.ruido: float | None = None
+        self.voz: float | None = None
+
+    def es_voz(self, frame: bytes, vad_dice: bool) -> bool:
+        r = rms_de(frame)
+        voz = vad_dice and pico_de(frame) >= config.speech_floor
+        if voz and self.ruido is not None and r < self.ruido * self.MARGEN_RUIDO:
+            voz = False
+        if voz and self.voz is not None and r < self.voz * self.FRACCION_VOZ:
+            voz = False
+        if voz:
+            # La voz: sube rápido con lo fuerte, baja muy despacio.
+            self.voz = r if self.voz is None or r > self.voz else self.voz * 0.998
+        elif self.ruido is None or r < self.ruido:
+            # El piso, solo con lo que no es voz: baja de golpe y sube despacio (~2 dB por segundo).
+            self.ruido = max(r, 1.0)
+        else:
+            self.ruido *= 1.012
+        return voz
+
+
+class Interrupcion:
+    """¿El cliente empezó a hablar mientras habla el agente? (barge-in)
+
+    Sin esto el agente no escuchaba mientras hablaba: si el cliente contestaba antes de que terminara la pregunta,
+    su respuesta se tiraba y quedaban los dos hablando a la vez («habla todo encimado», 22/10/2026). Ahora, si suena
+    voz de verdad (VOZ_MS dentro de VENTANA_MS, el doble del piso de energía para no tomar el eco del propio agente
+    por voz), el agente se calla y esa voz es el arranque de la respuesta.
+    """
+
+    VOZ_MS = 300
+    VENTANA_MS = 400
+
+    def __init__(self) -> None:
+        self._vad = webrtcvad.Vad(config.vad_aggressiveness)
+        self._niveles = Niveles()
+        self._leidas: list[bytes] = []
+        self._marcas: list[bool] = []
+        self._necesarias = self.VOZ_MS // FRAME_MS
+        self._ventana = self.VENTANA_MS // FRAME_MS
+
+    def mirar(self, frame: bytes) -> bool:
+        if len(frame) != BYTES_PER_FRAME:
+            return False
+        try:
+            vad = self._vad.is_speech(frame, SAMPLE_RATE)
+        except Exception:  # noqa: BLE001 - trama malformada: silencio
+            vad = False
+        voz = self._niveles.es_voz(frame, vad and pico_de(frame) >= 2 * config.speech_floor)
+        self._leidas.append(frame)
+        self._marcas.append(voz)
+        del self._leidas[:-50], self._marcas[:-50]
+        return sum(self._marcas[-self._ventana:]) >= self._necesarias
+
+    def inicio(self) -> list[bytes]:
+        """Lo que llegó desde un poco antes de que arrancara a hablar."""
+        return self._leidas[-(self._ventana + 10):]
 
 
 class ListenResult(str, Enum):
@@ -68,8 +151,10 @@ async def listen(
     max_seconds: int | None = None,
     silence_ms: int | None = None,
     no_speech_timeout: int | None = None,
+    previo: list[bytes] | None = None,
 ) -> Recording:
-    """Escucha hasta que el cliente deja de hablar.
+    """Escucha hasta que el cliente deja de hablar. `previo`: el arranque de su voz si interrumpió al agente
+    (ver Interrupcion); la escucha sigue desde ahí, ya hablando.
 
     Solo se guarda el audio desde que arranca la voz (más un colchón previo), para no mandarle a Whisper varios
     segundos de silencio inicial. Las esperas (nadie habla, silencio al final, tope) se miden con el reloj, no
@@ -81,6 +166,7 @@ async def listen(
     no_speech_timeout = no_speech_timeout or config.no_speech_timeout_seconds
 
     vad = webrtcvad.Vad(config.vad_aggressiveness)
+    niveles = Niveles()
     reloj = asyncio.get_running_loop().time
 
     max_frames = max_seconds * 1000 // FRAME_MS
@@ -91,8 +177,10 @@ async def listen(
     collected: list[bytes] = []
     prebuffer: list[bytes] = []
 
-    speaking = False
-    speech_frames = 0
+    speaking = bool(previo)
+    if previo:
+        collected.extend(previo)
+    speech_frames = len(previo or [])
     tramas_desde_voz = 0
     inicio = reloj()
     ultima_voz = inicio
@@ -115,11 +203,11 @@ async def listen(
             except Exception:  # noqa: BLE001 - trama malformada: la tratamos como silencio
                 is_speech = False
 
-            # webrtcvad se entusiasma: el ruido de la sala, el aire de la línea o el eco del propio bot por los
-            # parlantes le alcanzan para decir "voz". Con eso el silencio final nunca se acumula y la escucha se
-            # estira hasta el tope. El piso de energía descarta lo que suena pero no es alguien hablando.
-            if is_speech and pico_de(frame) < config.speech_floor:
-                is_speech = False
+            # webrtcvad se entusiasma: el ruido de la sala, el aire de la línea, voces de atrás o el eco del propio
+            # bot le alcanzan para decir "voz". Con eso el silencio final nunca se acumula y la escucha se estira
+            # hasta el tope. El piso de energía y los niveles (ver Niveles) descartan lo que suena pero no es quien
+            # está hablando.
+            is_speech = niveles.es_voz(frame, is_speech)
 
             if not speaking:
                 if is_speech:

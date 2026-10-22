@@ -127,6 +127,9 @@ class _SocketFalso:
     async def play_silence(self, ms):
         self.reproducido.append(("pausa", ms))
 
+    def teclear(self, si):
+        pass
+
 
 def test_el_dialogo_prepara_la_frase_siguiente_mientras_suena_la_actual(monkeypatch):
     import sys

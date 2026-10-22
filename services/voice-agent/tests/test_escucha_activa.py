@@ -87,3 +87,76 @@ def test_lo_que_no_se_grabo_no_es_ruido():
     assert not es_ruido(Recording(pcm=b"", result=ListenResult.SILENCE, speech_ms=0), "")
     assert not es_ruido(Recording(pcm=b"\x00" * 4800, result=ListenResult.SPEECH, speech_ms=100), "sí")
     assert not es_ruido(Recording(pcm=b"\x00" * 32000, result=ListenResult.SPEECH, speech_ms=1500), "")
+
+
+def test_si_contesta_encima_de_la_pregunta_se_escucha_desde_ahi(entorno):
+    from tests.test_buzon_y_transferencia import Socket
+
+    s = Socket()
+    arranque = [b"\x05\x00" * 160] * 5
+    s.interrumpe = [arranque]  # contesta mientras el agente todavía hace la pregunta
+    entorno.escuchas += [silencio(), habla(1)]
+    entorno.textos += ["ocho"]
+    d, _ = correr(guion(), Api(verdicts=[verdict()]), socket=s)
+    assert entorno.previos[-1] == arranque and d.outcome == dialog.Outcome.COMPLETED
+    # Ni la pausa de después de la pregunta: ya está hablando.
+    pregunta = next(i for i, h in enumerate(s.hechos) if h[0] == "voz" and h[1] == "¿Del cero al diez?".encode())
+    assert s.hechos[pregunta + 1][0] != "pausa"
+
+
+def test_en_recepcion_se_puede_interrumpir_al_agente_pero_no_la_despedida(entorno):
+    from tests.test_buzon_y_transferencia import Socket
+
+    s = Socket()
+    arranque = [b"\x05\x00" * 160] * 5
+    s.interrumpe = [arranque]  # el saludo no se interrumpe (ni lo mira); la primera respuesta, sí
+    entorno.escuchas += [habla(2), habla(2)]
+    entorno.textos += ["Quiero un turno", "El lunes"]
+    api = ApiRecepcion([{"decir": "Claro. ¿Para qué día?", "accion": "seguir"},
+                        {"decir": "Listo, que tenga buen día.", "accion": "terminar"}])
+    correr(recepcion(), api, socket=s)
+    assert entorno.previos == [None, arranque] and api.turnos == ["Quiero un turno", "El lunes"]
+
+
+def test_con_teclado_teclea_mientras_piensa_y_calla_al_hablar(entorno):
+    from tests.test_buzon_y_transferencia import Socket
+
+    s = Socket()
+    entorno.escuchas += [habla(2)]
+    entorno.textos += ["Quiero un turno"]
+    api = ApiRecepcion([{"decir": "Claro, ya le busco uno.", "accion": "terminar"}], demora=1.2)
+    correr(recepcion(teclado=True), api, socket=s)
+    teclas = [h[1] for h in s.hechos if h[0] == "teclado"]
+    assert True in teclas and teclas[-1] is False  # tecleó mientras pensaba y se calló para hablar
+    # Con teclado no hace falta la muletilla para una espera de 1,2 s: el tecleo ya dice que está buscando.
+    assert dialog.MULETILLA not in entorno.dichas
+
+
+def test_el_ambiente_se_mezcla_con_lo_que_sale():
+    import asyncio
+    import socket as so
+
+    import numpy as np
+
+    from app import ambiente
+    from app.audiosocket import AudioSocket
+
+    async def prueba():
+        a, b = so.socketpair()
+        r1, w1 = await asyncio.open_connection(sock=a)
+        r2, _ = await asyncio.open_connection(sock=b)
+        s = AudioSocket(r1, w1)
+        s.activar_ambiente(ambiente.oficina(), ambiente.teclado())
+        await asyncio.sleep(0.3)  # el agente no dice nada: el relleno manda el ambiente igual
+        recibido = await asyncio.wait_for(r2.read(20000), 1)
+        await s.close()
+        return recibido
+
+    datos = asyncio.run(prueba())
+    tramas = []
+    while len(datos) >= 3:
+        largo = int.from_bytes(datos[1:3], "big")
+        tramas.append(datos[3:3 + largo])
+        datos = datos[3 + largo:]
+    audio = np.frombuffer(b"".join(t for t in tramas if len(t) == 320), dtype=np.int16)
+    assert len(tramas) >= 8 and np.abs(audio).max() > 0  # salió ambiente, no silencio digital

@@ -25,6 +25,40 @@ Después de cada respuesta que se entendió, el agente dice un **acuse** antes d
   sus comentarios al equipo de Calidad.»
 - Claude no hace preguntas, no promete llamados ni soluciones y no pone excusas en el acuse; si lo hace, va la fija.
 
+## Que corte cuando el cliente termina, aunque haya ruido atrás
+
+En la prueba del 22/10/2026 desde una oficina, cada «cero» se escuchó 15 segundos (30 en la abierta): el detector de
+voz (webrtcvad) toma cualquier cosa que suene a voz por voz, y el murmullo de atrás nunca dejaba juntar el silencio
+para cortar. Ahora la escucha (`listener.Niveles`) sigue dos niveles:
+
+- el **piso del ambiente** (solo con lo que no es voz; baja enseguida y sube despacio), y una trama tiene que
+  superarlo por ~10 dB para contar como voz;
+- el **nivel de la voz de quien habla**: lo que queda 12 dB o más por debajo (alguien lejos, el aire) no cuenta.
+
+Además la prueba desde el navegador ya no usa control automático de ganancia: subía el ruido cuando la persona
+callaba.
+
+## Interrupción (hablar encima)
+
+Antes el agente no escuchaba mientras hablaba: si el cliente contestaba antes de que terminara la pregunta, su
+respuesta se tiraba y quedaban los dos hablando a la vez. Ahora (`listener.Interrupcion`), si el cliente habla
+encima de una pregunta de la encuesta o de una respuesta de recepción, el agente se calla y lo escucha desde ahí, sin
+perder el arranque. Pide 300 ms de voz y el doble del piso de energía, para que el eco de su propia voz no lo corte.
+El saludo, el «ya lo busco» y la despedida no se interrumpen. Se apaga con `BARGE_IN=0`.
+
+## Whisper que repite su guía
+
+Con audios cortos Whisper a veces devuelve el texto que se le da de guía («Encuesta telefónica de satisfacción…») en
+vez de lo que se dijo («Ocho.»). Si casi todo lo transcripto está en la guía, se vuelve a transcribir sin ella
+(`stt.es_eco_del_prompt`).
+
+## Sonido de fondo y teclado
+
+En la ficha del agente, Configuración de voz: **Sonido de fondo: Oficina** (ambiente suave toda la llamada, ~30 dB
+por debajo de la voz) y **Teclado mientras busca o anota**. Se sintetizan en el voice-agent (`app/ambiente.py`), sin
+grabaciones de terceros. El teclado suena mientras el agente piensa o consulta el sistema y se calla cuando habla; con
+teclado, la muletilla «Déjeme ver» queda solo para esperas de más de 2,5 s.
+
 ## Ruidos
 
 Un ruido corto (un golpe, una respiración) que Whisper no convierte en palabras ya no se toma como respuesta: el

@@ -32,7 +32,7 @@ from app.api_client import (
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
 from app.guion import partir_frases, personalizar
-from app.listener import ListenResult, es_ruido, listen, voz_mientras
+from app.listener import Interrupcion, ListenResult, es_ruido, listen, voz_mientras
 
 log = logging.getLogger(__name__)
 
@@ -99,17 +99,24 @@ RECEPCION_ESPERA_SEGUIR = 1
 # Si Claude tarda más que esto en contestar, se dice la muletilla («Déjeme ver.») para no dejar un silencio. Una
 # respuesta rápida sale sin muletilla: decirla en cada turno suena a robot.
 ESPERA_ANTES_DE_MULETILLA = 0.9
+ESPERA_CON_TECLADO = 2.5
 
 
 async def _say(
-    socket: AudioSocket, text: str, params: tts.VoiceParams = tts.DEFAULT_PARAMS
-) -> None:
+    socket: AudioSocket, text: str, params: tts.VoiceParams = tts.DEFAULT_PARAMS, interrumpible: bool = False
+) -> list[bytes] | None:
     """Dice el texto frase por frase: mientras suena una, ya se está generando la siguiente, así la
-    voz buena no agrega espera y entre frase y frase queda una pausa natural."""
+    voz buena no agrega espera y entre frase y frase queda una pausa natural.
+
+    `interrumpible`: si el cliente empieza a hablar, el agente se calla y devuelve el arranque de su voz para que la
+    escucha siga desde ahí (ver listener.Interrupcion). Si no lo interrumpieron, None.
+    """
+    socket.teclear(False)  # si estaba tecleando mientras buscaba, deja de teclear para hablar
     await socket.send_event("agente", text)
     frases = partir_frases(text)
     if not frases:
-        return
+        return None
+    escucha = Interrupcion() if interrumpible and config.barge_in else None
     siguiente = asyncio.create_task(tts.sintetizar_frase(frases[0], params))
     try:
         for i in range(len(frases)):
@@ -117,9 +124,16 @@ async def _say(
             if i + 1 < len(frases):
                 siguiente = asyncio.create_task(tts.sintetizar_frase(frases[i + 1], params))
             if pcm:
-                await socket.play(pcm)
+                cortado = await socket.play(pcm, escucha=escucha) if escucha else await socket.play(pcm)
+                if cortado:
+                    log.info("[%s] El cliente habló encima: el agente se calla y escucha", socket.session_uuid)
+                    return cortado
             if i + 1 < len(frases):
-                await socket.play_silence(tts.PAUSA_ENTRE_FRASES_MS)
+                cortado = (await socket.play_silence(tts.PAUSA_ENTRE_FRASES_MS, escucha=escucha) if escucha
+                           else await socket.play_silence(tts.PAUSA_ENTRE_FRASES_MS))
+                if cortado:
+                    return cortado
+        return None
     finally:
         if not siguiente.done():
             siguiente.cancel()
@@ -215,16 +229,19 @@ class SurveyDialog:
             await _say(self.socket, self.script.intro_script, self._voz)
             silencios = 0
             reescucho = False
+            arranque: list[bytes] | None = None
             while True:
                 if asyncio.get_running_loop().time() - inicio > RECEPCION_MAX_SEGUNDOS:
                     self.hangup_cause = "tiempo_maximo"
                     await _say(self.socket, frases.get("tiempo", ""), self._voz)
                     return
-                if not reescucho:
+                if not reescucho and not arranque:
                     await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
                 grabacion = await listen(
-                    self.socket, max_seconds=RECEPCION_TURNO_SEGUNDOS, no_speech_timeout=RECEPCION_ESPERA_VOZ
+                    self.socket, max_seconds=RECEPCION_TURNO_SEGUNDOS, no_speech_timeout=RECEPCION_ESPERA_VOZ,
+                    previo=arranque,
                 )
+                arranque = None
                 if grabacion.result is ListenResult.HANGUP:
                     raise AudioSocketClosed("cortó")
                 texto = ""
@@ -246,18 +263,22 @@ class SurveyDialog:
                 silencios = 0
                 await self.socket.send_event("cliente", texto)
                 log.info("[%s] Recepción <- %r", self.session_uuid, texto[:80])
+                self.socket.teclear(True)  # piensa y anota: se oye el teclado (si el agente lo tiene)
                 respuesta = await self._esperar_con_muletilla(self.api.recepcion_turno(caso, texto))
                 if respuesta.get("accion") == "consultar":
                     # «Ya lo busco en el sistema»: la consulta arranca antes de decirlo, así la frase tapa la espera.
                     pedido = asyncio.ensure_future(self.api.recepcion_continuar(caso))
                     try:
                         await _say(self.socket, respuesta.get("decir") or "", self._voz)
+                        self.socket.teclear(True)  # busca en el sistema
                         respuesta = await pedido
                     except BaseException:
                         pedido.cancel()
                         raise
                 accion = respuesta.get("accion")
-                await _say(self.socket, respuesta.get("decir") or frases.get("registrado", ""), self._voz)
+                # Se puede interrumpir mientras conversa; la despedida y el paso a una persona, no.
+                arranque = await _say(self.socket, respuesta.get("decir") or frases.get("registrado", ""), self._voz,
+                                      interrumpible=accion in ("seguir", "derivar"))
 
                 if accion == "transferir" and self.script.transfer_enabled:
                     if await self._transferir():
@@ -297,9 +318,12 @@ class SurveyDialog:
         """Espera la respuesta de la API; si tarda, dice la muletilla mientras tanto (no después)."""
         pedido = asyncio.ensure_future(pedido_api)
         try:
-            listos, _ = await asyncio.wait({pedido}, timeout=ESPERA_ANTES_DE_MULETILLA)
+            # Con teclado, el tecleo ya dice «estoy buscando»: la muletilla queda para una espera larga de verdad.
+            espera = ESPERA_CON_TECLADO if self.script.teclado else ESPERA_ANTES_DE_MULETILLA
+            listos, _ = await asyncio.wait({pedido}, timeout=espera)
             if not listos:
                 await _say(self.socket, MULETILLA, self._voz)
+                self.socket.teclear(True)
             return await pedido
         except BaseException:
             pedido.cancel()
@@ -454,11 +478,12 @@ class SurveyDialog:
             else:
                 prompt = self.script.fallback_script
 
+            arranque = None
             if prompt:
                 if retries_used == 0:
                     log.info("[%s] P%d pregunta: %r", self.session_uuid, question.position, prompt[:80])
-                await _say(self.socket, prompt, self._voz)
-            if not reescucho:
+                arranque = await _say(self.socket, prompt, self._voz, interrumpible=True)
+            if not reescucho and not arranque:
                 await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
 
             if retries_used == 0 and not reescucho:
@@ -468,6 +493,7 @@ class SurveyDialog:
                 self.socket,
                 max_seconds=question.max_answer_seconds,
                 no_speech_timeout=config.no_speech_timeout_seconds,
+                previo=arranque,
             )
 
             if recording.result is ListenResult.HANGUP:
@@ -497,6 +523,8 @@ class SurveyDialog:
             # El acuse se pide ya, en paralelo con guardar la respuesta: con solo el puntaje vuelve al instante.
             pedido_acuse = (asyncio.create_task(self.api.acuse(self.session_uuid, question.id, transcript))
                             if transcript.strip() else None)
+            if pedido_acuse is not None:
+                self.socket.teclear(True)  # anota la respuesta (si el agente tiene teclado)
 
             audio_path = _save_wav(recording.pcm, self.session_uuid, question.position)
 

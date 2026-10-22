@@ -61,11 +61,19 @@ class Socket:
     async def send_event(self, rol, texto):
         self.hechos.append(("evento", rol, texto))
 
-    async def play(self, pcm, drain_input=True):
+    async def play(self, pcm, drain_input=True, escucha=None):
         self.hechos.append(("voz", pcm))
+        # Para simular que el cliente habla encima: lo próximo de `interrumpe` (None: no interrumpe).
+        if escucha is not None and getattr(self, "interrumpe", None):
+            return self.interrumpe.pop(0)
+        return None
 
-    async def play_silence(self, ms):
+    async def play_silence(self, ms, escucha=None):
         self.hechos.append(("pausa", ms))
+        return None
+
+    def teclear(self, si):
+        self.hechos.append(("teclado", si))
 
 
 class Api:
@@ -124,7 +132,10 @@ def entorno(monkeypatch):
         dichas.append(text)
         return text.encode()
 
+    previos: list = []  # el arranque con que siguió cada escucha (si el cliente interrumpió al agente)
+
     async def escuchar(socket, **kw):
+        previos.append(kw.get("previo"))
         r = escuchas.pop(0)
         if r.result is ListenResult.HANGUP:
             return r
@@ -145,7 +156,7 @@ def entorno(monkeypatch):
     monkeypatch.setattr(dialog, "voz_mientras", voz_mientras)
     monkeypatch.setattr(stt, "transcribe", transcribir)
     return types.SimpleNamespace(dichas=dichas, escuchas=escuchas, textos=textos, transcriptos=transcriptos,
-                                 continuaciones=continuaciones)
+                                 continuaciones=continuaciones, previos=previos)
 
 
 def habla(segundos: float, resultado=ListenResult.SPEECH) -> Recording:

@@ -49,6 +49,16 @@
         </label>
         {% endfor %}
       </div>
+      <input type="hidden" name="ambiente_enviado" value="1">
+      <div class="fila-campos">
+        <label>Sonido de fondo
+          <select name="sonido_fondo">
+            <option value="" {% if not campaign.sonido_fondo %}selected{% endif %}>Ninguno</option>
+            <option value="oficina" {% if campaign.sonido_fondo == 'oficina' %}selected{% endif %}>Oficina, suave</option>
+          </select></label>
+        <label class="check"><input type="checkbox" name="teclado" value="1" {% if campaign.teclado %}checked{% endif %}> Teclado mientras busca o anota</label>
+      </div>
+      <p class="hint">Un ambiente de oficina por debajo de la voz evita que la línea suene muerta entre frase y frase; el teclado tapa la espera mientras consulta el sistema.</p>
       <label class="etiqueta" for="c-llm">Modelo de IA</label>
       <select id="c-llm" disabled><option>Claude · {{ modelo_llm }}</option></select>
       <p class="hint">Toda la IA de Callbot usa Claude por la API de Anthropic.</p>

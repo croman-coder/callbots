@@ -83,6 +83,9 @@ class Script:
     modo: str = "encuesta"
     # Frases fijas de la recepción, por clave: repetir, registrado, sigue_ahi, sin_respuesta, tiempo.
     frases: dict[str, str] = field(default_factory=dict)
+    # Sonido de fondo («oficina» o "") y tecleo mientras busca o anota (ver ambiente.py).
+    sonido_fondo: str = ""
+    teclado: bool = False
 
     @property
     def es_recepcion(self) -> bool:
@@ -183,6 +186,8 @@ class ApiClient:
             vocabulario=[str(p) for p in (data.get("vocabulario") or []) if p],
             modo=str(data.get("modo") or "encuesta"),
             frases={str(k): str(v) for k, v in (data.get("frases") or {}).items() if v},
+            sonido_fondo=str(data.get("sonido_fondo") or ""),
+            teclado=bool(data.get("teclado", False)),
             questions=[Question(**{k: v for k, v in q.items() if k in Question.__dataclass_fields__})
                        for q in data["questions"]],
         )

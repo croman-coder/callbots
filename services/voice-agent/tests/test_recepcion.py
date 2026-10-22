@@ -201,3 +201,44 @@ def test_voz_mientras_espera_a_confirmar_si_ya_empezo_a_sonar(monkeypatch):
 
     assert asyncio.run(probar([nada] * 3 + [voz] * 20)) is not None  # arrancó justo al terminar
     assert asyncio.run(probar([nada] * 30)) is None  # silencio: no se espera
+
+
+def test_el_murmullo_de_atras_no_estira_la_escucha(monkeypatch):
+    """Dice «cero» cerca del micrófono y atrás sigue una oficina: la escucha corta por silencio, no por tope."""
+    import math
+
+    from app import listener
+    from app.config import BYTES_PER_FRAME
+
+    class Vad:  # webrtcvad dice «voz» con el murmullo también: es justo el problema
+        def __init__(self, *a):
+            pass
+
+        def is_speech(self, frame, rate):
+            return listener.pico_de(frame) > 300
+
+    monkeypatch.setattr(listener.webrtcvad, "Vad", Vad)
+
+    def tono(amplitud):
+        return b"".join(int(amplitud * math.sin(i / 2.3)).to_bytes(2, "little", signed=True)
+                        for i in range(BYTES_PER_FRAME // 2))
+
+    voz, murmullo, aire = tono(9000), tono(1400), tono(250)
+
+    class Fuente:
+        def __init__(self, tramas):
+            self.tramas = list(tramas)
+
+        async def siguiente_trama(self, espera):
+            await asyncio.sleep(0.005)
+            return self.tramas.pop(0) if self.tramas else None
+
+    async def escuchar(tramas):
+        return await listener.listen(Fuente(tramas), max_seconds=10, silence_ms=150, no_speech_timeout=3)
+
+    # aire de fondo, «cero» (0,3 s), y después un murmullo largo por encima del piso que antes contaba como voz
+    r = asyncio.run(escuchar([aire] * 10 + [voz] * 15 + [murmullo] * 400))
+    assert r.result is listener.ListenResult.SPEECH and r.speech_ms <= 400
+    # quien habla bajito pero claro sobre un ambiente tranquilo sigue contando como voz
+    r = asyncio.run(escuchar([aire] * 10 + [murmullo] * 30 + [aire] * 100))
+    assert r.result is listener.ListenResult.SPEECH and r.speech_ms >= 500

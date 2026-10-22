@@ -96,3 +96,24 @@ def test_endpoint_y_guion(cliente, base):  # noqa: F811
     # Las frases fijas y las preguntas sin transición se precalientan: salen con la voz buena y sin espera.
     prompts = str(cliente.get("/internal/prompts", headers=INTERNO).json())
     assert "¡Qué bueno escuchar eso!" in prompts
+
+
+def test_sonido_de_fondo_se_guarda_y_viaja_en_el_guion(cliente, base):  # noqa: F811
+    from app.models import Campaign
+    from tests.test_ficha_agente import H
+
+    r = cliente.post("/campaigns/1/guardar", data={"ambiente_enviado": "1", "sonido_fondo": "oficina", "teclado": "1"},
+                     headers=H)
+    assert r.status_code == 303 and "error" not in r.headers["location"]
+    c = base().get(Campaign, 1)
+    assert c.sonido_fondo == "oficina" and c.teclado is True
+    _con_pregunta(base)
+    guion = cliente.get("/internal/sessions/00000000-0000-0000-0000-000000000001/script", headers=INTERNO).json()
+    assert guion["sonido_fondo"] == "oficina" and guion["teclado"] is True
+    # Sin el tilde, el teclado se apaga; un valor inventado no se guarda.
+    cliente.post("/campaigns/1/guardar", data={"ambiente_enviado": "1", "sonido_fondo": ""}, headers=H)
+    c = base().get(Campaign, 1)
+    assert c.sonido_fondo is None and c.teclado is False
+    r = cliente.post("/campaigns/1/guardar", data={"ambiente_enviado": "1", "sonido_fondo": "estadio"}, headers=H)
+    assert "error=" in r.headers["location"]
+    assert "Sonido de fondo" in cliente.get("/campaigns/1?tab=configuracion").text

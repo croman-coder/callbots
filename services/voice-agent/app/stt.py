@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
+import unicodedata
 from dataclasses import dataclass
 
 import numpy as np
@@ -110,7 +112,34 @@ def prompt_para(vocabulario: list[str] | None) -> str:
     return f"{PROMPT_BASE} Palabras que pueden aparecer: {', '.join(palabras)}."
 
 
+def _palabras(texto: str) -> list[str]:
+    plano = unicodedata.normalize("NFKD", (texto or "").lower())
+    return re.findall(r"[a-z0-9]+", "".join(c for c in plano if not unicodedata.combining(c)))
+
+
+def es_eco_del_prompt(texto: str, prompt: str) -> bool:
+    """Whisper devolvió su propio prompt en vez de lo que se dijo.
+
+    Pasa con audios cortos: el cliente dijo «Ocho.» y salió «Encuesta telefónica de satisfacción de un taller
+    mecánico.» (prueba e2e del 22/10/2026). Si casi todas las palabras están en el prompt y son varias, es eco: una
+    respuesta de verdad («ocho», «cero, nunca») tiene una o dos palabras, o palabras que el prompt no tiene.
+    """
+    dichas = _palabras(texto)
+    if len(dichas) < 4:
+        return False
+    del_prompt = set(_palabras(prompt))
+    return sum(p in del_prompt for p in dichas) / len(dichas) >= 0.8
+
+
 def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None) -> Transcription:
+    resultado = _transcribir(pcm, prompt_para(vocabulario))
+    if es_eco_del_prompt(resultado.text, prompt_para(vocabulario)):
+        log.info("Whisper devolvió el prompt (%r): se transcribe de nuevo sin él", resultado.text[:60])
+        resultado = _transcribir(pcm, None)
+    return resultado
+
+
+def _transcribir(pcm: bytes, prompt: str | None) -> Transcription:
     duration = len(pcm) / (SAMPLE_RATE * 2)
     audio = _pcm_to_float32(pcm)
 
@@ -127,7 +156,7 @@ def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None) -> Transc
         # hablados. Tiene que nombrar el rango real (0-10): si dice "uno al
         # cinco", Whisper transcribe "nueve" y "diez" mucho peor, y son
         # justamente los valores que definen si el cliente quedó conforme.
-        initial_prompt=prompt_para(vocabulario),
+        initial_prompt=prompt,
     )
 
     parts: list[str] = []

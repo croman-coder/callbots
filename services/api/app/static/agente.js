@@ -443,7 +443,9 @@
     }
     terminada = false; pruebaId = null; lista.innerHTML = ""; resto = new Float32Array(0); salida = [];
     paso("llamando");
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+    // Sin control automático de ganancia: cuando la persona calla, el navegador sube el volumen y el ruido de la oficina
+    // llega al agente como si siguiera hablando (22/10/2026: cada «cero» se escuchaba 15 s, hasta el tope).
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } })
       .then(function (stream) {
         mic = stream;
         ctx = new (window.AudioContext || window.webkitAudioContext)();

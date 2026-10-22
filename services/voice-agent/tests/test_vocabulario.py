@@ -24,3 +24,13 @@ def test_cada_respuesta_se_transcribe_con_el_vocabulario_del_agente(entorno, mon
     entorno.escuchas += [silencio(), habla(1)]
     d, _ = correr(guion(vocabulario=["Renault", "Kardian"]), Api(verdicts=[verdict()]))
     assert vistos == [["Renault", "Kardian"]] and d.outcome == dialog.Outcome.COMPLETED
+
+
+def test_si_whisper_devuelve_el_prompt_es_eco():
+    from app.stt import PROMPT_BASE, es_eco_del_prompt, prompt_para
+
+    p = prompt_para(["Renault", "Taller Zeballos"])
+    assert es_eco_del_prompt("Encuesta telefónica de satisfacción de un taller mecánico.", p)
+    assert es_eco_del_prompt("Palabras que pueden aparecer: Renault, Taller Zeballos.", p)
+    assert not es_eco_del_prompt("Ocho.", p) and not es_eco_del_prompt("Cero, nunca.", PROMPT_BASE)
+    assert not es_eco_del_prompt("Quiero sacar un turno para el service de mi Renault en Zeballos.", p)

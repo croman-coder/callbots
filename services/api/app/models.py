@@ -141,6 +141,9 @@ class Campaign(Base):
         Float, default=0.667, nullable=False
     )
     voice_volume: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    # Sonido de fondo: "oficina" (ambiente suave toda la llamada) o nada; `teclado`: tecleo mientras busca o anota.
+    sonido_fondo: Mapped[str | None] = mapped_column(String(20))
+    teclado: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # Lo que se escribe en la pestaña «Contexto» de la ficha del agente. De acá sale (con Claude) el
     # texto de `conversation_prompt`, que es lo que el agente sabe al conversar.
     empresa_nombre: Mapped[str | None] = mapped_column(String(160))

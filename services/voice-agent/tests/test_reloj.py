@@ -122,3 +122,35 @@ def test_nadie_habla_y_no_llega_ningun_audio_igual_se_corta_a_tiempo():
 
     g, dura = asyncio.run(prueba())
     assert g.result is ListenResult.SILENCE and 0.9 <= dura <= 1.4
+
+
+def test_si_el_cliente_habla_encima_el_agente_se_calla():
+    async def prueba():
+        s, w = await _par()
+        # El cliente arranca a hablar a los 0,4 s de una frase de 2 s.
+        entrada = asyncio.create_task(_rafagas(w, [MUDA] * 20 + [VOZ] * 60))
+        inicio = time.monotonic()
+        cortado = await s.play(MUDA * 100, escucha=listener.Interrupcion())
+        dura = time.monotonic() - inicio
+        g = await listen(s, max_seconds=10, silence_ms=300, no_speech_timeout=3, previo=cortado)
+        entrada.cancel()
+        return cortado, dura, g
+
+    cortado, dura, g = asyncio.run(prueba())
+    assert cortado and dura < 1.2, f"siguió hablando {dura:.2f} s"
+    # La respuesta grabada empieza con lo que dijo encima: no se pierde el arranque.
+    assert g.result is ListenResult.SPEECH and g.pcm.startswith(b"".join(cortado))
+    assert sum(1 for i in range(0, len(g.pcm), BYTES_PER_FRAME) if any(g.pcm[i:i + BYTES_PER_FRAME])) >= 55
+
+
+def test_el_eco_bajo_no_corta_al_agente():
+    eco = b"\x20\x03" * (BYTES_PER_FRAME // 2)  # 800: suena, pero menos del doble del piso de energía
+
+    async def prueba():
+        s, w = await _par()
+        entrada = asyncio.create_task(_rafagas(w, [eco] * 60))
+        cortado = await s.play(MUDA * 50, escucha=listener.Interrupcion())
+        entrada.cancel()
+        return cortado
+
+    assert asyncio.run(prueba()) is None
