@@ -577,13 +577,15 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
         texto = await llm.complete(instrucciones, pedido_a_claude(caso), max_tokens=400)
         salida = llm.parse_json_object(texto)
         pedido = _consulta_valida(salida.get("consultar")) if (salida and consultas) else None
-        if _promete_reserva(caso, salida, pedido):
+        for _ in range(2):  # hasta dos correcciones: una falla suelta no tiene que dejar al cliente sin turno
+            if not _promete_reserva(caso, salida, pedido):
+                break
             log.warning("Caso %s: dio el turno por reservado sin reservarlo; se le corrige", caso.id)
             texto = await llm.complete(instrucciones, pedido_a_claude(caso) + CORRECCION_RESERVA, max_tokens=400)
             salida = llm.parse_json_object(texto) or salida
             pedido = _consulta_valida(salida.get("consultar")) if consultas else None
-            if _promete_reserva(caso, salida, pedido):
-                salida = {**salida, "decir": FRASE_RESERVA_PENDIENTE, "accion": "seguir", "resuelto": False}
+        if _promete_reserva(caso, salida, pedido):
+            salida = {**salida, "decir": FRASE_RESERVA_PENDIENTE, "accion": "seguir", "resuelto": False}
         if pedido is not None:
             # Se guarda lo demás que entendió (nombre, motivo…), sin derivar ni terminar: primero el dato.
             aplicar(caso, {**salida, "accion": "seguir"}, ahora)

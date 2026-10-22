@@ -376,7 +376,9 @@ def texto_para_claude(db: Session, momento: datetime | None = None) -> str:
         "horarios de los libres; reservá recién cuando el cliente elija uno y te diga su nombre y teléfono. Si elige "
         "y todavía te faltan el nombre o el teléfono, pedíselos sin dar la reserva por hecha (nada de «lo dejo "
         "reservado» ni «ya está»: «Perfecto, para reservarlo a las 7:00 necesito su nombre y un teléfono»). No digas "
-        "que quedó reservado hasta que el sistema lo confirme. Después decile día, hora, taller y desde qué hora lo "
+        "que quedó reservado hasta que el sistema lo confirme. Cuando tengas horario, nombre y teléfono, lo que sigue es "
+        "SIEMPRE «consultar» con «reservar» en ese mismo turno: si en «decir» decís que lo reservás, «consultar» tiene que "
+        "traer la reserva (nunca una cosa sin la otra, y sin preguntas en ese turno). Después decile día, hora, taller y desde qué hora lo "
         "retira. No ofrezcas horarios que no te haya dado el sistema y usá la fecha (AAAA-MM-DD) que te dio."
     )
 
