@@ -117,3 +117,22 @@ def test_sonido_de_fondo_se_guarda_y_viaja_en_el_guion(cliente, base):  # noqa: 
     r = cliente.post("/campaigns/1/guardar", data={"ambiente_enviado": "1", "sonido_fondo": "estadio"}, headers=H)
     assert "error=" in r.headers["location"]
     assert "Sonido de fondo" in cliente.get("/campaigns/1?tab=configuracion").text
+
+
+def test_no_repite_la_misma_frase_en_una_llamada():
+    # P2 y P5 caían en la misma frase fija (22/10/2026: «Entiendo, y lo lamento…» dos veces).
+    primera = acuse.fija(1, QuestionType.SCALE_1_10, 2)
+    segunda = acuse.fija(1, QuestionType.SCALE_1_10, 5, [primera])
+    tercera = acuse.fija(1, QuestionType.SCALE_1_10, 8, [primera, segunda])
+    assert len({primera, segunda, tercera}) == 3 and acuse.fija(1, QuestionType.SCALE_1_10, 2, acuse.FIJAS["baja"])
+
+
+def test_si_claude_repite_una_frase_ya_dicha_va_la_fija(monkeypatch):
+    async def complete(system, user, *, max_tokens=200):
+        return "Lamento mucho que haya sido así."
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", complete)
+    texto, _ = asyncio.run(acuse.acuse("¿Algo para mejorar?", QuestionType.OPEN, "Todo, todo hay que mejorar.", None, 6,
+                                       ["Lamento mucho que haya sido así."]))
+    assert texto in acuse.FIJAS["abierta"]

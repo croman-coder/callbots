@@ -34,3 +34,42 @@ def test_si_whisper_devuelve_el_prompt_es_eco():
     assert es_eco_del_prompt("Palabras que pueden aparecer: Renault, Taller Zeballos.", p)
     assert not es_eco_del_prompt("Ocho.", p) and not es_eco_del_prompt("Cero, nunca.", PROMPT_BASE)
     assert not es_eco_del_prompt("Quiero sacar un turno para el service de mi Renault en Zeballos.", p)
+
+
+def _modelo_falso(monkeypatch, texto):
+    vistos = []
+
+    class Modelo:
+        def transcribe(self, audio, **kw):
+            vistos.append({"muestras": len(audio), "prompt": kw.get("initial_prompt")})
+            return [types.SimpleNamespace(text=texto, avg_logprob=-0.2)], None
+
+    monkeypatch.setattr(stt, "_model", Modelo())
+    return vistos
+
+
+def test_una_palabra_suelta_se_transcribe_con_margen_y_sin_la_guia_de_la_encuesta(monkeypatch):
+    import asyncio
+
+    vistos = _modelo_falso(monkeypatch, "Siete.")
+    r = asyncio.run(stt.transcribe(b"\x01\x00" * 2900, ["Renault"]))  # 0,36 s: antes se descartaba por < 0,5 s
+    assert r.text == "Siete." and len(vistos) == 1
+    assert vistos[0]["muestras"] == 2900 * 2 + 2 * int(0.3 * 16000)  # la palabra (a 16 kHz) y 0,3 s de aire a cada lado
+    assert vistos[0]["prompt"] == "Palabras que pueden aparecer: Renault."  # sin «Encuesta…» ni los números
+    # Una frase de 1 a 2,5 s: sin guía de los números y sin margen (con margen se entendía peor).
+    vistos.clear()
+    asyncio.run(stt.transcribe(b"\x01\x00" * 11200, None))  # 1,4 s
+    assert vistos[0]["prompt"] is None and vistos[0]["muestras"] == 22400
+    # Una respuesta larga sí lleva la guía y no lleva margen.
+    vistos.clear()
+    asyncio.run(stt.transcribe(b"\x01\x00" * 32000, ["Renault"]))  # 4 s
+    assert vistos[0]["prompt"].startswith(stt.PROMPT_BASE) and vistos[0]["muestras"] == 64000
+
+
+def test_un_golpe_no_se_transcribe_y_las_frases_inventadas_se_descartan(monkeypatch):
+    import asyncio
+
+    vistos = _modelo_falso(monkeypatch, "¡Gracias por ver el vídeo!")
+    assert asyncio.run(stt.transcribe(b"\x01\x00" * 800, None)).text == "" and vistos == []  # 0,1 s: ni se intenta
+    assert asyncio.run(stt.transcribe(b"\x01\x00" * 8000, None)).text == ""  # lo que inventó Whisper con ruido
+    assert stt.es_alucinacion("Suscríbete al canal") and not stt.es_alucinacion("Gracias, nada más")

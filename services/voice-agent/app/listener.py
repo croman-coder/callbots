@@ -91,8 +91,10 @@ class Interrupcion:
     por voz), el agente se calla y esa voz es el arranque de la respuesta.
     """
 
-    VOZ_MS = 300
-    VENTANA_MS = 400
+    # Un corte falso sale caro (el agente se calla a mitad de la pregunta y se pierde la respuesta) y uno tardío casi no
+    # cuesta (termina su frase): se pide voz sostenida. Con 300 ms en 400 un golpe o un eco la disparaban (23/10/2026).
+    VOZ_MS = 480
+    VENTANA_MS = 640
 
     def __init__(self) -> None:
         self._vad = webrtcvad.Vad(config.vad_aggressiveness)
@@ -152,6 +154,7 @@ async def listen(
     silence_ms: int | None = None,
     no_speech_timeout: int | None = None,
     previo: list[bytes] | None = None,
+    silencio_inicial_ms: int | None = None,
 ) -> Recording:
     """Escucha hasta que el cliente deja de hablar. `previo`: el arranque de su voz si interrumpió al agente
     (ver Interrupcion); la escucha sigue desde ahí, ya hablando.
@@ -177,6 +180,10 @@ async def listen(
     collected: list[bytes] = []
     prebuffer: list[bytes] = []
 
+    # Si arrancó por una interrupción (previo) y todavía hay poca voz, se espera más antes de dar por terminada la
+    # respuesta: quien interrumpió suele hacer una pausa corta antes de seguir. Se pidió `silencio_inicial_ms` y no se
+    # usa siempre porque una respuesta de una palabra tiene que cortar a los 0,9 s.
+    espera_inicial = (silencio_inicial_ms or 0) / 1000 if previo else 0.0
     speaking = bool(previo)
     if previo:
         collected.extend(previo)
@@ -238,7 +245,8 @@ async def listen(
             continue
 
         # --- ya está hablando ---
-        if ahora - ultima_voz >= silencio_para_cortar:
+        if ahora - ultima_voz >= (max(silencio_para_cortar, espera_inicial) if speech_frames * FRAME_MS < 700
+                                  else silencio_para_cortar):
             # Recortamos la cola de silencio (dejando 100 ms), no aporta a la transcripción
             keep = max(0, len(collected) - tramas_desde_voz + 5)
             return Recording(
@@ -259,10 +267,15 @@ async def listen(
 def es_ruido(grabacion: Recording, transcripcion: str) -> bool:
     """Sonó algo corto (un golpe, una respiración, el «eh» antes de hablar) y Whisper no sacó ni una palabra.
 
-    No es una respuesta: quien escucha sigue escuchando sin decir nada. En el Simulador pasó dos veces en una misma
-    encuesta (21/10/2026): 0,3 s de ruido, «¿me lo repite?», y parecía que el agente no escuchaba.
+    No es una respuesta: quien escucha sigue escuchando sin decir nada. Ruido es lo que tuvo menos de MIN_VOZ_MS de voz:
+    una palabra suelta («siete») dura 0,3 a 0,5 s y NO es ruido. Antes se medía la duración total de la grabación, y en
+    el Simulador (22/10/2026) un «Siete.» de 0,4 s se tomó por ruido: el agente se quedó callado 7 s hasta que se lo
+    repitieron.
     """
-    return grabacion.has_audio and not (transcripcion or "").strip() and grabacion.duration_seconds < 1.2
+    return grabacion.has_audio and not (transcripcion or "").strip() and grabacion.speech_ms < MIN_VOZ_MS
+
+
+MIN_VOZ_MS = 250
 
 
 async def voz_mientras(

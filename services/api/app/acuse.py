@@ -90,9 +90,16 @@ def banda(valor: float | None, qtype: QuestionType | str) -> str:
     return "media" if escala >= 7 else "baja"
 
 
-def fija(valor: float | None, qtype: QuestionType | str, posicion: int) -> str:
+def fija(valor: float | None, qtype: QuestionType | str, posicion: int, ya_dichos: list[str] | None = None) -> str:
+    """La frase fija de la banda. La posición rota cuál; si esa ya se dijo en la llamada, la siguiente que no. Pasaba
+    que P2 y P5 caían en la misma y el agente repetía «Entiendo, y lo lamento…» dos veces (22/10/2026)."""
     opciones = FIJAS[banda(valor, qtype)]
-    return opciones[posicion % len(opciones)]  # la posición rota la frase: no se repite la misma toda la llamada
+    dichos = set(ya_dichos or [])
+    for i in range(len(opciones)):
+        candidata = opciones[(posicion + i) % len(opciones)]
+        if candidata not in dichos:
+            return candidata
+    return opciones[posicion % len(opciones)]  # las dijo todas: se repite, no hay de dónde sacar otra
 
 
 def todas_las_fijas() -> list[str]:
@@ -119,10 +126,10 @@ def _limpiar(texto: str | None) -> str:
 
 
 async def acuse(pregunta: str, qtype: QuestionType | str, transcripcion: str, valor: float | None,
-                posicion: int) -> tuple[str, str]:
+                posicion: int, ya_dichos: list[str] | None = None) -> tuple[str, str]:
     """(lo que dice el agente, banda). Nunca levanta: ante cualquier problema, la frase fija."""
     b = banda(valor, qtype)
-    base = fija(valor, qtype, posicion)
+    base = fija(valor, qtype, posicion, ya_dichos)
     if not llm.is_configured() or not (b == "abierta" or dijo_algo_mas(transcripcion)):
         return base, b
     puntaje = f"\n(Puntaje que dio: {valor:g}.)" if valor is not None and b != "abierta" else ""
@@ -132,4 +139,5 @@ async def acuse(pregunta: str, qtype: QuestionType | str, transcripcion: str, va
     except (asyncio.TimeoutError, Exception) as exc:  # noqa: BLE001 - del otro lado hay alguien esperando
         log.info("Acuse con Claude no llegó a tiempo (%s): va la frase fija", exc.__class__.__name__)
         return base, b
-    return (_limpiar(texto) or base), b
+    propia = _limpiar(texto)
+    return (propia if propia and propia not in set(ya_dichos or []) else base), b

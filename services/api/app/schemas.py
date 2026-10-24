@@ -71,6 +71,8 @@ class AcuseIn(BaseModel):
 
     question_id: int
     transcript: str = ""
+    # Lo que ya dijo el agente en esta llamada: para no repetir la misma frase.
+    ya_dichos: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ReplyRequest(BaseModel):

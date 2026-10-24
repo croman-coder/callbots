@@ -92,6 +92,8 @@ def _load_call(db: Session, session_uuid: uuid_mod.UUID) -> CallAttempt:
 # (y también en el voice-agent) para precalentarla con la voz de la campaña.
 # Lo que dice el bot si al saludar el cliente contesta que no puede ahora. Igual en el voice-agent (api_client.py).
 FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga un buen día."
+# Cuando lo interrumpió un golpe y el agente retoma la pregunta (igual en voice-agent/app/api_client.py).
+FRASE_RETOMAR = "Perdón, le decía."
 # La pregunta del saludo, para que Claude sepa a qué volver si el cliente pregunta algo antes de empezar.
 PREGUNTA_DEL_SALUDO = "¿Tiene un minuto para unas preguntas cortas?"
 
@@ -475,7 +477,8 @@ async def acuse_de_respuesta(session_uuid: uuid_mod.UUID, body: AcuseIn, db: Ses
     if question is None:
         raise HTTPException(404, f"Pregunta {body.question_id} inexistente")
     valor = interpret(body.transcript, question.qtype).value
-    texto, banda = await acuse.acuse(question.text, question.qtype, body.transcript, valor, question.position)
+    texto, banda = await acuse.acuse(question.text, question.qtype, body.transcript, valor, question.position,
+                                     [t[:200] for t in body.ya_dichos])
     log.info("Sesión %s P%s: acuse %s -> %r", session_uuid, question.position, banda, texto[:70])
     return {"acuse": texto, "banda": banda}
 
@@ -649,6 +652,7 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
         textos += [q.texto_sin_acuse for q in campaign.questions if q.is_active and not recepcion.es_recepcion(campaign)]
         if not recepcion.es_recepcion(campaign):
             textos += acuse.todas_las_fijas()
+            textos.append(FRASE_RETOMAR)
         textos.append(FRASE_LLAMAR_DESPUES)
         if recepcion.es_recepcion(campaign):
             textos += list(recepcion.FRASES_FIJAS)

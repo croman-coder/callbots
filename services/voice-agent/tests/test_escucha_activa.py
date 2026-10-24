@@ -57,15 +57,15 @@ def test_si_hay_que_repreguntar_no_se_acusa(entorno):
 
 
 def test_un_ruido_corto_no_es_respuesta_se_sigue_escuchando(entorno):
-    # Saludo en silencio; en P1 suena un golpe de 0,3 s (Whisper no saca nada) y después contesta.
-    entorno.escuchas += [silencio(), habla(0.3), habla(1.5)]
+    # Saludo en silencio; en P1 suena un golpe de 0,15 s (menos que una palabra; Whisper no saca nada) y contesta.
+    entorno.escuchas += [silencio(), habla(0.15), habla(1.5)]
     entorno.textos += ["", "ocho"]
     d, _ = correr(guion(), Api(verdicts=[verdict()]))
     assert "¿Me repite?" not in entorno.dichas and d.outcome == dialog.Outcome.COMPLETED
 
 
 def test_en_recepcion_un_ruido_no_es_un_silencio(entorno):
-    entorno.escuchas += [habla(0.3), habla(2)]
+    entorno.escuchas += [habla(0.15), habla(2)]
     entorno.textos += ["", "Quiero un turno"]
     api = ApiRecepcion([{"decir": "Ya le paso con Taller.", "accion": "terminar"}])
     correr(recepcion(), api)
@@ -74,7 +74,7 @@ def test_en_recepcion_un_ruido_no_es_un_silencio(entorno):
 
 def test_dos_ruidos_seguidos_si_cuentan(entorno):
     """El reescuchar es una vez: si sigue sin decir nada, se repregunta como siempre."""
-    entorno.escuchas += [silencio(), habla(0.3), habla(0.3), habla(1.5)]
+    entorno.escuchas += [silencio(), habla(0.15), habla(0.15), habla(1.5)]
     entorno.textos += ["", "", "nueve"]
     correr(guion(), Api(verdicts=[verdict(understood=False, value=None, should_retry=True), verdict()]))
     assert entorno.dichas.count("¿Me repite?") == 1
@@ -160,3 +160,39 @@ def test_el_ambiente_se_mezcla_con_lo_que_sale():
         datos = datos[3 + largo:]
     audio = np.frombuffer(b"".join(t for t in tramas if len(t) == 320), dtype=np.int16)
     assert len(tramas) >= 8 and np.abs(audio).max() > 0  # salió ambiente, no silencio digital
+
+
+def test_una_palabra_suelta_de_0_4_s_no_es_ruido(entorno):
+    """«Siete.» dura 0,4 s: se tomó por ruido y el agente se quedó callado 7 s (Simulador, 22/10/2026)."""
+    # Whisper no la entendió esta vez (vacía): como hubo 400 ms de voz no es ruido, se repregunta como siempre.
+    entorno.escuchas += [silencio(), habla(0.4), habla(1)]
+    entorno.textos += ["", "siete"]
+    api = Api(verdicts=[verdict(understood=False, value=None, should_retry=True, is_silence=True), verdict(value=7.0)])
+    d, _ = correr(guion(), api)
+    assert "¿Me repite?" in entorno.dichas and d.outcome == dialog.Outcome.COMPLETED
+
+
+def test_si_lo_interrumpe_un_golpe_retoma_la_pregunta_sin_pedir_que_repita(entorno):
+    from tests.test_buzon_y_transferencia import Socket
+
+    s = Socket()
+    s.interrumpe = [[b"\x05\x00" * 160] * 5]  # se calla a mitad de la pregunta: era un golpe
+    entorno.escuchas += [silencio(), habla(1.6), habla(1)]
+    entorno.textos += ["", "ocho"]  # lo que sonó no era una respuesta; después contesta de verdad
+    d, _ = correr(guion(), Api(verdicts=[verdict(value=8.0)]), socket=s)
+    from app.api_client import FRASE_RETOMAR
+
+    i = entorno.dichas.index(FRASE_RETOMAR)
+    assert entorno.dichas[i + 1] == "¿Del cero al diez?" and "¿Me repite?" not in entorno.dichas
+    assert d.outcome == dialog.Outcome.COMPLETED and entorno.previos[-1] is None  # lo segundo ya no fue interrupción
+
+
+def test_el_acuse_sabe_lo_que_ya_dijo(entorno):
+    entorno.escuchas += [silencio(), habla(2), habla(2)]
+    entorno.textos += ["Uno.", "Uno de nuevo."]
+    api = Api(verdicts=[verdict(value=1.0), verdict(value=1.0)], acuses=[
+        {"acuse": "Uy, lamento mucho escuchar eso.", "banda": "baja"},
+        {"acuse": "Lo siento mucho, de verdad.", "banda": "baja"},
+    ])
+    correr(guion(questions=preguntas()), api)
+    assert api.ya_dichos_vistos == ["Uy, lamento mucho escuchar eso."]  # al pedir el segundo, el primero ya está dicho

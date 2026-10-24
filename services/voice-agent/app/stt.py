@@ -102,14 +102,41 @@ PROMPT_BASE = (
 )
 
 
-def prompt_para(vocabulario: list[str] | None) -> str:
+# Una respuesta más corta que esto es una palabra suelta («siete», «sí»): ahí la guía hace más daño que bien.
+CORTO_SEGUNDOS = 2.5
+# Menos que esto no es una palabra: un golpe, un clic. 0,15 s alcanza para un «sí» (medido: 0,17 s se entiende).
+MIN_SEGUNDOS = 0.15
+# Silencio que se le agrega a las palabras sueltas (< MARGEN_HASTA): con aire alrededor Whisper las entiende («7» →
+# «Siete.», «» → «Diez.»). A una frase de 1 a 2 s le hace daño: «uno, un desastre» salió «¿Uno? ¿Unde está?».
+MARGEN_SEGUNDOS = 0.3
+MARGEN_HASTA = 1.0
+# Lo que Whisper «oye» en el ruido y en los silencios (son subtítulos de los videos con que se entrenó).
+ALUCINACIONES = (
+    "gracias por ver el video", "gracias por ver", "suscribete", "subtitulos", "amara org", "no olvides suscribirte",
+    "hasta la proxima", "nos vemos en el proximo",
+)
+
+
+def prompt_para(vocabulario: list[str] | None, corto: bool = False) -> str | None:
     """El prompt de Whisper: el sesgo hacia los números y, si hay, las palabras del agente (marcas, modelos,
     sucursales). Medido el 21/10/2026: con la lista escribió bien 17 de 17 nombres (sin ella, 8) y los números igual
-    de bien. La API ya recorta la lista al tope del prompt (unos 220 tokens)."""
+    de bien. La API ya recorta la lista al tope del prompt (unos 220 tokens).
+
+    Con una respuesta corta (`corto`) NO va el sesgo de los números ni la frase de la encuesta: en el audio real del
+    22/10/2026 un «uno, un desastre» salió «uno, un, dos, tres, cuatro…» con la guía y perfecto sin ella (y «Diez.» salió
+    «Encuesta telefónica…»). Solo las palabras del agente, que sí ayudan con los nombres."""
     palabras = [p.strip() for p in (vocabulario or []) if p and p.strip()]
+    if corto:
+        return f"Palabras que pueden aparecer: {', '.join(palabras)}." if palabras else None
     if not palabras:
         return PROMPT_BASE
     return f"{PROMPT_BASE} Palabras que pueden aparecer: {', '.join(palabras)}."
+
+
+def es_alucinacion(texto: str) -> bool:
+    """Whisper inventó una frase donde solo había ruido («¡Gracias por ver el vídeo!»)."""
+    plano = " ".join(_palabras(texto))
+    return bool(plano) and any(plano.startswith(a) or plano == a for a in ALUCINACIONES)
 
 
 def _palabras(texto: str) -> list[str]:
@@ -132,16 +159,26 @@ def es_eco_del_prompt(texto: str, prompt: str) -> bool:
 
 
 def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None) -> Transcription:
-    resultado = _transcribir(pcm, prompt_para(vocabulario))
-    if es_eco_del_prompt(resultado.text, prompt_para(vocabulario)):
+    duracion = len(pcm) / (SAMPLE_RATE * 2)
+    corto = duracion < CORTO_SEGUNDOS
+    margen = duracion < MARGEN_HASTA
+    prompt = prompt_para(vocabulario, corto)
+    resultado = _transcribir(pcm, prompt, margen=margen)
+    if prompt and es_eco_del_prompt(resultado.text, prompt):
         log.info("Whisper devolvió el prompt (%r): se transcribe de nuevo sin él", resultado.text[:60])
-        resultado = _transcribir(pcm, None)
+        resultado = _transcribir(pcm, None, margen=margen)
+    if es_alucinacion(resultado.text):
+        log.info("Whisper inventó una frase donde había ruido (%r): se descarta", resultado.text[:60])
+        resultado = Transcription(text="", confidence=None, duration=resultado.duration)
     return resultado
 
 
-def _transcribir(pcm: bytes, prompt: str | None) -> Transcription:
+def _transcribir(pcm: bytes, prompt: str | None, margen: bool = False) -> Transcription:
     duration = len(pcm) / (SAMPLE_RATE * 2)
     audio = _pcm_to_float32(pcm)
+    if margen:
+        aire = np.zeros(int(WHISPER_SAMPLE_RATE * MARGEN_SEGUNDOS), dtype=np.float32)
+        audio = np.concatenate([aire, audio, aire])
 
     segments, info = _model.transcribe(
         audio,
@@ -180,7 +217,7 @@ def _transcribir(pcm: bytes, prompt: str | None) -> Transcription:
 
 async def transcribe(pcm: bytes, vocabulario: list[str] | None = None) -> Transcription:
     """Transcribe en un thread aparte: el modelo bloquea el event loop."""
-    if len(pcm) < SAMPLE_RATE:  # menos de 0,5 s: no hay nada que transcribir
+    if len(pcm) < MIN_SEGUNDOS * SAMPLE_RATE * 2:  # un golpe, no una palabra: no hay nada que transcribir
         return Transcription(text="", confidence=None, duration=len(pcm) / (SAMPLE_RATE * 2))
 
     return await asyncio.to_thread(_transcribe_sync, pcm, vocabulario)

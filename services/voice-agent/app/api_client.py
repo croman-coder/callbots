@@ -36,6 +36,8 @@ MULETILLA = "Déjeme ver."
 FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga un buen día."
 # Antes de la despedida, si alguna respuesta fue mala: la despedida alegre de la campaña sola suena a que no escuchó.
 # Igual en la API (app/acuse.py), que la precalienta.
+# Cuando lo interrumpió un golpe y se retoma la pregunta. Igual en la API (routers/internal.py), que la precalienta.
+FRASE_RETOMAR = "Perdón, le decía."
 FRASE_CIERRE_DISCONFORME = "Lamento que la experiencia no haya sido la que esperaba. Le paso sus comentarios al equipo de Calidad."
 
 
@@ -108,6 +110,7 @@ class Script:
             self.fallback_script,
             self.optout_script,
             FRASE_CIERRE_DISCONFORME,
+            FRASE_RETOMAR,
             *[q.text for q in self.questions],
             *[q.texto_sin_acuse for q in self.questions if q.texto_sin_acuse],
             *extra,
@@ -206,13 +209,14 @@ class ApiClient:
             log.warning("No se pudo clasificar la respuesta al saludo: %s", exc)
             return {"accion": "seguir"}
 
-    async def acuse(self, session_uuid: uuid_mod.UUID, question_id: int, transcript: str) -> dict | None:
+    async def acuse(self, session_uuid: uuid_mod.UUID, question_id: int, transcript: str,
+                    ya_dichos: list[str] | None = None) -> dict | None:
         """Lo que dice el agente después de una respuesta para mostrar que la escuchó: {"acuse", "banda"}.
         None si falla: la encuesta sigue sin acuse (y la pregunta siguiente con su transición fija)."""
         try:
             response = await self._client.post(
                 f"/internal/sessions/{session_uuid}/acuse",
-                json={"question_id": question_id, "transcript": transcript},
+                json={"question_id": question_id, "transcript": transcript, "ya_dichos": list(ya_dichos or [])},
                 timeout=3.0,
             )
             response.raise_for_status()

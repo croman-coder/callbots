@@ -85,8 +85,9 @@ class Api:
         self.acuses = list(acuses or [])  # lo que devuelve /acuse en cada respuesta (vacío: sin acuse)
         self.pedidos_acuse: list = []
 
-    async def acuse(self, session_uuid, question_id, transcript):
+    async def acuse(self, session_uuid, question_id, transcript, ya_dichos=None):
         self.pedidos_acuse.append(transcript)
+        self.ya_dichos_vistos = list(ya_dichos or [])
         return self.acuses.pop(0) if self.acuses else None
 
     async def transfer(self, session_uuid):

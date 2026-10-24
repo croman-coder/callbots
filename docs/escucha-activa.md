@@ -59,6 +59,19 @@ por debajo de la voz) y **Teclado mientras busca o anota**. Se sintetizan en el 
 grabaciones de terceros. El teclado suena mientras el agente piensa o consulta el sistema y se calla cuando habla; con
 teclado, la muletilla «Déjeme ver» queda solo para esperas de más de 2,5 s.
 
+## Lo que mostraron las pruebas reales del 22 y 23/10/2026
+
+Los registros del voice-agent y los audios guardados (`/recordings/<día>/<sesión>_pNN.wav`) de las pruebas de Croman en
+el Simulador y en la ficha del agente, que la e2e con voces sintéticas no podía ver:
+
+| Qué pasó | Causa | Arreglo |
+|---|---|---|
+| Dijo «Siete.» (0,4 s) y el agente se quedó callado 7 s | El transcriptor descartaba todo lo menor a 0,5 s y mi regla del «ruido corto» lo tomó por golpe | Se transcribe desde 0,15 s, con 0,3 s de silencio alrededor si dura menos de 1 s. «Ruido» es lo que tiene menos de 250 ms de voz, no lo que dura poco |
+| «uno, un desastre» salió «uno, un, dos, tres, cuatro…» (y +1,4 s) | La guía con los números se la devolvía en respuestas cortas | Menos de 2,5 s: sin guía de números ni frase de la encuesta (solo las palabras del agente) |
+| La interrupción cortó la pregunta por un golpe y la respuesta real quedó afuera | Pedía 300 ms de voz; la escucha cerraba a los 0,9 s, antes de que arrancara a contestar | 480 ms de voz en 640 ms; tras una interrupción con poca voz se espera hasta 1,8 s; si no era una respuesta el agente dice «Perdón, le decía.» y repite la pregunta |
+| Whisper inventó «¡Gracias por ver el vídeo!» con un golpe | Alucinación conocida con ruido | Se descartan esas frases |
+| «Entiendo, y lo lamento…» dos veces en la misma llamada | La frase fija rotaba por posición (P2 y P5 caían en la misma) | El acuse sabe qué frases ya dijo y no las repite |
+
 ## Ruidos
 
 Un ruido corto (un golpe, una respiración) que Whisper no convierte en palabras ya no se toma como respuesta: el

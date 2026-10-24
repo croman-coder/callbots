@@ -154,3 +154,19 @@ def test_el_eco_bajo_no_corta_al_agente():
         return cortado
 
     assert asyncio.run(prueba()) is None
+
+
+def test_tras_una_interrupcion_corta_se_espera_mas_antes_de_cortar():
+    """Quien interrumpe suele hacer una pausa y seguir: con poca voz se espera `silencio_inicial_ms` (23/10/2026: la
+    escucha cerró a los 0,9 s y la respuesta real, que llegó 1,2 s después, quedó afuera)."""
+    async def prueba(espera):
+        s, w = await _par()
+        entrada = asyncio.create_task(_rafagas(w, [VOZ] * 10 + [MUDA] * 60 + [VOZ] * 25 + [MUDA] * 100))
+        g = await listen(s, max_seconds=10, silence_ms=300, no_speech_timeout=3, previo=[VOZ] * 5,
+                         silencio_inicial_ms=espera)
+        entrada.cancel()
+        return g
+
+    sin = asyncio.run(prueba(0))
+    con = asyncio.run(prueba(1800))
+    assert sin.speech_ms <= 400 and con.speech_ms >= 800

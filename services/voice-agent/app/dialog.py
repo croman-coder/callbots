@@ -22,6 +22,7 @@ from app import buzon, stt, tts
 from app.api_client import (
     FRASE_CIERRE_DISCONFORME,
     FRASE_LLAMAR_DESPUES,
+    FRASE_RETOMAR,
     FRASE_TRANSFERENCIA_FALLIDA,
     MULETILLA,
     ApiClient,
@@ -100,6 +101,8 @@ RECEPCION_ESPERA_SEGUIR = 1
 # respuesta rápida sale sin muletilla: decirla en cada turno suena a robot.
 ESPERA_ANTES_DE_MULETILLA = 0.9
 ESPERA_CON_TECLADO = 2.5
+# Si el cliente interrumpe, hace una pausa corta y sigue: no se da por terminada su respuesta antes de esto (ms).
+ESPERA_TRAS_INTERRUPCION_MS = 1800
 
 
 async def _say(
@@ -156,6 +159,7 @@ class SurveyDialog:
         # respuesta fue mala, antes de la despedida va FRASE_CIERRE_DISCONFORME.
         self._acuso = False
         self._disconforme = False
+        self._acuses_dichos: list[str] = []  # para no repetir la misma frase en una llamada
         self.outcome = Outcome.PARTIAL
         self.hangup_cause: str | None = None
 
@@ -461,8 +465,14 @@ class SurveyDialog:
         self._acuso = False
         reescucho = False
 
+        retomar = False
+        retomadas = 0
         while True:
-            if reescucho:
+            if retomar:
+                retomar = False
+                await _say(self.socket, FRASE_RETOMAR, self._voz)
+                prompt = texto
+            elif reescucho:
                 # Fue un ruido corto (Whisper no sacó palabras): se sigue escuchando sin decir nada. Pedir «¿me lo
                 # repite?» por un golpe o una respiración suena a que no escucha.
                 prompt = None
@@ -492,8 +502,10 @@ class SurveyDialog:
             recording = await listen(
                 self.socket,
                 max_seconds=question.max_answer_seconds,
-                no_speech_timeout=config.no_speech_timeout_seconds,
+                # Tras un ruido se espera poco: si de verdad dijo algo, el reintento normal lo pide enseguida.
+                no_speech_timeout=3 if reescucho else config.no_speech_timeout_seconds,
                 previo=arranque,
+                silencio_inicial_ms=ESPERA_TRAS_INTERRUPCION_MS,
             )
 
             if recording.result is ListenResult.HANGUP:
@@ -507,9 +519,17 @@ class SurveyDialog:
                 transcript = result.text
                 confidence = result.confidence
 
+            if arranque and not transcript.strip() and retomadas < 2:
+                # Lo interrumpió algo que no era una respuesta (un golpe, un eco): el agente se calló a mitad de la
+                # pregunta, así que la retoma, sin «¿me repite?». Dos veces como máximo: si insiste, sigue lo normal.
+                log.info("[%s] P%d: la interrupción no era una respuesta, se retoma la pregunta",
+                         self.session_uuid, question.position)
+                retomar, reescucho = True, False
+                retomadas += 1
+                continue
             if es_ruido(recording, transcript) and not reescucho:
-                log.info("[%s] P%d: ruido corto (%.1fs), se sigue escuchando", self.session_uuid, question.position,
-                         recording.duration_seconds)
+                log.info("[%s] P%d: ruido corto (%.0f ms de voz), se sigue escuchando", self.session_uuid,
+                         question.position, recording.speech_ms)
                 reescucho = True
                 continue
             reescucho = False
@@ -521,8 +541,9 @@ class SurveyDialog:
                 transcript, recording.result.value, recording.duration_seconds,
             )
             # El acuse se pide ya, en paralelo con guardar la respuesta: con solo el puntaje vuelve al instante.
-            pedido_acuse = (asyncio.create_task(self.api.acuse(self.session_uuid, question.id, transcript))
-                            if transcript.strip() else None)
+            pedido_acuse = (asyncio.create_task(
+                self.api.acuse(self.session_uuid, question.id, transcript, self._acuses_dichos))
+                if transcript.strip() else None)
             if pedido_acuse is not None:
                 self.socket.teclear(True)  # anota la respuesta (si el agente tiene teclado)
 
@@ -617,6 +638,7 @@ class SurveyDialog:
             return
         log.info("[%s] Acuse (%s): %r", self.session_uuid, datos.get("banda"), datos["acuse"][:80])
         await _say(self.socket, datos["acuse"], self._voz)
+        self._acuses_dichos.append(datos["acuse"])
         self._acuso = True
         if datos.get("banda") == "baja":
             self._disconforme = True
