@@ -114,13 +114,21 @@ DESDE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 inicio=$(date +%s)
 docker exec "$X" asterisk -rx "channel originate Local/$EXTENSION@callbot-inbound extension s@$CTX" >/dev/null
 sleep 5
-while docker exec "$X" asterisk -rx "core show channels concise" | grep -q "$CTX"; do
+# La llamada terminó cuando el canal del cliente no aparece en 3 consultas seguidas: una consulta a Asterisk que falla un
+# instante no puede darla por terminada (en la e2e del 24/10 pasó, el script borró el guion con la llamada en curso).
+sin_canal=0
+while [ $sin_canal -lt 3 ]; do
+  if canales=$(docker exec "$X" asterisk -rx "core show channels concise" 2>/dev/null) && grep -q "$CTX" <<<"$canales"; then
+    sin_canal=0
+  else
+    sin_canal=$((sin_canal + 1))
+  fi
   if [ $(( $(date +%s) - inicio )) -gt 420 ]; then
     echo "La llamada pasó los 7 minutos: se corta." >&2
     docker exec "$X" asterisk -rx "channel request hangup all" >/dev/null 2>&1 || true
     break
   fi
-  sleep 3
+  sleep 2
 done
 echo "== Llamada terminada en $(( $(date +%s) - inicio )) s"
 
