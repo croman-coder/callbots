@@ -57,3 +57,16 @@ mostrarla) y redeployando Callbot.
 - **Fecha real de llegada y embarques**: no están en el Cotizador. En Uruguay salen de COMEX; en Paraguay hay que ver
   si la app de Gestión de Compras (base `compras`) o COMEX los tienen.
 - **Patentamiento y PDI**: mismo esquema (un usuario de solo lectura y una consulta más), cuando se decida.
+
+## Si el inventario «no respondió a tiempo» (24/10/2026)
+
+El agente dijo «no puedo consultar el inventario» y el registro de la API traía `Cotizador: la consulta stock falló:
+ArgumentError`. Causa: Coolify se actualizó solo a la 4.5.0 (23/10) y empezó a entregar `REPUESTOS_DATABASE_URL` al
+servicio que la declara en el compose **con comillas simples** (`'postgresql+psycopg://…'`); SQLAlchemy no podía leer esa
+URL. El worker, que la recibe por la inyección de variables de Coolify, la tenía bien. En Coolify el valor estaba limpio
+(`is_literal: true`, sin cambios desde el 21/10).
+
+Arreglo: `Settings` saca las comillas que envuelven cualquier variable (`config._sin_comillas`), así que no depende de
+cómo las entregue Coolify. Para diagnosticar una falla parecida, dentro del contenedor de la API:
+`python -c "from app.config import settings; print(len(settings.repuestos_database_url))"` y comparar con el worker.
+La e2e (`make e2e`) lo detecta: «Consultó el inventario del Cotizador» falla.

@@ -145,6 +145,22 @@ class Settings(BaseSettings):
     entrante_prueba: str = Field("9100", validation_alias="ENTRANTE_PRUEBA")
 
 
+    @field_validator("*", mode="before")
+    @classmethod
+    def _sin_comillas(cls, valor):  # noqa: ANN001, ANN206
+        """Saca las comillas que envuelven un valor del entorno.
+
+        Coolify 4.5.0 (actualizado solo el 23/10/2026) entregó a la API `REPUESTOS_DATABASE_URL` como
+        `'postgresql+psycopg://…'` (con las comillas simples): SQLAlchemy no la podía leer y el agente dijo que no
+        podía consultar el inventario. Pasaba solo en el servicio que declara la variable en el compose; el worker la
+        recibía bien. Ninguna configuración nuestra empieza y termina con comillas, así que se sacan siempre.
+        """
+        if isinstance(valor, str):
+            valor = valor.strip()
+            if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in "'\"":
+                valor = valor[1:-1].strip()
+        return valor
+
     @field_validator("call_window_start", "call_window_end", mode="before")
     @classmethod
     def _parse_time(cls, v: object) -> object:

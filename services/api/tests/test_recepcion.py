@@ -187,3 +187,67 @@ def test_simulacion_termina_cuando_el_cliente_dice_fin(monkeypatch):
     caso = caso_nuevo(origen="simulacion")
     assert asyncio.run(recepcion.cliente_simulado(caso, "Dejó la camioneta ayer.")) == "Hola, quería saber si ya está mi camioneta"
     assert asyncio.run(recepcion.cliente_simulado(caso, "Dejó la camioneta ayer.")) is None
+
+
+# ─────────────────────────────────────────── respuestas de Claude que no se pueden leer, y comillas de más en el entorno
+import asyncio as _asyncio  # noqa: E402
+import json as _json  # noqa: E402
+
+from app import recepcion as _recepcion  # noqa: E402
+from app.config import Settings  # noqa: E402
+from app.models import Campaign as _Campaign  # noqa: E402
+from app.services import llm as _llm  # noqa: E402
+
+
+def test_json_con_saltos_de_linea_y_comas_de_mas_se_lee():
+    assert _llm.parse_json_object('{"decir": "Listo,\nCarlos.", "accion": "seguir",}')["decir"] == "Listo,\nCarlos."
+    assert _llm.parse_json_object('Claro: ```json\n{"a": 1, "b": [1, 2,],}\n```') == {"a": 1, "b": [1, 2]}
+    assert _llm.parse_json_object("{no es json}") is None
+
+
+def _roto(decir):
+    # le falta una coma en «datos»: ilegible, pero lo que iba a decir se alcanza a ver
+    return (f'{{"decir": {_json.dumps(decir, ensure_ascii=False)}, "accion": "seguir", "area": null, '
+            '"datos": {"modelo": "Duster" "chapa": "X"}}')
+
+
+def _turno_con(monkeypatch, texto, conversacion=()):
+    async def complete(system, user, *, max_tokens=200):
+        return texto
+
+    monkeypatch.setattr(_llm, "is_configured", lambda: True)
+    monkeypatch.setattr(_llm, "complete", complete)
+    caso = _recepcion.nuevo(_Campaign(name="R", modo="recepcion", areas=[]), "telefono")
+    for quien, dicho in conversacion:
+        _recepcion.decir(caso, quien, dicho)
+    return caso, _asyncio.run(_recepcion.turno(caso, "Carlos, 0981 456 789"))
+
+
+def test_si_el_json_no_se_puede_leer_se_rescata_lo_que_iba_a_decir(monkeypatch):
+    dicho = 'Gracias, Carlos, ya anoté su consulta en el taller "Zeballos" para el lunes. ¿Algo más?'
+    roto = _roto(dicho)
+    assert _llm.parse_json_object(roto) is None
+    assert _recepcion._rescatar(roto) == {"decir": dicho, "accion": "seguir"}
+    assert _recepcion._rescatar("Disculpe, no entendí") is None and _recepcion._rescatar('{"decir": "ok"}') is None
+    _, out = _turno_con(monkeypatch, roto)
+    assert out == {"decir": dicho, "accion": "seguir"}  # y no «no llegué a entenderlo»
+
+
+def test_lo_rescatado_tampoco_puede_prometer_una_reserva_que_no_existe(monkeypatch):
+    # El control anti-promesa también cubre el camino rescatado: sin «Turno reservado» del sistema no vale.
+    _, out = _turno_con(monkeypatch, _roto("Listo, Carlos, quedó reservado el lunes a las 7:00."))
+    assert out["decir"] == _recepcion.FRASE_RESERVA_PENDIENTE
+    # Con la reserva confirmada por el sistema (el caso real del 24/10: tras `continuar`), sí se dice.
+    _, out = _turno_con(monkeypatch, _roto("Listo, Carlos, quedó reservado el lunes a las 7:00. ¿Algo más?"),
+                        [("sistema", "Turno reservado (n.º 10): lunes 26/10 a las 07:00 en Taller Zeballos.")])
+    assert out["decir"].startswith("Listo, Carlos, quedó reservado") and out["accion"] == "seguir"
+
+
+def test_la_configuracion_ignora_las_comillas_que_envuelven_un_valor(monkeypatch):
+    # Coolify 4.5.0 entregó la URL del Cotizador con comillas simples y SQLAlchemy no la podía leer (24/10/2026).
+    monkeypatch.setenv("REPUESTOS_DATABASE_URL", "'postgresql+psycopg://callbot_lectura:x@srpy-postgres:5432/cotizacionsr'")
+    monkeypatch.setenv("INTERNAL_TOKEN", ' "token-con-comillas" ')
+    monkeypatch.setenv("ADMIN_USER", "O'Brien")  # una comilla adentro no se toca
+    cfg = Settings()
+    assert cfg.repuestos_database_url == "postgresql+psycopg://callbot_lectura:x@srpy-postgres:5432/cotizacionsr"
+    assert cfg.internal_token == "token-con-comillas" and cfg.admin_user == "O'Brien"

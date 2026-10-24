@@ -17,6 +17,7 @@ llama usa su respaldo (la frase fija en llamada; las reglas en el análisis).
 from __future__ import annotations
 
 import json
+import re
 import logging
 from typing import Any
 
@@ -134,8 +135,12 @@ def parse_json_object(texto: str | None) -> dict[str, Any] | None:
     ini, fin = texto.find("{"), texto.rfind("}")
     if ini < 0 or fin <= ini:
         return None
-    try:
-        obj = json.loads(texto[ini : fin + 1])
-    except json.JSONDecodeError:
-        return None
-    return obj if isinstance(obj, dict) else None
+    candidato = texto[ini : fin + 1]
+    # Estricto primero; si falla, lo que más se le escapa al modelo: saltos de línea dentro de un texto y comas de más.
+    for intento in (candidato, re.sub(r",\s*([}\]])", r"\1", candidato)):
+        try:
+            obj = json.loads(intento, strict=False)
+        except json.JSONDecodeError:
+            continue
+        return obj if isinstance(obj, dict) else None
+    return None

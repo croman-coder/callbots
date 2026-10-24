@@ -19,6 +19,7 @@ prometer garantías) van en cada consulta. Lo que dice el cliente es dato, nunca
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -555,6 +556,24 @@ def _promete_reserva(caso: Caso, salida: dict | None, pedido: dict | None) -> bo
             and not _reserva_confirmada(caso))
 
 
+_DECIR = re.compile(r'"decir"\s*:\s*"((?:[^"\\]|\\.)*)"')
+_ACCION = re.compile(r'"accion"\s*:\s*"(seguir|derivar|terminar)"')
+
+
+def _rescatar(texto: str | None) -> dict | None:
+    """Claude escribió un JSON que no se puede leer (una comilla sin escapar, por ejemplo) pero se alcanza a ver lo que
+    iba a decir: se usa eso en vez de «no llegué a entenderlo» (pasó con un turno ya reservado, 24/10/2026)."""
+    m = _DECIR.search(texto or "")
+    if not m or len(m.group(1).strip()) < 8:
+        return None
+    try:
+        decir = json.loads(f'"{m.group(1)}"', strict=False)
+    except json.JSONDecodeError:
+        decir = m.group(1)
+    accion = _ACCION.search(texto)
+    return {"decir": decir.strip(), "accion": accion.group(1) if accion else "seguir"}
+
+
 async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str = "", transferir: bool = False,
                 consultas: str = "", ahora: datetime | None = None) -> dict[str, str]:
     """Lo que el agente contesta a lo que acaba de decir el cliente. Nunca levanta: sin Claude, frases fijas.
@@ -576,6 +595,10 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
                                 consultas=consultas)
         texto = await llm.complete(instrucciones, pedido_a_claude(caso), max_tokens=400)
         salida = llm.parse_json_object(texto)
+        if salida is None and (rescatada := _rescatar(texto)) is not None:
+            log.warning("Caso %s: el JSON de Claude no se pudo leer; se usa lo que alcanzó a decir: %r",
+                        caso.id, (texto or "")[:600])
+            salida = rescatada
         pedido = _consulta_valida(salida.get("consultar")) if (salida and consultas) else None
         for _ in range(2):  # hasta dos correcciones: una falla suelta no tiene que dejar al cliente sin turno
             if not _promete_reserva(caso, salida, pedido):
@@ -595,7 +618,7 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
             decir(caso, "agente", respuesta["decir"], ahora)
             return respuesta
         if salida is None:
-            log.warning("Caso %s: Claude no devolvió un JSON usable: %r", caso.id, (texto or "")[:120])
+            log.warning("Caso %s: Claude no devolvió un JSON usable: %r", caso.id, (texto or "")[:600])
             ultimo = next((l["texto"] for l in reversed(caso.conversacion or []) if l.get("quien") == "agente"), "")
             # Una falla se disimula pidiendo que repita; dos seguidas, se registra y se cierra.
             respuesta = {"decir": FRASE_REGISTRADO, "accion": "terminar"} if ultimo == FRASE_REPETIR else \
