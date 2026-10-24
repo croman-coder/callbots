@@ -33,6 +33,10 @@ def test_si_whisper_devuelve_el_prompt_es_eco():
     assert es_eco_del_prompt("Encuesta telefónica de satisfacción de un taller mecánico.", p)
     assert es_eco_del_prompt("Palabras que pueden aparecer: Renault, Taller Zeballos.", p)
     assert not es_eco_del_prompt("Ocho.", p) and not es_eco_del_prompt("Cero, nunca.", PROMPT_BASE)
+    # Un teléfono en dígitos solo usa palabras de la lista de números: no es eco (24/10/2026 se lo tomó por eco).
+    assert not es_eco_del_prompt("Cero, nueve, ocho, uno, cuatro, cinco, seis, siete, ocho, nueve.", p)
+    assert not es_eco_del_prompt("Mi número es cero nueve ocho uno cuatro cinco seis siete ocho nueve", p)
+    assert es_eco_del_prompt("Uno, un, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez.", p)
     assert not es_eco_del_prompt("Quiero sacar un turno para el service de mi Renault en Zeballos.", p)
 
 

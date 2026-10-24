@@ -16,7 +16,8 @@ APP=xg5ucgo36sqanypjxpajzyk5
 CTX=callbot-prueba-e2e
 DIR=/tmp/callbot-e2e
 EXTENSION=9100     # recepción; la encuesta entra por el 9000
-SILENCIO=3500      # cuánto silencio del agente espera el cliente antes de hablar (ms)
+SILENCIO=2500      # cuánto silencio del agente espera el cliente antes de hablar (ms). Con el ambiente de oficina del agente
+                   # la detección de silencio a veces se alarga y el agente (paciencia de 6 s) ya preguntaba «¿sigue ahí?»
 
 case "$ESCENARIO" in
   turno)

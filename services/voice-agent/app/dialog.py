@@ -261,7 +261,9 @@ class SurveyDialog:
                         self.hangup_cause = "sin_respuesta"
                         await _say(self.socket, frases.get("sin_respuesta", ""), self._voz)
                         return
-                    await _say(self.socket, frases.get("sigue_ahi", ""), self._voz)
+                    # Interrumpible: quien empieza a contestar justo cuando el agente pregunta «¿sigue ahí?» no puede
+                    # perder sus primeras palabras (se perdió «Carlos Prueba.» en la e2e del 24/10/2026).
+                    arranque = await _say(self.socket, frases.get("sigue_ahi", ""), self._voz, interrumpible=True)
                     continue
 
                 silencios = 0

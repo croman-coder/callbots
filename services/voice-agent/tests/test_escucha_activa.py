@@ -196,3 +196,17 @@ def test_el_acuse_sabe_lo_que_ya_dijo(entorno):
     ])
     correr(guion(questions=preguntas()), api)
     assert api.ya_dichos_vistos == ["Uy, lamento mucho escuchar eso."]  # al pedir el segundo, el primero ya está dicho
+
+
+def test_si_empieza_a_contestar_cuando_el_agente_pregunta_si_sigue_ahi_no_pierde_sus_primeras_palabras(entorno):
+    from tests.test_buzon_y_transferencia import Socket
+
+    s = Socket()
+    arranque = [b"\x05\x00" * 160] * 5
+    s.interrumpe = [arranque]  # contesta justo cuando el agente dice «¿Sigue ahí?»
+    entorno.escuchas += [silencio(), habla(2)]
+    entorno.textos += ["Carlos Prueba, mi número es cero nueve ocho"]
+    api = ApiRecepcion([{"decir": "Gracias, Carlos.", "accion": "terminar"}])
+    correr(recepcion(), api, socket=s)
+    assert "¿Sigue ahí?" in entorno.dichas and entorno.previos == [None, arranque]  # la escucha siguió desde su arranque
+    assert api.turnos == ["Carlos Prueba, mi número es cero nueve ocho"]

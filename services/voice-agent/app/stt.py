@@ -13,6 +13,7 @@ import logging
 import math
 import re
 import unicodedata
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 
 import numpy as np
@@ -145,17 +146,21 @@ def _palabras(texto: str) -> list[str]:
 
 
 def es_eco_del_prompt(texto: str, prompt: str) -> bool:
-    """Whisper devolvió su propio prompt en vez de lo que se dijo.
+    """Whisper devolvió su propia guía en vez de lo que se dijo.
 
     Pasa con audios cortos: el cliente dijo «Ocho.» y salió «Encuesta telefónica de satisfacción de un taller
-    mecánico.» (prueba e2e del 22/10/2026). Si casi todas las palabras están en el prompt y son varias, es eco: una
-    respuesta de verdad («ocho», «cero, nunca») tiene una o dos palabras, o palabras que el prompt no tiene.
+    mecánico.» (prueba e2e del 22/10/2026). Es eco si la mayor parte del texto es UN TRAMO SEGUIDO de la guía, en su
+    mismo orden. No alcanza con que las palabras estén en la guía: un teléfono dicho en dígitos («cero nueve ocho uno
+    cuatro…») usa solo palabras de la lista de números y no es eco (24/10/2026: se lo tomó por eco, se volvió a
+    transcribir sin guía y salió peor). Una respuesta de verdad («ocho», «cero, nunca») tiene pocas palabras o no copia
+    un tramo largo de la guía.
     """
     dichas = _palabras(texto)
     if len(dichas) < 4:
         return False
-    del_prompt = set(_palabras(prompt))
-    return sum(p in del_prompt for p in dichas) / len(dichas) >= 0.8
+    de_la_guia = _palabras(prompt)
+    tramo = SequenceMatcher(None, dichas, de_la_guia, autojunk=False).find_longest_match(0, len(dichas), 0, len(de_la_guia))
+    return tramo.size >= 4 and tramo.size / len(dichas) >= 0.7
 
 
 def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None) -> Transcription:

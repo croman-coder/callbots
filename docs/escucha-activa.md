@@ -70,6 +70,8 @@ el Simulador y en la ficha del agente, que la e2e con voces sintéticas no podí
 | «uno, un desastre» salió «uno, un, dos, tres, cuatro…» (y +1,4 s) | La guía con los números se la devolvía en respuestas cortas | Menos de 2,5 s: sin guía de números ni frase de la encuesta (solo las palabras del agente) |
 | La interrupción cortó la pregunta por un golpe y la respuesta real quedó afuera | Pedía 300 ms de voz; la escucha cerraba a los 0,9 s, antes de que arrancara a contestar | 480 ms de voz en 640 ms; tras una interrupción con poca voz se espera hasta 1,8 s; si no era una respuesta el agente dice «Perdón, le decía.» y repite la pregunta |
 | Whisper inventó «¡Gracias por ver el vídeo!» con un golpe | Alucinación conocida con ruido | Se descartan esas frases |
+| Un teléfono dicho en dígitos se volvía a transcribir «sin guía» y salía peor (e2e 24/10) | El detector de eco tomaba por eco cualquier texto hecho de palabras de la lista de números | Es eco solo si copia un tramo seguido de la guía, en su orden (≥ 4 palabras y ≥ 70 % del texto) |
+| «Carlos Prueba.» se perdió: el agente dijo «¿Sigue ahí?» justo cuando el cliente empezaba a hablar (e2e 24/10) | Esa frase no se podía interrumpir y el audio se tiraba | Ahora es interrumpible: el agente se calla y la escucha sigue desde el arranque de la voz |
 | «Entiendo, y lo lamento…» dos veces en la misma llamada | La frase fija rotaba por posición (P2 y P5 caían en la misma) | El acuse sabe qué frases ya dijo y no las repite |
 
 ## Ruidos
