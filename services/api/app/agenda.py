@@ -344,10 +344,16 @@ def cambiar_estado(turno: TallerTurno, estado: str, por: str | None, texto: str 
 
 
 # ─────────────────────────────────────────────────────────── lo que ve y pide Claude
-def texto_para_claude(db: Session, momento: datetime | None = None) -> str:
-    """Las sucursales, los servicios y la fecha de hoy, para que Claude pida horarios y reserve."""
-    momento = momento or ahora()
-    hoy = local(momento)
+def fecha_para_claude(momento: datetime | None = None) -> str:
+    """La fecha y la hora de ahora, para Claude. Va con lo variable de cada turno (recepcion.contexto_del_turno), no
+    con las instrucciones: con la hora al minuto adentro, el prompt cambiaba cada minuto y el caché no servía
+    (31/10/2026: ~13.000 tokens escritos al caché por llamada)."""
+    hoy = local(momento or ahora())
+    return f"Hoy es {dia_texto(hoy.date())}/{hoy.year} ({hoy.date().isoformat()}), {hoy.strftime('%H:%M')}."
+
+
+def texto_para_claude(db: Session) -> str:
+    """Las sucursales y los servicios, para que Claude pida horarios y reserve. La fecha va aparte: `fecha_para_claude`."""
     sucursales = sucursales_activas(db)
     servicios = servicios_activos(db)
     if not sucursales or not servicios:
@@ -369,7 +375,7 @@ def texto_para_claude(db: Session, momento: datetime | None = None) -> str:
         f"- «reservar»: reserva el turno. Pasá «servicio», «marca», «modelo», «fecha», «hora» (HH:MM, una de las "
         f"libres), «nombre» y «telefono» del cliente, y «chapa» y «km» si los dijo"
         f"{', y «sucursal»' if len(sucursales) > 1 else ''}.\n"
-        f"Hoy es {dia_texto(hoy.date())}/{hoy.year} ({hoy.date().isoformat()}), {hoy.strftime('%H:%M')}. Talleres:\n"
+        "La fecha y la hora de hoy van con la información de cada respuesta. Talleres:\n"
         + "\n".join(lineas_suc) +
         "\nServicios:\n" + "\n".join(lineas_serv) +
         "\nPara agendar: preguntá qué servicio, qué vehículo y qué día y franja le quedan bien; ofrecé dos o tres "

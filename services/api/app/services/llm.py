@@ -69,9 +69,11 @@ def _sin_pensar(modelo: str, max_tokens: int) -> dict[str, Any]:
     return {"max_tokens": max_tokens, "thinking": {"type": "disabled"}, "output_config": {"effort": "low"}}
 
 
-def _request(system: str, user: str, max_tokens: int, variable: str = "") -> tuple[dict[str, str], dict[str, Any]]:
-    """`system` es lo fijo del agente; `variable`, lo que cambia en cada pedido (la parte de la base de conocimiento que
-    viene al caso). Van en dos bloques para que lo fijo se lea del caché aunque lo variable cambie."""
+def _request(system: str | list[str], user: str, max_tokens: int,
+             variable: str = "") -> tuple[dict[str, str], dict[str, Any]]:
+    """`system` es lo fijo del agente, en uno o más bloques; `variable`, lo que cambia en cada pedido (la fecha, la
+    parte de la base de conocimiento que viene al caso). Lo fijo va al caché por bloques: si cambia el segundo, el
+    primero se lee igual del caché."""
     headers = {
         "x-api-key": settings.anthropic_api_key,
         "anthropic-version": VERSION,
@@ -79,13 +81,20 @@ def _request(system: str, user: str, max_tokens: int, variable: str = "") -> tup
     }
     # Un prompt largo se guarda en caché: la próxima respuesta del mismo agente lo lee de ahí, más rápido y ~10 veces
     # más barato. Uno corto no llega al mínimo cacheable.
-    fijo: dict[str, Any] = {"type": "text", "text": system}
-    if len(system) >= MIN_CACHE:
-        fijo["cache_control"] = {"type": "ephemeral"}
-    sistema: Any = [fijo, {"type": "text", "text": variable}] if variable else ([fijo] if "cache_control" in fijo else system)
+    bloques: list[dict[str, Any]] = []
+    largo = 0
+    for parte in [system] if isinstance(system, str) else [p for p in system if p]:
+        largo += len(parte)
+        bloque: dict[str, Any] = {"type": "text", "text": parte}
+        if largo >= MIN_CACHE:
+            bloque["cache_control"] = {"type": "ephemeral"}
+        bloques.append(bloque)
+    if variable:
+        bloques.append({"type": "text", "text": variable})
+    sencillo = isinstance(system, str) and len(bloques) == 1 and "cache_control" not in bloques[0]
     body = {
         "model": settings.llm_model,
-        "system": sistema,
+        "system": system if sencillo else bloques,
         "messages": [{"role": "user", "content": user}],
         **_sin_pensar(settings.llm_model, max_tokens),
     }
@@ -118,7 +127,8 @@ def _text(data: Any) -> str | None:
     return texto or None
 
 
-async def complete(system: str, user: str, *, max_tokens: int = 200, variable: str = "", tipo: str = "") -> str | None:
+async def complete(system: str | list[str], user: str, *, max_tokens: int = 200, variable: str = "",
+                   tipo: str = "") -> str | None:
     if not is_configured():
         return None
     headers, body = _request(system, user, max_tokens, variable)

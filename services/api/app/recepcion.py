@@ -25,6 +25,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from app import agenda
 from app.models import Campaign, Caso
 from app.services import llm
 from app.services.variables import clave_de
@@ -413,8 +414,19 @@ def bloque_consultas(partes: list[str] | None = None) -> str:
     return CONSULTAR_COMO.format(partes="".join(partes), espera=FRASE_CONSULTANDO)
 
 
+# Dónde se parten las instrucciones en dos bloques para el caché: antes de las consultas en vivo.
+_CORTE = "\x00"
+
+
 def sistema(campaign: Campaign, *, transferir: bool = False, consultas: str = "") -> str:
-    """Las instrucciones fijas del agente: iguales en todos los turnos, se leen del caché (ver `contexto_del_turno`)."""
+    """Las instrucciones fijas del agente: iguales en todos los turnos (ver `contexto_del_turno`)."""
+    return "".join(sistema_en_partes(campaign, transferir=transferir, consultas=consultas))
+
+
+def sistema_en_partes(campaign: Campaign, *, transferir: bool = False, consultas: str = "") -> list[str]:
+    """Las instrucciones en dos bloques, cada uno al caché: lo general del agente y, después, las consultas en vivo y
+    el formato. El turno que sigue a una consulta va sin consultas, y una llamada con el teléfono conocido cambia el
+    texto de repuestos: con un solo bloque, cada variante se pagaba entera; así lo general se lee del caché igual."""
     empresa = getattr(campaign, "empresa_nombre", None) or "Santa Rosa"
     limites = limites_de(campaign)
     instrucciones = (getattr(campaign, "conversation_prompt", None) or "").strip()
@@ -425,15 +437,16 @@ def sistema(campaign: Campaign, *, transferir: bool = False, consultas: str = ""
         limites="\n".join(f"- {linea}" for linea in limites),
         areas=_areas_para_claude(areas_de(campaign)),
         instrucciones=f"\nInstrucciones de la empresa para este agente:\n{instrucciones}\n" if instrucciones else "",
-        consultas=consultas,
+        consultas=_CORTE + consultas,
         campo_consultar=CAMPO_CONSULTAR if consultas else "",
-    )
+    ).split(_CORTE, 1)
 
 
-def contexto_del_turno(*, conocimiento: str = "", cliente: str = "") -> str:
-    """Lo que cambia de un turno a otro (lo de la base de conocimiento que viene al caso, los datos del cliente). Va
-    en un bloque aparte del sistema: si fuera adentro, cada turno cambiaría el prompt y no se leería del caché."""
-    partes = [p.strip() for p in (conocimiento, cliente) if p and p.strip()]
+def contexto_del_turno(*, conocimiento: str = "", cliente: str = "", fecha: str = "") -> str:
+    """Lo que cambia de un turno a otro (la fecha y la hora, lo de la base de conocimiento que viene al caso, los datos
+    del cliente). Va en un bloque aparte del sistema: si fuera adentro, cada turno cambiaría el prompt y no se leería
+    del caché."""
+    partes = [p.strip() for p in (fecha, conocimiento, cliente) if p and p.strip()]
     return "Información para esta respuesta:\n\n" + "\n\n".join(partes) if partes else ""
 
 
@@ -600,8 +613,8 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
         # Sin IA no hay conversación posible: se toma lo que contó y se lo pasa al equipo.
         respuesta = {"decir": FRASE_REGISTRADO, "accion": "terminar"}
     else:
-        instrucciones = sistema(campaign, transferir=transferir, consultas=consultas)
-        variable = contexto_del_turno(conocimiento=conocimiento, cliente=cliente)
+        instrucciones = sistema_en_partes(campaign, transferir=transferir, consultas=consultas)
+        variable = contexto_del_turno(conocimiento=conocimiento, cliente=cliente, fecha=agenda.fecha_para_claude(ahora))
         texto = await llm.complete(instrucciones, pedido_a_claude(caso), max_tokens=400, variable=variable,
                                    tipo="recepción")
         salida = llm.parse_json_object(texto)

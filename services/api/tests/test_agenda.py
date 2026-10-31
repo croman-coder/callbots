@@ -147,7 +147,9 @@ def test_el_agente_reserva_y_el_turno_queda_atado_al_caso(base, monkeypatch):  #
     db.commit()
 
     bloque = fuentes.bloque(caso, db)
-    assert "«reservar»" in bloque and "Taller Zeballos" in bloque and "Hoy es domingo 25/10/2026 (2026-10-25)" in bloque
+    assert "«reservar»" in bloque and "Taller Zeballos" in bloque and "Hoy es" not in bloque
+    # La fecha va con lo variable de cada turno: con la hora adentro, el prompt cambiaba cada minuto (caché).
+    assert agenda.fecha_para_claude().startswith("Hoy es domingo 25/10/2026 (2026-10-25)")
     r = asyncio.run(recepcion.turno(caso, "Quiero el service de los 10 mil el lunes a las 9", consultas=bloque))
     assert r["accion"] == "consultar"
     r = asyncio.run(recepcion.continuar(caso, fuentes.consultor(caso)))

@@ -276,9 +276,14 @@ def test_el_sistema_es_igual_en_todos_los_turnos_y_se_cachea(monkeypatch):
     # Sin consultas en vivo el sistema también pasa el mínimo (el turno después de una consulta va sin ellas).
     assert len(recepcion.sistema(agente())) >= llm.MIN_CACHE
     primero, segundo = pedidos
-    assert primero[0] == segundo[0] and primero[0]["cache_control"] == {"type": "ephemeral"}
-    assert "Filtros en stock." in primero[1]["text"] and "filtro X" in segundo[1]["text"]
-    assert "cache_control" not in primero[1]
+    assert primero[:2] == segundo[:2] and all(b["cache_control"] == {"type": "ephemeral"} for b in primero[:2])
+    assert "Filtros en stock." in primero[-1]["text"] and "filtro X" in segundo[-1]["text"]
+    assert "cache_control" not in primero[-1] and "Hoy es" in primero[-1]["text"]
+    # Sin consultas en vivo (el turno después de una consulta) cambia el segundo bloque, no el primero.
+    base, resto = recepcion.sistema_en_partes(agente(), consultas=recepcion.bloque_consultas())
+    assert recepcion.sistema_en_partes(agente())[0] == base
+    assert "Podés consultar en vivo" in resto and "Podés consultar en vivo" not in base
+    assert recepcion.sistema(agente(), consultas=recepcion.bloque_consultas()) == base + resto
 
 
 def test_ante_una_queja_sin_detalle_pregunta_que_paso_y_el_tono_sigue_al_cliente():

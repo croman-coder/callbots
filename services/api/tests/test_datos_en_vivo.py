@@ -92,7 +92,7 @@ def test_consultar_y_contestar_con_el_dato(monkeypatch):
     r = asyncio.run(recepcion.turno(caso, "¿Llegó mi espejo? Mi cédula es 1.234.567", consultas=bloque, ahora=AHORA))
     assert r == {"decir": "Ya lo busco en el sistema, un momento.", "accion": "consultar"}
     assert recepcion.consulta_pendiente(caso) == {"que": "pedidos", "documento": "1234567"}
-    assert caso.nombre == "Ramón" and '"consultar"' in pedidos_a_claude[0][0]
+    assert caso.nombre == "Ramón" and '"consultar"' in "".join(pedidos_a_claude[0][0])
 
     vistos = []
     r2 = asyncio.run(recepcion.continuar(caso, lambda p: vistos.append(p) or "Solicitud SOL-1: espejo, llega en 15 días",
@@ -101,7 +101,7 @@ def test_consultar_y_contestar_con_el_dato(monkeypatch):
     assert "llega aproximadamente" in r2["decir"] and recepcion.consulta_pendiente(caso) is None
     assert [l["quien"] for l in caso.conversacion] == ["agente", "cliente", "agente", "sistema", "agente"]
     # La segunda vez Claude ve el resultado y no tiene cómo volver a consultar en el mismo turno.
-    assert "Sistema (resultado de tu consulta" in pedidos_a_claude[1][1] and '"consultar"' not in pedidos_a_claude[1][0]
+    assert "Sistema (resultado de tu consulta" in pedidos_a_claude[1][1] and '"consultar"' not in "".join(pedidos_a_claude[1][0])
     assert asyncio.run(recepcion.continuar(caso, lambda p: "x")) == {"decir": "", "accion": "seguir"}
 
 
