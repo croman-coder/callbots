@@ -56,3 +56,15 @@ Callbot», más quién lo aprobó.
 - `services/api/app/templates/grabar.html` + `static/grabar.js`: lo que ve el locutor.
 - `services/api/app/static/grabador.js`: el grabador WAV, compartido con la clonación del panel.
 - Migración `0022_locutor_a_distancia`. Tests: `tests/test_locutores.py`.
+
+## Pausas, comas y velocidad
+
+El clon imita cómo habla la persona en la grabación, también sus pausas. OmniVoice además rellena con silencio si le
+sobra tiempo, y su velocidad casi no cambia nada. Desde el 31/10/2026 Callbot le pide la duración según el texto,
+recorta los bordes, acorta las pausas largas y aplica la velocidad del agente al audio sin cambiar el tono (detalle en
+`escucha-activa.md`, «Ritmo»). Para una voz nueva: aprobarla, probarla en la ficha del agente y ajustar la
+**Velocidad** (0,9 más pausada, 1,1 más ágil).
+
+**Solo voces con el permiso grabado.** Una voz que está en otra instalación de VoiceStudio (por ejemplo la de la
+notebook) sin el permiso de la persona no se pasa a Callbot: se le manda el enlace de locutor y graba el permiso y las
+frases. Así además queda una referencia leída con claridad, que da un clon mejor que un audio de WhatsApp.

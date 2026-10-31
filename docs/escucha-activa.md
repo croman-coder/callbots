@@ -24,6 +24,9 @@ Después de cada respuesta que se entendió, el agente dice un **acuse** antes d
 - Si hubo alguna nota baja, antes de la despedida: «Lamento que la experiencia no haya sido la que esperaba. Le paso
   sus comentarios al equipo de Calidad.»
 - Claude no hace preguntas, no promete llamados ni soluciones y no pone excusas en el acuse; si lo hace, va la fija.
+- **Ante una queja, primero eso** (reunión del 30/10/2026): una nota baja sin motivo («uno», «seis») lleva a «Uy, lo
+  lamento mucho. ¿Me cuenta qué pasó?»; el agente escucha, retoma lo que contó y recién después sigue. Una vez por
+  llamada. El tono sigue a la emoción del cliente (enojado, neutro o contento): ver `emocion-y-tono.md`.
 
 ## Que corte cuando el cliente termina, aunque haya ruido atrás
 
@@ -55,7 +58,9 @@ vez de lo que se dijo («Ocho.»). Si casi todo lo transcripto está en la guía
 ## Sonido de fondo y teclado
 
 En la ficha del agente, Configuración de voz: **Sonido de fondo: Oficina** (ambiente suave toda la llamada, ~30 dB
-por debajo de la voz) y **Teclado mientras busca o anota**. Se sintetizan en el voice-agent (`app/ambiente.py`), sin
+por debajo de la voz) y **Teclado mientras busca o anota**. Se prendieron el 22/10/2026 en el agente de prueba y en
+«Recepción posventa», y **se apagaron el 31/10/2026** por el pedido de la reunión del 30/10 («sacar el ruido entre
+frases»). Se vuelven a prender con las dos casillas. Se sintetizan en el voice-agent (`app/ambiente.py`), sin
 grabaciones de terceros. El teclado suena mientras el agente piensa o consulta el sistema y se calla cuando habla; con
 teclado, la muletilla «Déjeme ver» queda solo para esperas de más de 2,5 s.
 
@@ -90,6 +95,33 @@ expresiones naturales («Claro», «Entiendo», «¡Qué bueno!», «Uy, lo lame
 («dos semanas sin novedades… es una molestia», en cada respuesta). Ahora la empatía y el resumen del problema van una
 sola vez en la llamada y el agente cambia cómo arranca cada respuesta. Se probó con Claude real sobre la conversación
 de la e2e de repuestos (dos repeticiones): la empatía aparece una vez.
+
+## Ritmo: pausas entre frases, comas y velocidad
+
+Medido el 31/10/2026 (reunión del 30/10: «sacar el ruido entre frases y lograr una conversación fluida», «que respete
+pausas y comas, y ajustar la velocidad»):
+
+- Entre dos frases quedaban **~760 ms** de hueco: 450 ms fijos más el silencio que deja la voz clonada al principio
+  (~190 ms) y al final (~120 ms) de cada frase.
+- La voz clonada (OmniVoice) **metía pausas al azar**: con la voz de prueba, 1,2 s después de «Del cero al diez,» y
+  ninguna después de «Entiendo,» en otra pasada; en un tramo de encuesta, silencios de 1,9 s, 1,5 s y 2,3 s. El modelo
+  estima cuánto dura la frase y, si le sobra tiempo, lo llena de silencio.
+- Su parámetro de **velocidad casi no hacía nada**: articula siempre a ~16,5 letras por segundo.
+
+Ahora (`app/guion.py`, `app/tts.py` del voice-agent):
+
+| Qué | Cómo |
+|---|---|
+| Duración pedida | Se le pide a VoiceStudio la duración según el texto: 13 letras por segundo, 0,25 s por coma y 0,3 s por punto seguido. Casi no le sobra tiempo para rellenar |
+| Bordes | Cada frase queda con 40 ms de silencio antes y 70 ms después, con un fundido de 5 ms (sin clics) |
+| Pausas internas | Ninguna pasa de 300 ms: una pausa de coma queda, una de 1,2 s se acorta |
+| Entre frases | Según cómo termina la frase: 380 ms tras un punto, 420 ms tras una pregunta, 550 ms tras «…». Total entre frases: ~0,5 s |
+| Dos textos seguidos | El acuse y la pregunta (o «Perdón, le decía.» y la pregunta) llevan la misma pausa que dos frases de un texto |
+| Velocidad | La perilla «Velocidad» de la ficha ahora cambia la voz clonada de verdad: se estira o se acorta el audio sin cambiar el tono (WSOLA), de 0,75 a 1,35 |
+
+El audio que ya estaba en el caché se ajusta al leerlo (bordes y pausas); la duración pedida vale para las frases
+nuevas. Mismo tramo de encuesta con la voz de prueba: **20,6 s antes, 15,5 s después**, sin silencios de más de ~0,5 s
+salvo el turno del cliente; a velocidad 0,9 dura 17,8 s y a 1,1, 14,8 s.
 
 ## Expresión de la voz
 

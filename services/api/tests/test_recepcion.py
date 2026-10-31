@@ -279,3 +279,10 @@ def test_el_sistema_es_igual_en_todos_los_turnos_y_se_cachea(monkeypatch):
     assert primero[0] == segundo[0] and primero[0]["cache_control"] == {"type": "ephemeral"}
     assert "Filtros en stock." in primero[1]["text"] and "filtro X" in segundo[1]["text"]
     assert "cache_control" not in primero[1]
+
+
+def test_ante_una_queja_sin_detalle_pregunta_que_paso_y_el_tono_sigue_al_cliente():
+    """Reunión del 30/10/2026: «si el cliente está enojado o se queja, primero atender eso (“Entiendo, ¿qué pasó?”)»."""
+    texto = recepcion.sistema(agente())
+    assert "preguntale qué pasó («Entiendo, ¿qué pasó?»)" in texto
+    assert "enojado, calma y empatía, sin exclamaciones alegres" in texto
