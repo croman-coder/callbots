@@ -15,7 +15,7 @@ VOZ_CLIENTE="${VOZ_CLIENTE:-vs:46d131b1}"   # «IA hombre adulto»: otra voz que
 APP=xg5ucgo36sqanypjxpajzyk5
 CTX=callbot-prueba-e2e
 DIR=/tmp/callbot-e2e
-EXTENSION=9100     # recepción; la encuesta entra por el 9000
+EXTENSION=9100     # recepción; la encuesta va directo a la sesión de prueba del agente
 SILENCIO=2500      # cuánto silencio del agente espera el cliente antes de hablar (ms). Con el ambiente de oficina del agente
                    # la detección de silencio a veces se alarga y el agente (paciencia de 6 s) ya preguntaba «¿sigue ahí?»
 
@@ -38,7 +38,7 @@ case "$ESCENARIO" in
       "No, nada más, gracias."
     ) ;;
   encuesta)
-    # La encuesta activa en modo demo (el mismo camino que el Simulador). Al saludo hay que contestar en menos de 3 s.
+    # La encuesta del agente de prueba en modo demo (no guarda nada). Al saludo hay que contestar en menos de 3 s.
     # «Seis.» sin motivo: el agente pregunta qué pasó y el cliente lo cuenta antes de la última pregunta.
     FRASES=(
       "Sí, dígame."
@@ -84,8 +84,12 @@ case "$ESCENARIO" in
     ) ;;
   *) echo "Escenario desconocido: $ESCENARIO (turno, repuestos, encuesta, enojado, neutro o contento)" >&2; exit 2 ;;
 esac
+# La encuesta se prueba con la sesión de prueba de un agente (la misma que «Probar» en su ficha), que anda aunque el
+# agente esté pausado. El 9000 corre «el primer agente activo» y el 31/10/2026 no había ninguno: la prueba daba 404.
+AGENTE_ENCUESTA="${AGENTE_ENCUESTA:-1}"
+SESION_ENCUESTA=$(printf '00000000-0000-0000-0000-%012d' "$AGENTE_ENCUESTA")
 case "$ESCENARIO" in
-  encuesta|enojado|neutro|contento) EXTENSION=9000; SILENCIO=1800; ENCUESTA=1 ;;
+  encuesta|enojado|neutro|contento) SILENCIO=1800; ENCUESTA=1 ;;
   *) ENCUESTA=0 ;;
 esac
 
@@ -101,6 +105,7 @@ fi
 
 limpiar() {
   docker exec "$X" asterisk -rx "dialplan remove context $CTX" >/dev/null 2>&1 || true
+  docker exec "$X" asterisk -rx "dialplan remove context $CTX-agente" >/dev/null 2>&1 || true
   docker exec "$X" rm -rf "$DIR" 2>/dev/null || true
   docker exec "$V" rm -rf "$DIR" 2>/dev/null || true
   rm -rf "$DIR"
@@ -148,7 +153,17 @@ paso "Hangup()"
 ANTES=$(docker exec "$P" psql -U callbot -d callbot -tAc "select coalesce(max(id), 0) from casos")
 DESDE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 inicio=$(date +%s)
-docker exec "$X" asterisk -rx "channel originate Local/$EXTENSION@callbot-inbound extension s@$CTX" >/dev/null
+if [ "$ENCUESTA" = 1 ]; then
+  # Del lado del agente: lo mismo que el 9000, pero con la sesión de prueba del agente elegido.
+  docker exec "$X" asterisk -rx "dialplan add extension s,1,Answer() into $CTX-agente" >/dev/null
+  docker exec "$X" asterisk -rx "dialplan add extension s,2,Wait(1) into $CTX-agente" >/dev/null
+  docker exec "$X" asterisk -rx "dialplan add extension s,3,AudioSocket($SESION_ENCUESTA,\${AUDIOSOCKET_TARGET}) into $CTX-agente" >/dev/null
+  docker exec "$X" asterisk -rx "dialplan add extension s,4,Hangup() into $CTX-agente" >/dev/null
+  DESTINO="Local/s@$CTX-agente"
+else
+  DESTINO="Local/$EXTENSION@callbot-inbound"
+fi
+docker exec "$X" asterisk -rx "channel originate $DESTINO extension s@$CTX" >/dev/null
 sleep 5
 # La llamada terminó cuando el canal del cliente no aparece en 3 consultas seguidas: una consulta a Asterisk que falla un
 # instante no puede darla por terminada (en la e2e del 24/10 pasó, el script borró el guion con la llamada en curso).
@@ -171,7 +186,7 @@ echo "== Llamada terminada en $(( $(date +%s) - inicio )) s"
 if [ "$ENCUESTA" = 1 ]; then
   # La encuesta de prueba no guarda nada: se revisa con el registro del voice-agent.
   FIJAS=$(docker exec "$A" python -c 'import json; from app import acuse; print(json.dumps(acuse.todas_las_fijas(), ensure_ascii=False))')
-  docker logs --since "$DESDE" "$V" 2>&1 | grep "00000000-0000-0000-0000-000000000000" \
+  docker logs --since "$DESDE" "$V" 2>&1 | grep "$SESION_ENCUESTA" \
     | ESCENARIO="$ESCENARIO" FIJAS="$FIJAS" python3 -c '
 import json, os, re, sys
 lineas = [l.split("] ", 1)[-1].rstrip() for l in sys.stdin]
