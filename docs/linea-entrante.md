@@ -40,7 +40,7 @@ bandeja.
 ### Prueba de punta a punta (sin softphone)
 
 ```bash
-make e2e                # o ./scripts/prueba_e2e.sh [turno|repuestos]
+make e2e                # todo; o make e2e E=turno|repuestos|encuesta|emociones
 ```
 
 Un cliente con voz IA llama al 9100 y conversa con el agente: antes de cada frase espera a que el agente termine de
@@ -48,6 +48,10 @@ hablar. Pasa por el camino real (Asterisk → voice-agent → Whisper → Claude
 revisa el caso: que escuchó cada frase, qué entendió, qué consultó, si reservó o derivó. Sale con 1 si algo falló:
 correrla después de cada deploy. Escenarios: `turno` (service en Zeballos, reserva) y `repuestos` (stock en el
 Cotizador y un reclamo con una pausa larga a la mitad, que se deriva). No usa cédulas: no toca datos de clientes.
+
+La encuesta se prueba igual, pero llamando a la sesión de prueba del agente `AGENTE_ENCUESTA` (1 por defecto), que
+anda aunque esté pausado: `encuesta` (escucha activa y «¿qué pasó?» ante una nota baja) y `emociones` (tres clientes,
+enojado, neutro y contento: ver `emocion-y-tono.md`). Después, `make consumo` muestra los tokens de Claude por llamada.
 
 ## Lo que falta para atender clientes de verdad
 

@@ -75,6 +75,53 @@ IA: uno enojado, uno neutro y uno contento. Pasa por todo: Asterisk, Whisper, la
 registro del voice-agent la emoción leída en cada respuesta, que ante la queja preguntó qué pasó una sola vez y lo
 retomó antes de seguir, y que el tono no se cruza (ni pésame al contento ni festejo al enojado).
 
-## Resultados
+## Prueba con voz del 31/10/2026
 
-Ver la sección «Prueba con voz del 31/10/2026» más abajo.
+`make e2e E=emociones` más el escenario `encuesta`, en producción, con la encuesta del agente de prueba (6 preguntas,
+5 del 0 al 10 y una abierta): **26 de 26 verificaciones**. Lo que oyó Whisper y lo que contestó el agente:
+
+**Enojado**
+
+| Cliente | Lectura | Agente |
+|---|---|---|
+| «¡Le pongo un cero!» | baja, enojado | «Entiendo, y lo lamento. ¿Qué fue lo que pasó?» |
+| «Me cobraron un repuesto que no me cambiaron y nadie me dio una explicación.» | lo que pasó | «Entiendo que le cobraron un repuesto que no le cambiaron, y que nadie le dio una explicación…» |
+| «2. Un desastre.» | baja, enojado | «Entiendo, y lo lamento. Gracias por decírmelo con franqueza.» |
+| «Tres.» | baja, enojado | «Uy, lamento mucho escuchar eso.» |
+| «¡Uno pésimo!» | baja, enojado | «Lo siento mucho, de verdad. Lo vamos a tener en cuenta.» |
+| «2. Muy mal.» | baja, enojado | «Entiendo, y lo lamento. Gracias por decírmelo con franqueza.» |
+| «Que me devuelvan la plata, estoy re molesto.» | abierta, enojado | «Entiendo su molestia, y lamento mucho que se haya sentido así con el servicio.» |
+
+Preguntó qué pasó una sola vez, lo retomó antes de la segunda pregunta y cerró con empatía. Ningún «¡» ni festejo.
+
+**Neutro**
+
+| Cliente | Lectura | Agente |
+|---|---|---|
+| «Siete.» | media, neutro | «Bien, lo anoto.» |
+| «Ocho, más o menos.» | media, neutro | «De acuerdo, gracias.» |
+| «7. Normal.» | media, neutro | «Entiendo, gracias por decírmelo.» |
+| «Un 8.» | media, neutro | «Bien, lo anoto.» |
+| «Siete.» | media, neutro | «De acuerdo, gracias.» |
+| «No, nada en particular.» | abierta, neutro | «Gracias por su tiempo y por sus respuestas, le agradecemos mucho.» |
+
+**Contento**
+
+| Cliente | Lectura | Agente |
+|---|---|---|
+| «10. Excelente.» | alta, contento | «¡Me alegra mucho!» |
+| «Nueve.» | alta, contento | «¡Excelente, muchas gracias!» |
+| «10. Muy amables todos.» | alta, contento | «¡Qué bueno que todo le haya resultado tan bien, muchas gracias!» |
+| «10» | alta, contento | «¡Qué bueno escuchar eso!» |
+| «Nueve.» | alta, contento | «¡Excelente, muchas gracias!» |
+| «Nada, todo perfecto. Gracias.» | abierta, contento | «¡Qué bueno que todo le haya salido perfecto, muchas gracias por su tiempo!» |
+
+**Mixto** (escenario `encuesta`): «Uno, muy mal, me devolvieron el auto sucio y con un ruido nuevo» → «Lamento que el
+auto haya vuelto así, con esa suciedad y ese ruido nuevo.»; «Seis.» → «Entiendo, y lo lamento. ¿Qué fue lo que
+pasó?», contó que tardaron en avisarle y el agente lo retomó antes de la última pregunta.
+
+Las cuatro encuestas usaron 9 pedidos a Claude en total (4.011 tokens de entrada y 315 de salida, ~USD 0,0014 por
+encuesta): con solo el puntaje no se llama a Claude.
+
+La prueba usa la sesión de prueba del agente (`AGENTE_ENCUESTA`, 1 por defecto), que anda aunque el agente esté
+pausado. No guarda nada.
