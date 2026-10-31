@@ -23,6 +23,7 @@ import io
 import logging
 import os
 import re
+import time
 import wave
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -277,30 +278,55 @@ async def _voicebox_synthesize(text: str, timeout: float, perfil: str) -> bytes:
 # ---------------------------------------------------------------------------
 # Motor 1b: VoiceStudio (voz clonada en vivo, con GPU)
 # ---------------------------------------------------------------------------
+# Voces IA de Callbot («Crear una voz con IA», personality «callbot-ia»): hablan a su ritmo (~18,5 letras/s) y pedirles
+# la duración las frenaba (31/10/2026, cinco frases: 16,0 → 18,0 s). Las de personas, clonadas de una grabación,
+# rellenan con pausas si les sobra tiempo: a esas sí se les pide (Agustín: 21,6 → 15,2 s, pausas de 0,9 a 0,25 s). Se
+# lee de VoiceStudio cada 10 minutos; sin dato, sin duración (el tope de pausas de `ajustar_ritmo` vale igual).
+_VOCES_IA_CADA = 600.0
+_voces_ia: dict[str, bool] = {}
+_voces_ia_leidas: float | None = None
+
+
+async def _es_voz_ia(perfil: str, cabeceras: dict[str, str]) -> bool | None:
+    global _voces_ia_leidas
+    if _voces_ia_leidas is None or time.monotonic() - _voces_ia_leidas > _VOCES_IA_CADA:
+        _voces_ia_leidas = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                r = await client.get(f"{config.voicestudio_url.rstrip('/')}/profiles", headers=cabeceras)
+                r.raise_for_status()
+                _voces_ia.update({str(p.get("id")): p.get("personality") == "callbot-ia"
+                                  for p in r.json() if isinstance(p, dict)})
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
+            log.warning("No se pudo leer qué voces de VoiceStudio son IA (%s): se sigue con lo que se sabía", exc)
+    return _voces_ia.get(perfil)
+
+
 async def _voicestudio_synthesize(text: str, timeout: float, perfil: str, speed: float = 1.0) -> bytes:
-    """POST /v1/audio/speech (compatible con OpenAI): `voice` es el id del perfil clonado."""
+    """POST /v1/audio/speech (compatible con OpenAI): `voice` es el id del perfil clonado.
+
+    Su `speed` casi no cambia cómo articula: se le pide a ritmo normal y la velocidad del agente se aplica al audio.
+    A las voces de personas se les pide además la duración (ver `_es_voz_ia` y guion.duracion_estimada).
+    """
     payload = {
         "model": "omnivoice",
         "input": text,
         "voice": perfil,
         "response_format": "wav",
         "language": config.voicestudio_language,
-        "speed": min(max(speed, 0.5), 2.0),
+        "speed": 1.0,
         "num_step": config.voicestudio_pasos,
     }
-    # Sin duración, OmniVoice rellena con pausas al azar (ver guion.duracion_estimada). Su `speed` casi no cambia cómo
-    # articula: se le pide a ritmo normal y la velocidad del agente se aplica al audio.
-    duracion = duracion_estimada(text)
-    if duracion:
-        payload.update(duration=duracion, speed=1.0)
     cabeceras = {"Authorization": f"Bearer {config.voicestudio_api_key}"} if config.voicestudio_api_key else {}
+    if await _es_voz_ia(perfil, cabeceras) is False and (duracion := duracion_estimada(text)):
+        payload["duration"] = duracion
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             f"{config.voicestudio_url.rstrip('/')}/v1/audio/speech", json=payload, headers=cabeceras
         )
         response.raise_for_status()
         pcm = _wav_to_telephony(response.content)
-    return cambiar_velocidad(pcm, speed) if duracion else pcm
+    return cambiar_velocidad(pcm, speed)
 
 
 # Más allá de esto el estirado se nota (eco, voz «de lata»).

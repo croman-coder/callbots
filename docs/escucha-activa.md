@@ -112,7 +112,7 @@ Ahora (`app/guion.py`, `app/tts.py` del voice-agent):
 
 | Qué | Cómo |
 |---|---|
-| Duración pedida | Se le pide a VoiceStudio la duración según el texto: 13 letras por segundo, 0,25 s por coma y 0,3 s por punto seguido. Casi no le sobra tiempo para rellenar |
+| Duración pedida | Solo a las voces de personas (clonadas de una grabación): la duración según el texto, 15 letras por segundo, 0,25 s por coma y 0,3 s por punto seguido. Las voces IA de Callbot hablan a su ritmo (~18,5 letras/s): pedirles la duración las frenaba (16 → 18 s en cinco frases) |
 | Bordes | Cada frase queda con 40 ms de silencio antes y 70 ms después, con un fundido de 5 ms (sin clics) |
 | Pausas internas | Ninguna pasa de 300 ms: una pausa de coma queda, una de 1,2 s se acorta |
 | Entre frases | Según cómo termina la frase: 380 ms tras un punto, 420 ms tras una pregunta, 550 ms tras «…». Total entre frases: ~0,5 s |

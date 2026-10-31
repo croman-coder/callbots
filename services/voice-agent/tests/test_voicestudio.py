@@ -5,6 +5,7 @@ import asyncio
 import io
 import json
 import os
+import time
 import wave
 
 os.environ["VOICEBOX_URL"] = "http://voicebox:17493"
@@ -116,10 +117,47 @@ def test_pide_el_audio_como_openai_y_lo_pasa_a_8_khz(monkeypatch):
     monkeypatch.setattr(
         tts.httpx, "AsyncClient", lambda **kw: cliente(transport=httpx.MockTransport(responder), **kw)
     )
+    monkeypatch.setattr(tts, "_voces_ia", {"c672": False, "ia01": True})
+    monkeypatch.setattr(tts, "_voces_ia_leidas", time.monotonic())
     pcm = asyncio.run(_SINTETIZAR_REAL("Hola", 2.0, "c672", speed=3))
     url, cuerpo = pedidos[0]
     assert url == "http://voicestudio:3900/v1/audio/speech"
     assert cuerpo["voice"] == "c672" and cuerpo["input"] == "Hola" and cuerpo["response_format"] == "wav"
-    # Se le pide la duración, a ritmo normal: sin ella OmniVoice rellena con pausas al azar.
+    # Voz de una persona: se le pide la duración, a ritmo normal; sin ella OmniVoice rellena con pausas al azar.
     assert cuerpo["duration"] == duracion_estimada("Hola") and cuerpo["speed"] == 1.0
     assert len(pcm) == 2 * 800  # 0,1 s a 8 kHz: muy corto para estirarlo
+    # Voz IA de Callbot: habla a su ritmo; pedirle la duración la frenaba (31/10/2026).
+    asyncio.run(_SINTETIZAR_REAL("Hola", 2.0, "ia01"))
+    assert "duration" not in pedidos[1][1] and pedidos[1][1]["speed"] == 1.0
+
+
+def test_sin_saber_si_es_ia_no_se_pide_duracion(monkeypatch):
+    pedidos = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/profiles":
+            return httpx.Response(503)
+        pedidos.append(json.loads(request.content))
+        return httpx.Response(200, content=_wav())
+
+    cliente = httpx.AsyncClient
+    monkeypatch.setattr(tts.httpx, "AsyncClient", lambda **kw: cliente(transport=httpx.MockTransport(responder), **kw))
+    monkeypatch.setattr(tts, "_voces_ia", {})
+    monkeypatch.setattr(tts, "_voces_ia_leidas", None)
+    asyncio.run(_SINTETIZAR_REAL("Buenas tardes", 2.0, "nueva"))
+    assert "duration" not in pedidos[0]
+
+
+def test_lee_de_voicestudio_cuales_son_voces_ia(monkeypatch):
+    perfiles = [{"id": "e338eb40", "personality": "callbot-ia"}, {"id": "b7173ef4", "personality": ""}]
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=perfiles)
+
+    cliente = httpx.AsyncClient
+    monkeypatch.setattr(tts.httpx, "AsyncClient", lambda **kw: cliente(transport=httpx.MockTransport(responder), **kw))
+    monkeypatch.setattr(tts, "_voces_ia", {})
+    monkeypatch.setattr(tts, "_voces_ia_leidas", None)
+    assert asyncio.run(tts._es_voz_ia("e338eb40", {})) is True
+    assert asyncio.run(tts._es_voz_ia("b7173ef4", {})) is False
+    assert asyncio.run(tts._es_voz_ia("otra", {})) is None

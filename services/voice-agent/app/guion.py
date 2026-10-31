@@ -45,12 +45,13 @@ def pausa_tras(frase: str) -> int:
     return PAUSA_ENTRE_FRASES_MS
 
 
-# Ritmo de la voz clonada (OmniVoice en VoiceStudio). El modelo estima cuánto dura la frase y, si le sobra tiempo, lo
-# llena con pausas al azar: el 31/10/2026, con la voz de Agustín, 1,2 s después de «Del cero al diez,» y ninguna
-# después de «Entiendo,» en otra pasada. Articula siempre a ~16,5 letras/s, le pidas la velocidad que le pidas; lo que
-# cambia es el silencio. Se le pide la duración: con 13 letras/s quedan ~0,25 s por coma y casi nada de relleno. La
-# velocidad del agente se aplica después, al audio (tts.cambiar_velocidad).
-LETRAS_POR_SEGUNDO = 13.0
+# Ritmo de una voz clonada de una persona (OmniVoice en VoiceStudio). El modelo estima cuánto dura la frase y, si le
+# sobra tiempo, lo llena con pausas al azar: el 31/10/2026, con la voz de Agustín, 1,2 s después de «Del cero al
+# diez,» y ninguna después de «Entiendo,» en otra pasada. Se le pide la duración: medido en cinco frases, a 15 letras/s
+# articula a ~18,5 letras/s (como las voces IA) y las pausas quedan en 0,25 s o menos; a 13 todavía sobraban. Las voces
+# IA de Callbot no la necesitan (tts._es_voz_ia). La velocidad del agente se aplica después, al audio
+# (tts.cambiar_velocidad).
+LETRAS_POR_SEGUNDO = 15.0
 PAUSA_COMA_S = 0.25
 PAUSA_PUNTO_S = 0.3
 _PAUSA_CORTA = re.compile(r"[,;:]")
