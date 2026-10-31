@@ -210,3 +210,46 @@ def test_si_empieza_a_contestar_cuando_el_agente_pregunta_si_sigue_ahi_no_pierde
     correr(recepcion(), api, socket=s)
     assert "¿Sigue ahí?" in entorno.dichas and entorno.previos == [None, arranque]  # la escucha siguió desde su arranque
     assert api.turnos == ["Carlos Prueba, mi número es cero nueve ocho"]
+
+
+def test_nota_baja_sin_motivo_pregunta_que_paso_lo_escucha_y_despues_sigue(entorno):
+    """Reunión del 30/10/2026: «si el cliente se queja, primero atender eso (“Entiendo, ¿qué pasó?”) y recién después
+    seguir». La API decide cuándo (acuse.repreguntar); el agente escucha, la API lo guarda y el agente lo retoma."""
+    entorno.escuchas += [silencio(), habla(1), habla(4), habla(2)]
+    entorno.textos += ["Uno.", "Me cobraron un filtro que no me cambiaron.", "Ocho."]
+    api = Api(verdicts=[verdict(value=1.0), verdict(value=8.0)], acuses=[
+        {"acuse": "Uy, lo lamento mucho. ¿Me cuenta qué pasó?", "banda": "baja", "emocion": "enojado", "repregunta": True},
+        {"acuse": "Entiendo, gracias por decírmelo.", "banda": "media", "emocion": "neutro", "repregunta": False},
+    ])
+    api.acuse_motivo = "Lamento mucho que le hayan cobrado un filtro que no le cambiaron."
+    d, _ = correr(guion(questions=preguntas()), api)
+    dicho = entorno.dichas
+    assert api.motivos == ["Me cobraron un filtro que no me cambiaron."]
+    # Primero atiende la queja y recién después pasa a la próxima pregunta.
+    i_pregunta = dicho.index("¿Me cuenta qué pasó?")
+    i_retoma = dicho.index("Lamento mucho que le hayan cobrado un filtro que no le cambiaron.")
+    i_siguiente = next(i for i, t in enumerate(dicho) if "¿Y con la atención del personal?" in t)
+    assert i_pregunta < i_retoma < i_siguiente
+    assert api.pedidos_acuse == ["Uno.", "Ocho."]  # lo que contó no se toma como respuesta de la P2
+    assert d.outcome == dialog.Outcome.COMPLETED and d.questions_answered == 2
+
+
+def test_si_no_cuenta_que_paso_sigue_con_la_encuesta(entorno):
+    entorno.escuchas += [silencio(), habla(1), silencio(), habla(2)]
+    entorno.textos += ["Dos.", "Nueve."]
+    api = Api(verdicts=[verdict(value=2.0), verdict(value=9.0)], acuses=[
+        {"acuse": "Entiendo, y lo lamento. ¿Qué fue lo que pasó?", "banda": "baja", "repregunta": True},
+    ])
+    d, _ = correr(guion(questions=preguntas()), api)
+    assert not getattr(api, "motivos", []) and d.questions_answered == 2
+    assert any("¿Y con la atención del personal?" in t for t in entorno.dichas)
+
+
+def test_si_la_api_no_contesta_el_motivo_igual_muestra_que_escucho(entorno):
+    entorno.escuchas += [silencio(), habla(1), habla(4), habla(2)]
+    entorno.textos += ["Cero.", "Nadie me avisó que estaba listo.", "Diez."]
+    api = Api(verdicts=[verdict(value=0.0), verdict(value=10.0)], acuses=[
+        {"acuse": "Uy, lo lamento mucho. ¿Me cuenta qué pasó?", "banda": "baja", "repregunta": True},
+    ])
+    correr(guion(questions=preguntas()), api)
+    assert dialog.FRASE_MOTIVO in entorno.dichas

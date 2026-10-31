@@ -333,7 +333,7 @@ Lo que no podés decir ni prometer:
 
 Áreas a las que podés derivar (clave: nombre. Qué atiende. Plazo para responder):
 {areas}
-{instrucciones}{conocimiento}{cliente}{consultas}
+{instrucciones}{consultas}
 Respondé SOLO con un objeto JSON, sin texto antes ni después:
 {{"decir": "lo que le decís ahora al cliente",
  "accion": "seguir" | "derivar" | "transferir" | "terminar",
@@ -409,8 +409,8 @@ def bloque_consultas(partes: list[str] | None = None) -> str:
     return CONSULTAR_COMO.format(partes="".join(partes), espera=FRASE_CONSULTANDO)
 
 
-def sistema(campaign: Campaign, *, conocimiento: str = "", cliente: str = "", transferir: bool = False,
-            consultas: str = "") -> str:
+def sistema(campaign: Campaign, *, transferir: bool = False, consultas: str = "") -> str:
+    """Las instrucciones fijas del agente: iguales en todos los turnos, se leen del caché (ver `contexto_del_turno`)."""
     empresa = getattr(campaign, "empresa_nombre", None) or "Santa Rosa"
     limites = limites_de(campaign)
     instrucciones = (getattr(campaign, "conversation_prompt", None) or "").strip()
@@ -421,11 +421,16 @@ def sistema(campaign: Campaign, *, conocimiento: str = "", cliente: str = "", tr
         limites="\n".join(f"- {linea}" for linea in limites),
         areas=_areas_para_claude(areas_de(campaign)),
         instrucciones=f"\nInstrucciones de la empresa para este agente:\n{instrucciones}\n" if instrucciones else "",
-        conocimiento=f"\n{conocimiento}\n" if conocimiento else "",
-        cliente=f"\n{cliente}\n" if cliente else "",
         consultas=consultas,
         campo_consultar=CAMPO_CONSULTAR if consultas else "",
     )
+
+
+def contexto_del_turno(*, conocimiento: str = "", cliente: str = "") -> str:
+    """Lo que cambia de un turno a otro (lo de la base de conocimiento que viene al caso, los datos del cliente). Va
+    en un bloque aparte del sistema: si fuera adentro, cada turno cambiaría el prompt y no se leería del caché."""
+    partes = [p.strip() for p in (conocimiento, cliente) if p and p.strip()]
+    return "Información para esta respuesta:\n\n" + "\n\n".join(partes) if partes else ""
 
 
 def conversacion_texto(caso: Caso, *, con_sistema: bool = True) -> str:
@@ -591,9 +596,10 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
         # Sin IA no hay conversación posible: se toma lo que contó y se lo pasa al equipo.
         respuesta = {"decir": FRASE_REGISTRADO, "accion": "terminar"}
     else:
-        instrucciones = sistema(campaign, conocimiento=conocimiento, cliente=cliente, transferir=transferir,
-                                consultas=consultas)
-        texto = await llm.complete(instrucciones, pedido_a_claude(caso), max_tokens=400)
+        instrucciones = sistema(campaign, transferir=transferir, consultas=consultas)
+        variable = contexto_del_turno(conocimiento=conocimiento, cliente=cliente)
+        texto = await llm.complete(instrucciones, pedido_a_claude(caso), max_tokens=400, variable=variable,
+                                   tipo="recepción")
         salida = llm.parse_json_object(texto)
         if salida is None and (rescatada := _rescatar(texto)) is not None:
             log.warning("Caso %s: el JSON de Claude no se pudo leer; se usa lo que alcanzó a decir: %r",
@@ -604,7 +610,8 @@ async def turno(caso: Caso, dijo: str, *, conocimiento: str = "", cliente: str =
             if not _promete_reserva(caso, salida, pedido):
                 break
             log.warning("Caso %s: dio el turno por reservado sin reservarlo; se le corrige", caso.id)
-            texto = await llm.complete(instrucciones, pedido_a_claude(caso) + CORRECCION_RESERVA, max_tokens=400)
+            texto = await llm.complete(instrucciones, pedido_a_claude(caso) + CORRECCION_RESERVA, max_tokens=400,
+                                       variable=variable, tipo="recepción (corrección)")
             salida = llm.parse_json_object(texto) or salida
             pedido = _consulta_valida(salida.get("consultar")) if consultas else None
         if _promete_reserva(caso, salida, pedido):

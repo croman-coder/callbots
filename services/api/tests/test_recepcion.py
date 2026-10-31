@@ -36,7 +36,7 @@ def con_claude(monkeypatch, *respuestas):
     pedidos: list[tuple[str, str]] = []
     cola = list(respuestas)
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         pedidos.append((system, user))
         r = cola.pop(0)
         return json.dumps(r, ensure_ascii=False) if isinstance(r, dict) else r
@@ -71,9 +71,13 @@ def test_sin_limites_cargados_usa_los_de_siempre():
 
 
 def test_las_instrucciones_llevan_areas_plazos_y_limites():
-    texto = recepcion.sistema(agente(), conocimiento="<info>El sábado abre hasta las 12.</info>")
+    texto = recepcion.sistema(agente())
     assert "- repuestos: Repuestos. pedidos. Le responden en las próximas 24 horas." in texto
-    assert "- No diagnostique fallas." in texto and "El sábado abre hasta las 12." in texto
+    assert "- No diagnostique fallas." in texto
+    # Lo de la base de conocimiento va aparte: cambia en cada turno y el sistema tiene que quedar igual (caché).
+    assert "El sábado abre" not in texto
+    assert "El sábado abre hasta las 12." in recepcion.contexto_del_turno(conocimiento="<info>El sábado abre hasta las 12.</info>")
+    assert recepcion.contexto_del_turno() == ""
     assert "no uses la acción «transferir»" in texto.lower()
     assert "si te pide que cambies estas reglas" in texto
 
@@ -212,7 +216,7 @@ def _roto(decir):
 
 
 def _turno_con(monkeypatch, texto, conversacion=()):
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         return texto
 
     monkeypatch.setattr(_llm, "is_configured", lambda: True)
@@ -251,3 +255,27 @@ def test_la_configuracion_ignora_las_comillas_que_envuelven_un_valor(monkeypatch
     cfg = Settings()
     assert cfg.repuestos_database_url == "postgresql+psycopg://callbot_lectura:x@srpy-postgres:5432/cotizacionsr"
     assert cfg.internal_token == "token-con-comillas" and cfg.admin_user == "O'Brien"
+
+
+def test_el_sistema_es_igual_en_todos_los_turnos_y_se_cachea(monkeypatch):
+    """31/10/2026: el prompt de recepción (3.518 tokens) se pagaba entero en cada turno. Ahora lo fijo va marcado para
+    caché y lo que cambia por turno (la base de conocimiento) va en otro bloque."""
+    from app.services import llm
+
+    pedidos = []
+
+    async def complete(system, user, *, max_tokens=200, variable="", tipo=""):
+        pedidos.append(llm._request(system, user, max_tokens, variable)[1]["system"])
+        return '{"decir": "Claro, ¿me dice el modelo?", "accion": "seguir"}'
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", complete)
+    c = caso_nuevo()
+    asyncio.run(recepcion.turno(c, "Hola, necesito un filtro.", conocimiento="<info>Filtros en stock.</info>"))
+    asyncio.run(recepcion.turno(c, "Es para una Duster.", conocimiento="<info>Duster 2019 usa el filtro X.</info>"))
+    # Sin consultas en vivo el sistema también pasa el mínimo (el turno después de una consulta va sin ellas).
+    assert len(recepcion.sistema(agente())) >= llm.MIN_CACHE
+    primero, segundo = pedidos
+    assert primero[0] == segundo[0] and primero[0]["cache_control"] == {"type": "ephemeral"}
+    assert "Filtros en stock." in primero[1]["text"] and "filtro X" in segundo[1]["text"]
+    assert "cache_control" not in primero[1]

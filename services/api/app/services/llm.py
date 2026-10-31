@@ -16,6 +16,7 @@ llama usa su respaldo (la frase fija en llamada; las reglas en el análisis).
 
 from __future__ import annotations
 
+import contextvars
 import json
 import re
 import logging
@@ -29,6 +30,10 @@ log = logging.getLogger(__name__)
 
 ENDPOINT = "https://api.anthropic.com/v1/messages"
 VERSION = "2023-06-01"
+
+# Qué llamada está atendiendo la API cuando le pide algo a Claude («sesión 1a2b3c4d», «caso 12»; lo pone main.py): va
+# en el registro de consumo, para sumar los tokens de cada llamada (scripts/consumo_claude.py).
+contexto: contextvars.ContextVar[str] = contextvars.ContextVar("llm_contexto", default="")
 
 
 def is_configured() -> bool:
@@ -46,8 +51,10 @@ def is_configured() -> bool:
 _SIEMPRE_PIENSAN = ("claude-opus-5-5", "claude-fable-", "claude-mythos-")
 _SIN_ESFUERZO = ("claude-haiku-4", "claude-3", "claude-sonnet-4-5", "claude-opus-4-1", "claude-opus-4-0", "claude-sonnet-4-0")
 MARGEN_PARA_PENSAR = 1024
-# Caracteres desde los que conviene marcar el prompt para caché (~4.000 tokens, el mínimo de los modelos chicos).
-MIN_CACHE = 16_000
+# Caracteres desde los que se marca el prompt para caché. Antes eran 16.000 y el de recepción (~8.000 caracteres,
+# 3.518 tokens) nunca entraba: cada turno lo pagaba entero. Medido el 31/10/2026, Haiku 5.5 lo cachea y el turno
+# siguiente lo lee a un décimo del precio. Por debajo del mínimo del modelo, la marca no hace nada (ni cobra de más).
+MIN_CACHE = 3_000
 
 
 def _sin_pensar(modelo: str, max_tokens: int) -> dict[str, Any]:
@@ -62,22 +69,39 @@ def _sin_pensar(modelo: str, max_tokens: int) -> dict[str, Any]:
     return {"max_tokens": max_tokens, "thinking": {"type": "disabled"}, "output_config": {"effort": "low"}}
 
 
-def _request(system: str, user: str, max_tokens: int) -> tuple[dict[str, str], dict[str, Any]]:
+def _request(system: str, user: str, max_tokens: int, variable: str = "") -> tuple[dict[str, str], dict[str, Any]]:
+    """`system` es lo fijo del agente; `variable`, lo que cambia en cada pedido (la parte de la base de conocimiento que
+    viene al caso). Van en dos bloques para que lo fijo se lea del caché aunque lo variable cambie."""
     headers = {
         "x-api-key": settings.anthropic_api_key,
         "anthropic-version": VERSION,
         "content-type": "application/json",
     }
+    # Un prompt largo se guarda en caché: la próxima respuesta del mismo agente lo lee de ahí, más rápido y ~10 veces
+    # más barato. Uno corto no llega al mínimo cacheable.
+    fijo: dict[str, Any] = {"type": "text", "text": system}
+    if len(system) >= MIN_CACHE:
+        fijo["cache_control"] = {"type": "ephemeral"}
+    sistema: Any = [fijo, {"type": "text", "text": variable}] if variable else ([fijo] if "cache_control" in fijo else system)
     body = {
         "model": settings.llm_model,
-        # Un prompt largo (instrucciones del agente + base de conocimiento) se guarda en caché: la próxima respuesta
-        # del mismo agente lo lee de ahí, más rápido y ~10 veces más barato. Uno corto no llega al mínimo cacheable.
-        "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-        if len(system) >= MIN_CACHE else system,
+        "system": sistema,
         "messages": [{"role": "user", "content": user}],
         **_sin_pensar(settings.llm_model, max_tokens),
     }
     return headers, body
+
+
+def _registrar_uso(data: Any, tipo: str) -> None:
+    """Una línea por pedido con los tokens (scripts/consumo_claude.py las suma por llamada)."""
+    uso = data.get("usage") if isinstance(data, dict) else None
+    if not isinstance(uso, dict):
+        return
+    log.info(
+        "Claude uso [%s] %s: entrada %d, caché leída %d, caché escrita %d, salida %d",
+        contexto.get() or "-", tipo or "otro", uso.get("input_tokens") or 0, uso.get("cache_read_input_tokens") or 0,
+        uso.get("cache_creation_input_tokens") or 0, uso.get("output_tokens") or 0,
+    )
 
 
 def _text(data: Any) -> str | None:
@@ -94,15 +118,17 @@ def _text(data: Any) -> str | None:
     return texto or None
 
 
-async def complete(system: str, user: str, *, max_tokens: int = 200) -> str | None:
+async def complete(system: str, user: str, *, max_tokens: int = 200, variable: str = "", tipo: str = "") -> str | None:
     if not is_configured():
         return None
-    headers, body = _request(system, user, max_tokens)
+    headers, body = _request(system, user, max_tokens, variable)
     try:
         async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
             r = await client.post(ENDPOINT, headers=headers, json=body)
             r.raise_for_status()
-            return _text(r.json())
+            data = r.json()
+            _registrar_uso(data, tipo)
+            return _text(data)
     except httpx.TimeoutException:
         log.warning("Claude no contestó en %ss: se usa la frase fija", settings.llm_timeout_seconds)
     except httpx.HTTPStatusError as exc:
@@ -113,14 +139,16 @@ async def complete(system: str, user: str, *, max_tokens: int = 200) -> str | No
     return None
 
 
-def complete_sync(system: str, user: str, *, max_tokens: int = 500) -> str | None:
+def complete_sync(system: str, user: str, *, max_tokens: int = 500, tipo: str = "") -> str | None:
     if not is_configured():
         return None
     headers, body = _request(system, user, max_tokens)
     try:
         r = httpx.post(ENDPOINT, headers=headers, json=body, timeout=settings.llm_analysis_timeout_seconds)
         r.raise_for_status()
-        return _text(r.json())
+        data = r.json()
+        _registrar_uso(data, tipo)
+        return _text(data)
     except httpx.HTTPStatusError as exc:
         log.warning("Claude respondió %s: %s", exc.response.status_code, exc.response.text[:200])
     except (httpx.HTTPError, ValueError) as exc:

@@ -75,6 +75,14 @@ class AcuseIn(BaseModel):
     ya_dichos: list[str] = Field(default_factory=list, max_length=20)
 
 
+class MotivoIn(BaseModel):
+    """Lo que contó el cliente cuando el agente le preguntó qué pasó, después de una nota baja."""
+
+    question_id: int
+    texto: str = Field(default="", max_length=4000)
+    ya_dichos: list[str] = Field(default_factory=list, max_length=20)
+
+
 class ReplyRequest(BaseModel):
     """Lo que necesita el LLM para contestar algo que no era una respuesta."""
 

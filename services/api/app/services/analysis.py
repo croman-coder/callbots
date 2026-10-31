@@ -134,7 +134,7 @@ def query_llm(
     texto = llm.complete_sync(
         build_system_prompt(extra_prompt, campos) + "\n\nRespondé SOLO con el objeto JSON, sin texto antes ni después.",
         f"Transcripción de la encuesta:\n\n{transcript}",
-        max_tokens=500 + 120 * len(campos or []),
+        max_tokens=500 + 120 * len(campos or []), tipo="análisis",
     )
     resultado = llm.parse_json_object(texto)
     if resultado is None:

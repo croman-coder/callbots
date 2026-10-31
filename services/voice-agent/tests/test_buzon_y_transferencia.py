@@ -90,6 +90,10 @@ class Api:
         self.ya_dichos_vistos = list(ya_dichos or [])
         return self.acuses.pop(0) if self.acuses else None
 
+    async def motivo(self, session_uuid, question_id, texto, ya_dichos=None):
+        self.motivos = getattr(self, "motivos", []) + [texto]
+        return getattr(self, "acuse_motivo", None)
+
     async def transfer(self, session_uuid):
         self.transferencias += 1
         return self.transfer_ok

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import time
 import uuid as uuid_mod
 import wave
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from app import buzon, stt, tts
 from app.api_client import (
     FRASE_CIERRE_DISCONFORME,
     FRASE_LLAMAR_DESPUES,
+    FRASE_MOTIVO,
     FRASE_RETOMAR,
     FRASE_TRANSFERENCIA_FALLIDA,
     MULETILLA,
@@ -32,7 +34,7 @@ from app.api_client import (
 )
 from app.audiosocket import AudioSocket, AudioSocketClosed
 from app.config import SAMPLE_RATE, SAMPLE_WIDTH, config
-from app.guion import partir_frases, personalizar
+from app.guion import partir_frases, pausa_tras, personalizar
 from app.listener import Interrupcion, ListenResult, es_ruido, listen, voz_mientras
 
 log = logging.getLogger(__name__)
@@ -122,6 +124,11 @@ async def _say(
     escucha = Interrupcion() if interrumpible and config.barge_in else None
     siguiente = asyncio.create_task(tts.sintetizar_frase(frases[0], params))
     try:
+        # Dos textos seguidos del agente (el acuse y la pregunta, «Perdón, le decía.» y la pregunta) llevan la misma
+        # pausa que dos frases de un texto: con los bordes recortados, sin esto salían pegados.
+        falta = _pausa_pendiente(socket)
+        if falta >= 20:
+            await socket.play_silence(falta)
         for i in range(len(frases)):
             pcm = await siguiente
             if i + 1 < len(frases):
@@ -132,14 +139,22 @@ async def _say(
                     log.info("[%s] El cliente habló encima: el agente se calla y escucha", socket.session_uuid)
                     return cortado
             if i + 1 < len(frases):
-                cortado = (await socket.play_silence(tts.PAUSA_ENTRE_FRASES_MS, escucha=escucha) if escucha
-                           else await socket.play_silence(tts.PAUSA_ENTRE_FRASES_MS))
+                pausa = pausa_tras(frases[i])
+                cortado = (await socket.play_silence(pausa, escucha=escucha) if escucha
+                           else await socket.play_silence(pausa))
                 if cortado:
                     return cortado
+        socket.fin_de_voz = (time.monotonic(), pausa_tras(frases[-1]))
         return None
     finally:
         if not siguiente.done():
             siguiente.cancel()
+
+
+def _pausa_pendiente(socket) -> int:  # noqa: ANN001 - AudioSocket o el de las pruebas
+    """Cuánto silencio falta para que lo próximo que diga el agente no salga pegado a lo último que dijo (ms)."""
+    fin, pausa = getattr(socket, "fin_de_voz", (0.0, 0))
+    return int(pausa - (time.monotonic() - fin) * 1000)
 
 
 class SurveyDialog:
@@ -622,14 +637,17 @@ class SurveyDialog:
 
             if verdict.understood:
                 self.questions_answered += 1
-                await self._decir_acuse(pedido_acuse)
+                await self._decir_acuse(pedido_acuse, question)
             elif pedido_acuse is not None:
                 pedido_acuse.cancel()
 
             return True
 
-    async def _decir_acuse(self, pedido) -> None:  # noqa: ANN001 - Task del ApiClient o None
-        """Muestra que escuchó la respuesta («Lamento mucho escuchar eso.», «¡Qué bueno!»). Ver app/acuse.py de la API."""
+    async def _decir_acuse(self, pedido, question: Question | None = None) -> None:  # noqa: ANN001 - Task o None
+        """Muestra que escuchó la respuesta («Lamento mucho escuchar eso.», «¡Qué bueno!»). Ver app/acuse.py de la API.
+
+        Si fue una nota baja sin motivo, el acuse pregunta qué pasó: el agente lo escucha antes de seguir.
+        """
         if pedido is None:
             return
         try:
@@ -638,12 +656,42 @@ class SurveyDialog:
             return
         if not datos:
             return
-        log.info("[%s] Acuse (%s): %r", self.session_uuid, datos.get("banda"), datos["acuse"][:80])
-        await _say(self.socket, datos["acuse"], self._voz)
+        repregunta = bool(datos.get("repregunta")) and question is not None
+        log.info("[%s] Acuse (%s, cliente %s): %r", self.session_uuid, datos.get("banda"), datos.get("emocion", "?"),
+                 datos["acuse"][:80])
+        arranque = await _say(self.socket, datos["acuse"], self._voz, interrumpible=repregunta)
         self._acuses_dichos.append(datos["acuse"])
         self._acuso = True
         if datos.get("banda") == "baja":
             self._disconforme = True
+        if repregunta:
+            await self._escuchar_motivo(question, arranque)
+
+    async def _escuchar_motivo(self, question: Question, arranque: list[bytes] | None) -> None:
+        """Escucha qué pasó, lo manda a la API (queda con la respuesta) y retoma lo que contó. Pedido de la reunión del
+        30/10/2026: «si el cliente se queja, primero atender eso y recién después seguir». Si no dice nada, sigue."""
+        if not arranque:
+            await self.socket.play_silence(PAUSE_AFTER_PROMPT_MS)
+        recording = await listen(
+            self.socket,
+            max_seconds=max(question.max_answer_seconds, 30),
+            no_speech_timeout=config.no_speech_timeout_seconds,
+            previo=arranque,
+            silencio_inicial_ms=ESPERA_TRAS_INTERRUPCION_MS,
+        )
+        if recording.result is ListenResult.HANGUP:
+            raise AudioSocketClosed("cortó mientras contaba qué pasó")
+        texto = (await stt.transcribe(recording.pcm, self.script.vocabulario)).text if recording.has_audio else ""
+        if not texto.strip() or es_ruido(recording, texto):
+            log.info("[%s] P%d: no contó qué pasó, se sigue", self.session_uuid, question.position)
+            return
+        await self.socket.send_event("cliente", texto)
+        log.info("[%s] P%d qué pasó: %r (%.1fs)", self.session_uuid, question.position, texto, recording.duration_seconds)
+        self.socket.teclear(True)  # lo anota
+        dicho = await self.api.motivo(self.session_uuid, question.id, texto, self._acuses_dichos) or FRASE_MOTIVO
+        log.info("[%s] Acuse del motivo: %r", self.session_uuid, dicho[:80])
+        await _say(self.socket, dicho, self._voz)
+        self._acuses_dichos.append(dicho)
 
     # ------------------------------------------------------------------
     async def _transferir(self) -> bool:

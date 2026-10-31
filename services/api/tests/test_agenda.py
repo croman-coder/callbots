@@ -131,7 +131,7 @@ def test_el_agente_reserva_y_el_turno_queda_atado_al_caso(base, monkeypatch):  #
         {"decir": "Listo, Laura: lunes 26 a las 9 en Taller Zeballos. Lo retira desde las 12. ¿Algo más?", "accion": "seguir"},
     ]
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         return json.dumps(respuestas.pop(0), ensure_ascii=False)
 
     monkeypatch.setattr(llm, "is_configured", lambda: True)
@@ -198,7 +198,7 @@ def _caso_con_agenda(base, monkeypatch, respuestas):  # noqa: F811
     db, _, _, _, _ = armar(base)
     pedidos = []
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         pedidos.append(user)
         return json.dumps(respuestas.pop(0), ensure_ascii=False)
 

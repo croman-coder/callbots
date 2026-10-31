@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -12,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app import cuentas, log_redaction, sso
 from app.config import settings
+from app.services import llm
 from app.deps import IrALogin, SesionRequerida
 from app.routers import acceso, admin, agenda, agente, avisos, casos, locutores, conocimiento, internal, pronunciacion, simulator, usuarios
 from app.seguridad import CabecerasSeguras, frame_ancestors, origenes_descartados
@@ -43,6 +45,20 @@ app = FastAPI(
 )
 
 app.add_middleware(CabecerasSeguras)
+
+_RUTA_DE_LLAMADA = re.compile(r"^/internal/(sessions|casos)/([^/]+)/")
+
+
+@app.middleware("http")
+async def _llamada_en_curso(request, call_next):  # noqa: ANN001, ANN201
+    """Lo que pida a Claude este pedido queda anotado con su llamada (sesión o caso): ver llm.contexto."""
+    m = _RUTA_DE_LLAMADA.match(request.url.path)
+    marca = llm.contexto.set(f"{'sesión' if m.group(1) == 'sessions' else 'caso'} {m.group(2)[:8]}") if m else None
+    try:
+        return await call_next(request)
+    finally:
+        if marca is not None:
+            llm.contexto.reset(marca)
 
 # Tipografía y demás recursos propios. Públicos a propósito: son fuentes, y tienen
 # que cargar también dentro del iframe del CRM, donde no hay Basic que valga.

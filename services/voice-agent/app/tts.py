@@ -33,7 +33,7 @@ import soxr
 
 from app.config import SAMPLE_RATE, config
 from app import pronunciacion
-from app.guion import partir_frases
+from app.guion import duracion_estimada, partir_frases, pausa_tras
 
 log = logging.getLogger(__name__)
 
@@ -288,13 +288,60 @@ async def _voicestudio_synthesize(text: str, timeout: float, perfil: str, speed:
         "speed": min(max(speed, 0.5), 2.0),
         "num_step": config.voicestudio_pasos,
     }
+    # Sin duración, OmniVoice rellena con pausas al azar (ver guion.duracion_estimada). Su `speed` casi no cambia cómo
+    # articula: se le pide a ritmo normal y la velocidad del agente se aplica al audio.
+    duracion = duracion_estimada(text)
+    if duracion:
+        payload.update(duration=duracion, speed=1.0)
     cabeceras = {"Authorization": f"Bearer {config.voicestudio_api_key}"} if config.voicestudio_api_key else {}
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await client.post(
             f"{config.voicestudio_url.rstrip('/')}/v1/audio/speech", json=payload, headers=cabeceras
         )
         response.raise_for_status()
-        return _wav_to_telephony(response.content)
+        pcm = _wav_to_telephony(response.content)
+    return cambiar_velocidad(pcm, speed) if duracion else pcm
+
+
+# Más allá de esto el estirado se nota (eco, voz «de lata»).
+VELOCIDAD_MIN = 0.75
+VELOCIDAD_MAX = 1.35
+_VENTANA = SAMPLE_RATE * 30 // 1000   # 30 ms
+_BUSQUEDA = SAMPLE_RATE * 10 // 1000  # ±10 ms
+
+
+def cambiar_velocidad(pcm: bytes, factor: float) -> bytes:
+    """Más rápido (> 1) o más lento (< 1) sin cambiar el tono (WSOLA).
+
+    Se arma la salida con ventanas de 30 ms que se solapan a la mitad; cada una se toma de donde le toca en el original,
+    corrida hasta ±10 ms para que empalme con la anterior sin desfasar la onda (si no, suena a eco).
+    """
+    factor = min(max(factor, VELOCIDAD_MIN), VELOCIDAD_MAX)
+    x = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+    if abs(factor - 1.0) < 0.02 or x.size < 4 * _VENTANA:
+        return pcm
+    salto = _VENTANA // 2
+    largo = int(x.size / factor)
+    y = np.zeros(largo + _VENTANA, np.float32)
+    peso = np.zeros_like(y)
+    ventana = np.hanning(_VENTANA).astype(np.float32)
+    molde = None  # cómo seguía, en el original, la última ventana copiada
+    for salida in range(0, largo, salto):
+        ideal = int(salida * factor)
+        if ideal + _VENTANA + _BUSQUEDA >= x.size:
+            break
+        inicio = ideal
+        if molde is not None:
+            desde = max(0, ideal - _BUSQUEDA)
+            tramo = x[desde : ideal + _BUSQUEDA + _VENTANA]
+            inicio = desde + int(np.argmax(np.correlate(tramo, molde, mode="valid")))
+        y[salida : salida + _VENTANA] += x[inicio : inicio + _VENTANA] * ventana
+        peso[salida : salida + _VENTANA] += ventana
+        molde = x[inicio + salto : inicio + salto + _VENTANA]
+        if molde.size < _VENTANA:
+            break
+    y = y[:largo] / np.maximum(peso[:largo], 0.1)
+    return np.clip(y, -32768, 32767).astype(np.int16).tobytes()
 
 
 # ---------------------------------------------------------------------------
@@ -436,7 +483,6 @@ def _piper_synthesize(text: str, params: VoiceParams = DEFAULT_PARAMS) -> bytes:
 # ---------------------------------------------------------------------------
 # Interfaz pública
 # ---------------------------------------------------------------------------
-PAUSA_ENTRE_FRASES_MS = 450
 # Motores que generan más rápido que lo que dura el audio: se pueden usar en vivo.
 MOTORES_RAPIDOS = {"kokoro"}
 
@@ -460,12 +506,12 @@ async def synthesize(
     frases = partir_frases(text)
     if len(frases) <= 1:
         return await _sintetizar_frase(frases[0] if frases else "", timeout, params)
-    partes = []
-    for frase in frases:
+    salida = b""
+    for i, frase in enumerate(frases):
         pcm = await _sintetizar_frase(frase, timeout, params)
         if pcm:
-            partes.append(pcm)
-    return _silencio(PAUSA_ENTRE_FRASES_MS).join(partes)
+            salida += (_silencio(pausa_tras(frases[i - 1])) if salida else b"") + pcm
+    return salida
 
 
 async def sintetizar_frase(text: str, params: VoiceParams = DEFAULT_PARAMS) -> bytes:
@@ -505,12 +551,64 @@ def nivelar(pcm: bytes, volumen: float = 1.0) -> bytes:
     return (np.clip(y, -1.0, 1.0) * 32767).astype(np.int16).tobytes()
 
 
+# Bordes y pausas de cada frase. La voz clonada dejaba ~190 ms de silencio antes de la frase y ~120 ms después (medido
+# el 31/10/2026 en 60 frases del caché), y a veces una pausa de más de un segundo a la mitad. Se deja un margen fijo en
+# los bordes y ninguna pausa interna pasa de PAUSA_INTERNA_MAX_MS; la pausa entre frases la pone guion.pausa_tras.
+MARGEN_INICIO_MS = 40
+MARGEN_FIN_MS = 70
+PAUSA_INTERNA_MAX_MS = 300
+_TRAMA_RITMO = SAMPLE_RATE // 100  # 10 ms
+_FUNDIDO = SAMPLE_RATE // 200       # 5 ms
+
+
+def _fundir(tramo: np.ndarray, entrada: bool, salida: bool) -> np.ndarray:
+    """Rampa de 5 ms en los cortes: sin ella, cortar en un punto que no es cero hace un clic."""
+    y = tramo.astype(np.float32)
+    n = min(_FUNDIDO, y.size // 2)
+    if n:
+        rampa = np.linspace(0.0, 1.0, n, dtype=np.float32)
+        if entrada:
+            y[:n] *= rampa
+        if salida:
+            y[-n:] *= rampa[::-1]
+    return y
+
+
+def ajustar_ritmo(pcm: bytes) -> bytes:
+    """Recorta el silencio de los bordes a un margen fijo y acorta las pausas internas largas.
+
+    Voz es lo que supera el 5 % (-26 dB) de las tramas más fuertes de la frase: el ruido de fondo de la voz clonada
+    queda a -38 dB y una «s» final, más arriba. Aplicarla dos veces da lo mismo: el audio del caché se ajusta al leerlo.
+    """
+    x = np.frombuffer(pcm, dtype=np.int16)
+    n = x.size // _TRAMA_RITMO
+    if n < 3:
+        return pcm
+    energia = np.sqrt(np.mean(x[: n * _TRAMA_RITMO].astype(np.float32).reshape(n, _TRAMA_RITMO) ** 2, axis=1))
+    referencia = float(np.percentile(energia, 90))
+    if referencia < 30:
+        return pcm  # silencio o casi
+    activas = np.flatnonzero(energia > referencia * 0.05)
+    medio = PAUSA_INTERNA_MAX_MS * SAMPLE_RATE // 2000
+    desde = max(0, int(activas[0]) * _TRAMA_RITMO - MARGEN_INICIO_MS * SAMPLE_RATE // 1000)
+    piezas = []
+    for a, b in zip(activas[:-1], activas[1:]):
+        if (int(b) - int(a) - 1) * _TRAMA_RITMO > 2 * medio:
+            piezas.append(x[desde : (int(a) + 1) * _TRAMA_RITMO + medio])
+            desde = int(b) * _TRAMA_RITMO - medio
+    hasta = min(x.size, (int(activas[-1]) + 1) * _TRAMA_RITMO + MARGEN_FIN_MS * SAMPLE_RATE // 1000)
+    piezas.append(x[desde:hasta])
+    salida = np.concatenate([_fundir(p, entrada=True, salida=True) for p in piezas])
+    return np.clip(salida, -32768, 32767).astype(np.int16).tobytes()
+
+
 async def _sintetizar_frase(
     text: str,
     timeout: float | None,
     params: VoiceParams,
 ) -> bytes:
-    return nivelar(await _sintetizar_crudo(text, timeout, params), params.volume)
+    pcm = nivelar(await _sintetizar_crudo(text, timeout, params), params.volume)
+    return ajustar_ritmo(pcm) if pcm else pcm
 
 
 async def _sintetizar_crudo(

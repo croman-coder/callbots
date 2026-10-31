@@ -85,6 +85,8 @@ class AudioSocket:
         self._tecleando = False
         self._reproduciendo = 0
         self._relleno: asyncio.Task[None] | None = None
+        # Cuándo terminó de hablar el agente y qué pausa corresponde antes de lo próximo que diga (ver dialog._say).
+        self.fin_de_voz: tuple[float, int] = (0.0, 0)
 
     # ------------------------------------------------------------------ lectura
     async def read_frame(self) -> tuple[int, bytes]:

@@ -44,8 +44,11 @@ def test_solo_el_puntaje_va_la_fija_sin_claude(monkeypatch):
 
     monkeypatch.setattr(llm, "is_configured", lambda: True)
     monkeypatch.setattr(llm, "complete", complete)
+    # Nota baja sin motivo: pregunta qué pasó (ver test_emocion.py); si ya lo preguntó en la llamada, la fija.
     texto, banda = asyncio.run(acuse.acuse("¿Del uno al diez?", QuestionType.SCALE_1_10, "Uno, muy mal.", 1, 1))
-    assert banda == "baja" and texto in acuse.FIJAS["baja"]
+    assert banda == "baja" and texto in acuse.REPREGUNTAS
+    texto, _ = asyncio.run(acuse.acuse("¿Del uno al diez?", QuestionType.SCALE_1_10, "Uno, muy mal.", 1, 1, [texto]))
+    assert texto in acuse.FIJAS["baja"]
     texto, _ = asyncio.run(acuse.acuse("¿Del uno al diez?", QuestionType.SCALE_1_10, "Un diez", 10, 2))
     assert texto in acuse.FIJAS["alta"]
 
@@ -53,7 +56,7 @@ def test_solo_el_puntaje_va_la_fija_sin_claude(monkeypatch):
 def test_si_conto_algo_mas_claude_lo_retoma(monkeypatch):
     pedidos = []
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         pedidos.append(user)
         return "Lamento mucho que le hayan devuelto el auto sucio."
 
@@ -67,7 +70,7 @@ def test_si_conto_algo_mas_claude_lo_retoma(monkeypatch):
 
 @pytest.mark.parametrize("respuesta", ["¿Me cuenta qué pasó?", "", None, "x" * 300])
 def test_si_claude_pregunta_o_se_va_de_largo_va_la_fija(monkeypatch, respuesta):
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         return respuesta
 
     monkeypatch.setattr(llm, "is_configured", lambda: True)
@@ -77,7 +80,7 @@ def test_si_claude_pregunta_o_se_va_de_largo_va_la_fija(monkeypatch, respuesta):
 
 
 def test_si_claude_tarda_va_la_fija(monkeypatch):
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         await asyncio.sleep(5)
 
     monkeypatch.setattr(llm, "is_configured", lambda: True)
@@ -92,7 +95,8 @@ def test_endpoint_y_guion(cliente, base):  # noqa: F811
     _con_pregunta(base)
     r = cliente.post("/internal/sessions/00000000-0000-0000-0000-000000000000/acuse",
                      json={"question_id": 1, "transcript": "Uno."}, headers=INTERNO)
-    assert r.status_code == 200 and r.json()["banda"] == "baja" and r.json()["acuse"] in acuse.FIJAS["baja"]
+    assert r.status_code == 200 and r.json()["banda"] == "baja" and r.json()["acuse"] in acuse.REPREGUNTAS
+    assert r.json()["repregunta"] is True and r.json()["emocion"] == "enojado"
     # Las frases fijas y las preguntas sin transición se precalientan: salen con la voz buena y sin espera.
     prompts = str(cliente.get("/internal/prompts", headers=INTERNO).json())
     assert "¡Qué bueno escuchar eso!" in prompts
@@ -128,7 +132,7 @@ def test_no_repite_la_misma_frase_en_una_llamada():
 
 
 def test_si_claude_repite_una_frase_ya_dicha_va_la_fija(monkeypatch):
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         return "Lamento mucho que haya sido así."
 
     monkeypatch.setattr(llm, "is_configured", lambda: True)

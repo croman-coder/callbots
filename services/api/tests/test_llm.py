@@ -131,3 +131,37 @@ def test_si_se_le_acaban_los_tokens_pensando_avisa_y_usa_la_frase_fija(monkeypat
     with caplog.at_level("WARNING"):
         assert asyncio.run(llm.complete("s", "u")) is None
     assert "max_tokens" in caplog.text
+
+
+# ---------------------------------------------------------------- caché y consumo (31/10/2026)
+def test_lo_fijo_va_al_cache_y_lo_variable_aparte():
+    _, cuerpo = llm._request("x" * llm.MIN_CACHE, "u", 100, variable="Información: abre a las 7.")
+    fijo, variable = cuerpo["system"]
+    assert fijo["cache_control"] == {"type": "ephemeral"} and "cache_control" not in variable
+    assert variable["text"] == "Información: abre a las 7."
+    # Corto y con algo variable: dos bloques, ninguno al caché.
+    _, cuerpo = llm._request("corto", "u", 100, variable="v")
+    assert [b.get("cache_control") for b in cuerpo["system"]] == [None, None]
+
+
+def test_cada_pedido_deja_su_consumo_con_la_llamada(monkeypatch, caplog):
+    uso = {"input_tokens": 92, "cache_read_input_tokens": 3518, "cache_creation_input_tokens": 0, "output_tokens": 132}
+    _responder(lambda r: httpx.Response(200, json={"content": [{"type": "text", "text": "Hola"}], "usage": uso}),
+               monkeypatch)
+    marca = llm.contexto.set("caso 12")
+    try:
+        with caplog.at_level("INFO", logger="app.services.llm"):
+            assert asyncio.run(llm.complete("s", "u", tipo="recepción")) == "Hola"
+    finally:
+        llm.contexto.reset(marca)
+    linea = next(r.getMessage() for r in caplog.records if "Claude uso" in r.getMessage())
+    assert linea == "Claude uso [caso 12] recepción: entrada 92, caché leída 3518, caché escrita 0, salida 132"
+
+
+def test_la_api_anota_la_llamada_de_cada_pedido():
+    from app import main
+
+    assert main._RUTA_DE_LLAMADA.match("/internal/casos/12/turno").groups() == ("casos", "12")
+    m = main._RUTA_DE_LLAMADA.match("/internal/sessions/1a2b3c4d-0000-4000-8000-000000000000/acuse")
+    assert m.group(1) == "sessions" and m.group(2)[:8] == "1a2b3c4d"
+    assert main._RUTA_DE_LLAMADA.match("/campaigns/1") is None

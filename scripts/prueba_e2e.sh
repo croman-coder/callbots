@@ -5,6 +5,8 @@
 #   ./scripts/prueba_e2e.sh turno        pide un turno de service (agenda en vivo, reserva)
 #   ./scripts/prueba_e2e.sh repuestos    stock en el Cotizador + reclamo que se deriva a Repuestos
 #   ./scripts/prueba_e2e.sh encuesta     la encuesta activa en demo (9000): escucha activa en cada respuesta
+#   ./scripts/prueba_e2e.sh enojado      la encuesta con un cliente enojado (también neutro y contento): el tono sigue
+#                                        a la emoción y, ante la queja, pregunta qué pasó antes de seguir
 #
 # Un cliente con voz IA llama al 9100 y conversa con el agente de recepción; al final se revisa el caso. Sale con 1
 # si algo falló. Lo que pasa en el 9100 queda como prueba (no ocupa la agenda ni avisa a nadie). Detalle en
@@ -12,7 +14,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [ $# -eq 0 ]; then set -- turno repuestos encuesta; fi
+if [ $# -eq 0 ]; then set -- turno repuestos encuesta enojado neutro contento; fi
+if [ "${1:-}" = emociones ]; then set -- enojado neutro contento; fi
 fallo=0
 for escenario in "$@"; do
   echo

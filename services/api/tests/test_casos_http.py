@@ -28,7 +28,7 @@ def cliente(base):  # noqa: F811
 @pytest.fixture()
 def claude(monkeypatch):
     """Claude de mentira: pide el nombre, después deriva a Repuestos y después se despide."""
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         vueltas = user.count("Cliente:")
         if vueltas <= 1:
             return json.dumps({"decir": "¿Me dice su nombre?", "accion": "seguir", "area": "repuestos", "motivo": "reclamo"})
@@ -121,7 +121,7 @@ def test_chat_con_consulta_al_cotizador(cliente, base, monkeypatch):  # noqa: F8
         {"decir": "Sí, hay cuatro juegos en stock. ¿Algo más?", "accion": "seguir"},
     ]
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         return json.dumps(respuestas.pop(0), ensure_ascii=False)
 
     monkeypatch.setattr(llm, "is_configured", lambda: True)

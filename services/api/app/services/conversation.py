@@ -92,7 +92,7 @@ async def reply(
         instruccion += f"\n\n{conocimiento}"
 
     # Un máximo de tokens corto de verdad: esto se sintetiza y se dice por teléfono.
-    texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200)
+    texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200, tipo="encuesta (respuesta libre)")
     return _acortar(texto)
 
 

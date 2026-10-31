@@ -81,7 +81,7 @@ def test_el_contexto_pide_resumen_a_claude_con_el_sitio_como_dato(monkeypatch):
     async def descargar(url):
         return "<title>Santa Rosa</title><p>" + "Concesionaria multimarca en Paraguay. " * 5 + "</p>"
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         pedidos.append((system, user))
         return "  Concesionaria multimarca.  "
 

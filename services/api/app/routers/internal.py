@@ -40,6 +40,7 @@ from app.models import (
 )
 from app.schemas import (
     AcuseIn,
+    MotivoIn,
     AnswerIn,
     AnswerResult,
     GreetingIn,
@@ -470,17 +471,40 @@ def transfer(session_uuid: uuid_mod.UUID, db: Session = Depends(get_db)) -> dict
 async def acuse_de_respuesta(session_uuid: uuid_mod.UUID, body: AcuseIn, db: Session = Depends(get_db)) -> dict:
     """Lo que dice el agente después de una respuesta, antes de la próxima pregunta: muestra que lo escuchó.
 
-    {"acuse": "...", "banda": alta|media|baja|neutra|abierta}. Con solo el puntaje, una frase fija al instante; si
-    contó algo más, Claude la retoma (con tope de tiempo). Ver app/acuse.py. No guarda nada.
+    {"acuse": "...", "banda": alta|media|baja|neutra|abierta, "emocion": enojado|neutro|contento, "repregunta": bool}.
+    Con solo el puntaje, una frase fija al instante; si contó algo más, Claude la retoma (con tope de tiempo), con el
+    tono de la emoción. Si dio una nota baja sin decir por qué, el acuse pregunta qué pasó (`repregunta`) y el agente
+    escucha el motivo (`/motivo`) antes de seguir. Ver app/acuse.py. No guarda nada.
     """
     question = db.get(Question, body.question_id)
     if question is None:
         raise HTTPException(404, f"Pregunta {body.question_id} inexistente")
     valor = interpret(body.transcript, question.qtype).value
-    texto, banda = await acuse.acuse(question.text, question.qtype, body.transcript, valor, question.position,
-                                     [t[:200] for t in body.ya_dichos])
-    log.info("Sesión %s P%s: acuse %s -> %r", session_uuid, question.position, banda, texto[:70])
-    return {"acuse": texto, "banda": banda}
+    respuesta = await acuse.responder(question.text, question.qtype, body.transcript, valor, question.position,
+                                      [t[:200] for t in body.ya_dichos])
+    log.info("Sesión %s P%s: acuse %s, cliente %s%s -> %r", session_uuid, question.position, respuesta["banda"],
+             respuesta["emocion"], ", pregunta qué pasó" if respuesta["repregunta"] else "", respuesta["acuse"][:70])
+    return respuesta
+
+
+@router.post("/sessions/{session_uuid}/motivo")
+async def motivo_de_nota_baja(session_uuid: uuid_mod.UUID, body: MotivoIn, db: Session = Depends(get_db)) -> dict:
+    """Lo que contó el cliente cuando el agente le preguntó qué pasó. Se suma a la transcripción de esa respuesta
+    («Uno. | Qué pasó: …»), así queda en el panel y en el análisis de la llamada, y vuelve lo que dice el agente."""
+    question = db.get(Question, body.question_id)
+    if question is None:
+        raise HTTPException(404, f"Pregunta {body.question_id} inexistente")
+    texto = body.texto.strip()
+    if texto and not es_demo(session_uuid):
+        answer = db.scalar(select(Answer).where(Answer.call_id == _load_call(db, session_uuid).id,
+                                                Answer.question_id == question.id))
+        if answer is not None and "| Qué pasó:" not in (answer.transcript or ""):
+            answer.transcript = f"{(answer.transcript or '').strip()} | Qué pasó: {texto}"
+            db.commit()
+    dicho = await acuse.acuse_motivo(texto, question.position, [t[:200] for t in body.ya_dichos])
+    log.info("Sesión %s P%s: contó qué pasó (%d caracteres) -> %r", session_uuid, question.position, len(texto),
+             dicho[:70])
+    return {"acuse": dicho}
 
 
 @router.post("/sessions/{session_uuid}/reply")

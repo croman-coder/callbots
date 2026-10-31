@@ -78,7 +78,7 @@ def test_consultar_y_contestar_con_el_dato(monkeypatch):
          "resumen": "Consulta por espejo encargado"},
     ]
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         pedidos_a_claude.append((system, user))
         return json.dumps(respuestas.pop(0), ensure_ascii=False)
 
@@ -108,7 +108,7 @@ def test_consultar_y_contestar_con_el_dato(monkeypatch):
 def test_el_cliente_simulado_no_ve_lo_que_devolvio_el_sistema(monkeypatch):
     vistos: list[str] = []
 
-    async def complete(system, user, *, max_tokens=200):
+    async def complete(system, user, *, max_tokens=200, **kw):
         vistos.append(user)
         return "Gracias"
 

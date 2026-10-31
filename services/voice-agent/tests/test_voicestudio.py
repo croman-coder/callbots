@@ -15,6 +15,7 @@ import pytest  # noqa: E402
 
 from app import tts  # noqa: E402
 from app.config import config  # noqa: E402
+from app.guion import duracion_estimada  # noqa: E402
 
 PCM_ESTUDIO = b"\x03\x00" * 800
 PCM_VOICEBOX = b"\x01\x00" * 800
@@ -119,5 +120,6 @@ def test_pide_el_audio_como_openai_y_lo_pasa_a_8_khz(monkeypatch):
     url, cuerpo = pedidos[0]
     assert url == "http://voicestudio:3900/v1/audio/speech"
     assert cuerpo["voice"] == "c672" and cuerpo["input"] == "Hola" and cuerpo["response_format"] == "wav"
-    assert cuerpo["speed"] == 2.0  # con tope
-    assert len(pcm) == 2 * 800  # 0,1 s a 8 kHz
+    # Se le pide la duración, a ritmo normal: sin ella OmniVoice rellena con pausas al azar.
+    assert cuerpo["duration"] == duracion_estimada("Hola") and cuerpo["speed"] == 1.0
+    assert len(pcm) == 2 * 800  # 0,1 s a 8 kHz: muy corto para estirarlo

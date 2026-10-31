@@ -27,6 +27,46 @@ _FIN_DE_FRASE = re.compile(r"(?<=[.!?…])\s+")
 # siguiente: sola sonaría cortada y no vale una pausa.
 MIN_CARACTERES_FRASE = 15
 
+# Silencio entre una frase y la siguiente, según cómo termina (ms). El audio de cada frase ya trae ~110 ms de bordes
+# (tts.ajustar_ritmo): entre frases quedan ~0,5 s. Antes eran 450 ms fijos más los bordes sin recortar de la voz
+# clonada (~310 ms): ~760 ms de hueco y la charla sonaba lenta (reunión del 30/10/2026).
+PAUSA_ENTRE_FRASES_MS = 380
+PAUSA_TRAS_PREGUNTA_MS = 420
+PAUSA_TRAS_SUSPENSIVOS_MS = 550
+
+
+def pausa_tras(frase: str) -> int:
+    """Cuánto silencio va después de esta frase si sigue otra."""
+    final = (frase or "").rstrip()
+    if final.endswith(("…", "...")):
+        return PAUSA_TRAS_SUSPENSIVOS_MS
+    if final.endswith("?"):
+        return PAUSA_TRAS_PREGUNTA_MS
+    return PAUSA_ENTRE_FRASES_MS
+
+
+# Ritmo de la voz clonada (OmniVoice en VoiceStudio). El modelo estima cuánto dura la frase y, si le sobra tiempo, lo
+# llena con pausas al azar: el 31/10/2026, con la voz de Agustín, 1,2 s después de «Del cero al diez,» y ninguna
+# después de «Entiendo,» en otra pasada. Articula siempre a ~16,5 letras/s, le pidas la velocidad que le pidas; lo que
+# cambia es el silencio. Se le pide la duración: con 13 letras/s quedan ~0,25 s por coma y casi nada de relleno. La
+# velocidad del agente se aplica después, al audio (tts.cambiar_velocidad).
+LETRAS_POR_SEGUNDO = 13.0
+PAUSA_COMA_S = 0.25
+PAUSA_PUNTO_S = 0.3
+_PAUSA_CORTA = re.compile(r"[,;:]")
+_FIN = re.compile(r"[.!?…]+")
+
+
+def duracion_estimada(texto: str) -> float:
+    """Segundos que debería durar el texto dicho con calma: letras a LETRAS_POR_SEGUNDO más una pausa por coma y por
+    punto seguido."""
+    letras = len(re.findall(r"[^\W\d_]|\d", texto or ""))
+    if not letras:
+        return 0.0
+    puntos = max(len(_FIN.findall(texto)) - 1, 0)
+    segundos = letras / LETRAS_POR_SEGUNDO + PAUSA_COMA_S * len(_PAUSA_CORTA.findall(texto)) + PAUSA_PUNTO_S * puntos
+    return round(segundos + 0.15, 2)
+
 
 def partir_frases(text: str) -> list[str]:
     """Parte un texto en frases para decirlas con una pausa entre una y otra.

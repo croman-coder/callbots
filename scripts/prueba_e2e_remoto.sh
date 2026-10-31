@@ -39,8 +39,7 @@ case "$ESCENARIO" in
     ) ;;
   encuesta)
     # La encuesta activa en modo demo (el mismo camino que el Simulador). Al saludo hay que contestar en menos de 3 s.
-    EXTENSION=9000
-    SILENCIO=1800
+    # «Seis.» sin motivo: el agente pregunta qué pasó y el cliente lo cuenta antes de la última pregunta.
     FRASES=(
       "Sí, dígame."
       "Uno, muy mal. Me devolvieron el auto sucio y con un ruido nuevo."
@@ -48,9 +47,46 @@ case "$ESCENARIO" in
       "Diez, fueron muy puntuales."
       "Un ocho."  # «Ocho.» suelto, esta voz IA lo pronuncia mal (medido: ni Whisper sin guía lo entiende)
       "Seis."
+      "Tardaron mucho en avisarme que el auto estaba listo."
       "Que me avisen cuando el auto está listo, nunca me avisan."
     ) ;;
-  *) echo "Escenario desconocido: $ESCENARIO (turno, repuestos o encuesta)" >&2; exit 2 ;;
+  enojado)
+    # Tono según la emoción (reunión del 30/10/2026): un cliente enojado, del 0 al 10.
+    FRASES=(
+      "Sí, dígame."
+      "Le pongo un cero."
+      "Me cobraron un repuesto que no me cambiaron y nadie me dio una explicación."
+      "Dos, un desastre."
+      "Tres."
+      "Uno, pésimo."
+      "Dos, muy mal."
+      "Que me devuelvan la plata, estoy re molesto."
+    ) ;;
+  neutro)
+    FRASES=(
+      "Sí, dígame."
+      "Siete."
+      "Ocho, más o menos."
+      "Siete, normal."
+      "Un ocho."
+      "Siete."
+      "No, nada en particular."
+    ) ;;
+  contento)
+    FRASES=(
+      "Sí, claro."
+      "Diez, excelente."
+      "Nueve."
+      "Diez, muy amables todos."
+      "Diez."
+      "Nueve."
+      "Nada, todo perfecto, gracias."
+    ) ;;
+  *) echo "Escenario desconocido: $ESCENARIO (turno, repuestos, encuesta, enojado, neutro o contento)" >&2; exit 2 ;;
+esac
+case "$ESCENARIO" in
+  encuesta|enojado|neutro|contento) EXTENSION=9000; SILENCIO=1800; ENCUESTA=1 ;;
+  *) ENCUESTA=0 ;;
 esac
 
 contenedor() { docker ps --format '{{.Names}}' | grep "^$1-$APP" | head -1; }
@@ -132,36 +168,70 @@ while [ $sin_canal -lt 3 ]; do
 done
 echo "== Llamada terminada en $(( $(date +%s) - inicio )) s"
 
-if [ "$ESCENARIO" = encuesta ]; then
+if [ "$ENCUESTA" = 1 ]; then
   # La encuesta de prueba no guarda nada: se revisa con el registro del voice-agent.
   FIJAS=$(docker exec "$A" python -c 'import json; from app import acuse; print(json.dumps(acuse.todas_las_fijas(), ensure_ascii=False))')
   docker logs --since "$DESDE" "$V" 2>&1 | grep "00000000-0000-0000-0000-000000000000" \
-    | FRASES="$FRASES_JSON" FIJAS="$FIJAS" python3 -c '
+    | ESCENARIO="$ESCENARIO" FIJAS="$FIJAS" python3 -c '
 import json, os, re, sys
 lineas = [l.split("] ", 1)[-1].rstrip() for l in sys.stdin]
 for l in lineas:
-    print("  ", l[:160])
-respuestas = [l for l in lineas if re.match(r"P\d+ .* -> ", l)]
-acuses = [l for l in lineas if l.startswith("Acuse (")]
-preguntas = {int(m.group(1)): m.group(2) for l in lineas if (m := re.match(r"P(\d+) pregunta: (.*)", l))}
+    print("  ", l[:170])
+esc = os.environ["ESCENARIO"]
 fijas = json.loads(os.environ["FIJAS"])
-def texto(l):
-    return l.split(": ", 1)[1].strip("\x27\"")
+respuestas = [l for l in lineas if re.match(r"P\d+ .* -> ", l)]
+# «Acuse (baja, cliente enojado): ...»
+acuses = [(m.group(1), m.group(2), m.group(3).strip("\x27\"")) for l in lineas
+          if (m := re.match(r"Acuse \((\w+), cliente (\w+)\): (.*)", l))]
+preguntas = {int(m.group(1)): m.group(2) for l in lineas if (m := re.match(r"P(\d+) pregunta: (.*)", l))}
+conto = [l for l in lineas if re.match(r"P\d+ qué pasó: ", l)]
+retomo = [l for l in lineas if l.startswith("Acuse del motivo")]
+cierre = any(l.startswith("Cierre con empatía") for l in lineas)
+textos = [t for _, _, t in acuses] + [l.split(": ", 1)[1] for l in retomo]
 checks = [
     ("Escuchó el saludo y las 6 respuestas, sin pedir que repita", any(l.startswith("Saludo -> ") for l in lineas)
      and len(respuestas) == 6 and not any("respuesta libre" in l or "ruido corto" in l for l in lineas)),
     ("Acusó cada respuesta", len(acuses) == 6),
-    ("P1 (uno, con motivo): empatía que retoma lo que dijo", bool(acuses) and acuses[0].startswith("Acuse (baja)")
-     and texto(acuses[0]) not in fijas),
-    ("P2 (siete): acuse corto, sin Claude", len(acuses) > 1 and acuses[1].startswith("Acuse (media)")
-     and texto(acuses[1]) in fijas),
     ("Las preguntas no arrancan con «Muy bien, gracias» ni «Perfecto»", len(preguntas) == 6 and not any(
      re.match(r"\W*(muy bien|perfecto|gracias|excelente)\b", p.lower()) for n, p in preguntas.items() if n > 1)),
-    ("Cerró con empatía (hubo notas bajas)", any(l.startswith("Cierre con empatía") for l in lineas)),
 ]
+if esc == "encuesta":
+    checks += [
+        ("P1 (uno, con motivo): empatía que retoma lo que dijo", bool(acuses) and acuses[0][0] == "baja"
+         and acuses[0][2] not in fijas),
+        ("P2 (siete): acuse corto, sin Claude", len(acuses) > 1 and acuses[1][0] == "media" and acuses[1][2] in fijas),
+        ("«Seis.» sin motivo: preguntó qué pasó, lo escuchó y lo retomó antes de seguir", len(conto) == 1 and len(retomo) == 1),
+        ("Cerró con empatía (hubo notas bajas)", cierre),
+    ]
+else:
+    alegres = [t for t in textos if "¡" in t or re.search(r"qu[eé] bueno|me alegra|excelente", t.lower())]
+    tristes = [t for t in textos if re.search(r"lament|lo siento", t.lower())]
+    checks.append((f"Leyó al cliente como {esc} en las 6 respuestas", len(acuses) == 6 and all(a[1] == esc for a in acuses)))
+    if esc == "enojado":
+        checks += [
+            ("Ante la queja preguntó qué pasó, una sola vez, y lo retomó antes de seguir", len(conto) == 1 and len(retomo) == 1
+             and lineas.index(retomo[0]) < max(i for i, l in enumerate(lineas) if l.startswith("P2 pregunta"))),
+            ("Empatía, nunca festejo", bool(tristes) and not alegres),
+            ("Cerró con empatía", cierre),
+        ]
+    elif esc == "neutro":
+        checks += [
+            ("Ni pésame ni festejo: agradece", not tristes and not alegres),
+            ("No preguntó qué pasó ni cerró con pésame", not conto and not cierre),
+        ]
+    else:
+        checks += [
+            ("Alegría, nunca pésame", bool(alegres) and not tristes),
+            ("No preguntó qué pasó ni cerró con pésame", not conto and not cierre),
+        ]
 print("\n== Verificación")
 for t, ok in checks:
     print("   " + ("✅" if ok else "❌") + " " + t)
+print("\n== Tono por respuesta")
+for banda, animo, texto in acuses:
+    print(f"   {banda:7} {animo:8} {texto}")
+for l in retomo:
+    print(f"   motivo           {l.split(chr(58) + chr(32), 1)[1]}")
 sys.exit(0 if all(ok for _, ok in checks) else 1)
 '
   exit $?

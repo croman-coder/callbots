@@ -39,6 +39,8 @@ FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga 
 # Cuando lo interrumpió un golpe y se retoma la pregunta. Igual en la API (routers/internal.py), que la precalienta.
 FRASE_RETOMAR = "Perdón, le decía."
 FRASE_CIERRE_DISCONFORME = "Lamento que la experiencia no haya sido la que esperaba. Le paso sus comentarios al equipo de Calidad."
+# Después de que el cliente contó qué pasó, si la API no contesta (igual que la primera de FIJAS_MOTIVO en acuse.py).
+FRASE_MOTIVO = "Entiendo, gracias por contármelo."
 
 
 @dataclass
@@ -111,6 +113,7 @@ class Script:
             self.optout_script,
             FRASE_CIERRE_DISCONFORME,
             FRASE_RETOMAR,
+            FRASE_MOTIVO,
             *[q.text for q in self.questions],
             *[q.texto_sin_acuse for q in self.questions if q.texto_sin_acuse],
             *extra,
@@ -224,6 +227,22 @@ class ApiClient:
             return datos if isinstance(datos, dict) and datos.get("acuse") else None
         except (httpx.HTTPError, ValueError) as exc:
             log.warning("No se pudo pedir el acuse: %s", exc)
+            return None
+
+    async def motivo(self, session_uuid: uuid_mod.UUID, question_id: int, texto: str,
+                     ya_dichos: list[str] | None = None) -> str | None:
+        """Lo que contó el cliente cuando el agente le preguntó qué pasó (nota baja). La API lo suma a la
+        transcripción de esa respuesta y devuelve lo que dice el agente. None si falla."""
+        try:
+            response = await self._client.post(
+                f"/internal/sessions/{session_uuid}/motivo",
+                json={"question_id": question_id, "texto": texto, "ya_dichos": list(ya_dichos or [])},
+                timeout=3.5,
+            )
+            response.raise_for_status()
+            return (response.json() or {}).get("acuse") or None
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            log.warning("No se pudo mandar lo que contó el cliente: %s", exc)
             return None
 
     async def conversational_reply(
