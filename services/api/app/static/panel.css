@@ -1425,6 +1425,20 @@ tr.atenuada td { color: var(--ink-3); }
 :root[data-theme="vidrio"] .tema { background: var(--capsula); }
 :root[data-theme="vidrio"] .tema button[aria-pressed="true"] { background: var(--tinta); color: var(--tinta-texto); }
 
+/* Subtítulos y textos de apoyo más grandes: sobre la foto oscura, 11,5 a 14,5 px en gris se perdían (pedido de Croman
+   del 1/11/2026: «los subtítulos se ven muy chico»). Bajada de cada pantalla, rótulo y nota de las tarjetas, ayudas. */
+:root[data-theme="vidrio"] .bar .lede { font-size: 17px; line-height: 1.45; color: var(--ink-2); margin-top: var(--s2); }
+:root[data-theme="vidrio"] .metric .k { font-size: 15px; font-weight: 560; color: var(--ink); }
+:root[data-theme="vidrio"] .metric .f { font-size: 13.5px; line-height: 1.4; color: var(--ink-2); }
+:root[data-theme="vidrio"] .kpi .k { font-size: 15px; font-weight: 560; color: var(--ink); }
+:root[data-theme="vidrio"] .kpi .l { font-size: 14px; color: var(--ink-2); }
+:root[data-theme="vidrio"] .section > header .note { font-size: 14.5px; color: var(--ink-2); }
+:root[data-theme="vidrio"] :is(.sub-line, .chart-row .val small, .slider .why) { font-size: 13.5px; color: var(--ink-2); }
+:root[data-theme="vidrio"] :is(.hint, label .hint, .asistente .hint, .plantilla .desc, .crumb, .paginador) { font-size: 14px; color: var(--ink-2); }
+:root[data-theme="vidrio"] .etiqueta { font-size: 14.5px; }
+:root[data-theme="vidrio"] .pestanas a { font-size: 14px; color: var(--ink-2); }
+:root[data-theme="vidrio"] .pestanas a:hover, :root[data-theme="vidrio"] .pestanas a[aria-current="page"] { color: var(--ink); }
+
 /* Contenido que entra escalonado, desde un poco abajo y desenfocado. `backwards`: terminada la entrada, la
    animación no pisa el transform del hover. */
 @keyframes vidrio-entra {
