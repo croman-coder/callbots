@@ -264,3 +264,6 @@ def test_la_marca_nueva_y_los_iconos(cliente):
         r = cliente.get(ruta)
         assert r.status_code == 200 and r.headers["content-type"].startswith(tipo), ruta
     assert cliente.get("/favicon.ico").content[:8] == b"\x89PNG\r\n\x1a\n"
+    # El fondo del tema Vidrio: con el tipo equivocado, algunos navegadores lo rechazan junto con nosniff.
+    fondo = cliente.get("/static/fondos/servicio-oficial.webp")
+    assert fondo.status_code == 200 and fondo.headers["content-type"] == "image/webp"

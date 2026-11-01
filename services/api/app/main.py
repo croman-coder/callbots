@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import re
 from pathlib import Path
 from urllib.parse import urlencode
@@ -59,6 +60,9 @@ async def _llamada_en_curso(request, call_next):  # noqa: ANN001, ANN201
     finally:
         if marca is not None:
             llm.contexto.reset(marca)
+
+# La imagen del contenedor no trae el tipo de .webp y el fondo del tema Vidrio salía como octet-stream.
+mimetypes.add_type("image/webp", ".webp")
 
 # Tipografía y demás recursos propios. Públicos a propósito: son fuentes, y tienen
 # que cargar también dentro del iframe del CRM, donde no hay Basic que valga.
