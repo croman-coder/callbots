@@ -1390,7 +1390,7 @@ tr.atenuada td { color: var(--ink-3); }
   content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
     linear-gradient(180deg, rgba(12, 14, 20, 0.7) 0%, rgba(12, 14, 20, 0.56) 45%, rgba(12, 14, 20, 0.74) 100%),
-    url("/static/fondos/servicio-oficial.webp?v=2") center 30% / cover no-repeat;
+    url("/static/fondos/servicio-oficial.webp?v=3") center 30% / cover no-repeat;
 }
 
 /* Superficies de vidrio. Lo que va adentro de otra (pozos, filas) queda sin desenfoque propio. */

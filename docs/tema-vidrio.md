@@ -32,8 +32,10 @@ son casi blancos (`oklch(97% 0.004 260)`) y los pastel de las métricas son tint
   `light` o `dark`). Dentro del CRM, `vidrio` se convierte en `light`.
 - En el dock del vidrio los `<details>` de los grupos se abren por JavaScript (si no, el navegador no dibuja lo de
   adentro) y vuelven a como estaban al cambiar de tema.
-- Para cambiar la foto: reemplazar el webp y subir el `?v=` de la URL en `panel.css` (si no, el navegador usa la
-  anterior una semana).
+- Para cambiar la foto: reemplazar el webp y subir el `?v=` de la URL en `panel.css`. Si no, el navegador y
+  **Cloudflare** usan la anterior hasta una semana (`Cache-Control: max-age=604800` en `/static/`). Pasó el
+  31/10/2026: el `.webp` salió una vez como `application/octet-stream` (a la imagen del contenedor le faltaba el tipo;
+  ya se registra en `main.py`) y Cloudflare guardó esa respuesta; se arregló subiendo el `?v=` a 3.
 
 ## Logo
 
