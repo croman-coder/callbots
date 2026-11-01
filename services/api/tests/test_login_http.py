@@ -54,6 +54,15 @@ def test_el_formulario_se_muestra_y_no_se_cachea(cli):
     assert 'autocomplete="current-password"' in r.text
 
 
+def test_el_formulario_usa_el_tema_vidrio_por_defecto_y_ofrece_los_tres(cli):
+    # Antes solo conocía claro y oscuro: con «vidrio» guardado en el navegador caía en oscuro, con el hero violeta viejo.
+    html = cli.get("/login").text
+    assert 't = "vidrio"' in html
+    for tema in ("light", "dark", "vidrio"):
+        assert f'data-tema="{tema}"' in html
+    assert 'class="onda-voz"' in html and "entrada-tema\"" not in html
+
+
 def test_ingreso_correcto_abre_sesion_y_lleva_al_destino(cli, monkeypatch):
     _entra_como(monkeypatch, "admin")
     r = cli.post("/login", data={"correo": "Ana@santarosa.com.py", "clave": "buena", "next": "/_sonda"})

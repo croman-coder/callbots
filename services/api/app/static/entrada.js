@@ -81,26 +81,26 @@
     window.addEventListener("pageshow", function (e) { if (e.persisted) reponerBoton(); });
   }
 
-  // ───────────────────────────────────────── tema
-  var botonTema = $(".entrada-tema");
-  function actualizarTema(oscuro) {
-    if (!botonTema) return;
-    botonTema.setAttribute("aria-pressed", oscuro ? "true" : "false");
-    botonTema.setAttribute("aria-label", oscuro ? "Cambiar a tema claro" : "Cambiar a tema oscuro");
+  // ───────────────────────────────────────── tema (los mismos tres del panel; se guarda con la misma clave)
+  var COLOR_TEMA = { light: "#f8f9fc", dark: "#0f1412", vidrio: "#1b1e25" };
+  var botonesTema = $$(".entrada-temas [data-tema]");
+  function marcarTema(t) {
+    botonesTema.forEach(function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-tema") === t ? "true" : "false"); });
     var meta = $('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", oscuro ? "#0f1412" : "#f8f9fc");
+    if (meta) meta.setAttribute("content", COLOR_TEMA[t] || COLOR_TEMA.vidrio);
   }
-  if (botonTema) {
-    actualizarTema(raiz.getAttribute("data-theme") === "dark");
-    botonTema.addEventListener("click", function () {
-      var oscuro = raiz.getAttribute("data-theme") !== "dark";
-      raiz.setAttribute("data-theme", oscuro ? "dark" : "light");
-      try { localStorage.setItem("callbot-tema", oscuro ? "dark" : "light"); } catch (e) {}
-      actualizarTema(oscuro);
-      anima($(oscuro ? ".luna" : ".sol", botonTema), { opacity: [0, 1], transform: ["rotate(-70deg) scale(.5)", "rotate(0deg) scale(1)"] },
+  marcarTema(raiz.getAttribute("data-theme"));
+  botonesTema.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var t = b.getAttribute("data-tema");
+      if (t === raiz.getAttribute("data-theme")) return;
+      raiz.setAttribute("data-theme", t);
+      try { localStorage.setItem("callbot-tema", t); } catch (e) {}
+      marcarTema(t);
+      anima($("svg", b), { opacity: [0, 1], transform: ["rotate(-70deg) scale(.5)", "rotate(0deg) scale(1)"] },
             { type: "spring", stiffness: 420, damping: 24 });
     });
-  }
+  });
 
   // ───────────────────────────────────────── error al volver de un intento fallido
   var aviso = $("[data-error]");
@@ -132,17 +132,22 @@
     var heroItems = $$("[data-entra='hero']");
     var formaItems = $$("[data-entra='forma']");
     var marca = $(".entrada-marca");
+    var caja = $(".entrada-caja");
+    var vidrio = raiz.getAttribute("data-theme") === "vidrio";
 
     function listo() {
       raiz.classList.add("entro");  // la hoja de estilos vuelve al estado visible...
-      [hero].concat(lineas, heroItems, formaItems).forEach(function (el) {
+      [hero, caja].concat(lineas, heroItems, formaItems).forEach(function (el) {
         if (el && el.getAnimations) el.getAnimations().forEach(function (a) { a.cancel(); });  // ...y se suelta lo animado
       });
     }
     if (!conMovimiento) { raiz.classList.add("entro"); return; }
 
     var fin = [];
-    fin.push(anima(hero, { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"] }, { duration: 0.85, ease: [0.16, 1, 0.3, 1] }));
+    // Con fondo propio (Claro, Oscuro) el hero se descubre de izquierda a derecha; en Vidrio no tiene fondo, y la que
+    // entra es la tarjeta del formulario.
+    if (!vidrio) fin.push(anima(hero, { clipPath: ["inset(0 100% 0 0)", "inset(0 0% 0 0)"] }, { duration: 0.85, ease: [0.16, 1, 0.3, 1] }));
+    else fin.push(anima(caja, { opacity: [0, 1], transform: ["translateY(28px) scale(.97)", "translateY(0px) scale(1)"] }, { duration: 0.8, delay: 0.12, ease: [0.16, 1, 0.3, 1] }));
     if (marca) fin.push(anima(marca, { opacity: [0, 1], transform: ["translateY(10px) scale(.92)", "translateY(0px) scale(1)"] }, { type: "spring", stiffness: 240, damping: 22, delay: 0.18 }));
     fin.push(anima(lineas, { transform: ["translateY(108%)", "translateY(0%)"] }, { duration: 0.75, delay: M.stagger(0.09, { startDelay: 0.3 }), ease: [0.16, 1, 0.3, 1] }));
     fin.push(anima(heroItems.filter(function (el) { return el !== marca; }), { opacity: [0, 1], transform: ["translateY(14px)", "translateY(0px)"] }, { duration: 0.6, delay: M.stagger(0.1, { startDelay: 0.62 }), ease: SALIDA }));
@@ -154,12 +159,11 @@
     setTimeout(listo, 2000);
   }
 
-  // ───────────────────────────────────────── luz del hero que sigue al cursor
-  var hero = $(".entrada-hero");
+  // ───────────────────────────────────────── luz que sigue al cursor (con retraso: da profundidad sin competir con el texto)
   var luz = $(".hero-luz");
   var fino = false;
   try { fino = window.matchMedia("(pointer: fine)").matches; } catch (e) {}
-  if (hero && luz && fino && !reducir) {
+  if (luz && fino && !reducir) {
     var objetivo = { x: 28, y: 22 }, actual = { x: 28, y: 22 }, pendiente = false;
     function paso() {
       actual.x += (objetivo.x - actual.x) * 0.08;
@@ -169,10 +173,11 @@
       if (Math.abs(objetivo.x - actual.x) > 0.1 || Math.abs(objetivo.y - actual.y) > 0.1) requestAnimationFrame(paso);
       else pendiente = false;
     }
-    hero.addEventListener("pointermove", function (e) {
-      var r = hero.getBoundingClientRect();
-      objetivo.x = ((e.clientX - r.left) / r.width) * 100;
-      objetivo.y = ((e.clientY - r.top) / r.height) * 100;
+    document.addEventListener("pointermove", function (e) {
+      var r = luz.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+      objetivo.x = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100));
+      objetivo.y = Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100));
       if (!pendiente) { pendiente = true; requestAnimationFrame(paso); }
     });
   }

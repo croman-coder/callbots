@@ -51,3 +51,20 @@ baldosa del azul de marca (`#242276`, el de la banda de la Agencia IA) con un fi
 - `favicon-32.png`, `favicon-48.png` y `apple-touch-icon.png` (180 px, cuadrado sin esquinas, como pide iOS): se
   generaron renderizando el SVG en el navegador. `/favicon.ico` sirve el de 48 px.
 - Los tres íconos se declaran con `templates/_iconos.html` (panel, login y grabación).
+
+## Login (1/11/2026)
+
+El ingreso (`templates/login.html`, `static/entrada.css`, `static/entrada.js`) sigue el mismo tema que el panel y lo
+guarda con la misma clave (`callbot-tema`); antes solo conocía Claro y Oscuro, así que con Vidrio guardado caía en
+Oscuro y se veía el hero violeta viejo.
+
+- **Vidrio** (por defecto): el hero pierde su fondo azul y queda el texto sobre la fachada; el formulario va en una
+  tarjeta de vidrio ahumado (`--vidrio`, `--cristal`); la luz violeta sigue al cursor por toda la pantalla; la
+  tarjeta entra de abajo con Motion y el contenido escalonado. Sin `backdrop-filter` la tarjeta es casi opaca.
+- **Claro y Oscuro** conservan el diseño anterior (hero azul con barrido de izquierda a derecha).
+- Selector de tema con los tres (`.entrada-temas`), en lugar del botón claro/oscuro.
+- **Onda de voz** (`.onda-voz`): 28 barras que suben y bajan, solo `transform`; adorno (`aria-hidden`), se apaga con
+  `prefers-reduced-motion` y se oculta en el celular chico.
+- Textos de apoyo grandes (subtítulo 16 px, pie 14,5 px) y campos a 16 px: con menos, el iPhone hace zoom al enfocar.
+- `campos.css` (compartido con la pantalla Usuarios): el `<input>` va con `width: 0` y `flex: 1`; su ancho propio
+  (20 caracteres) ensanchaba la tarjeta en el celular.

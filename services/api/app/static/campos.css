@@ -15,9 +15,10 @@
 }
 .campo-ico .ico { flex: none; width: 18px; height: 18px; margin-left: 14px; color: var(--ink-3); transition: color .18s; }
 .campo-ico:focus-within .ico { color: var(--brand); }
-/* La especificidad pisa la regla global de los campos del panel: acá el borde lo pone el contenedor. */
+/* La especificidad pisa la regla global de los campos del panel: acá el borde lo pone el contenedor. `width: 0` con
+   `flex: 1`: el ancho propio del <input> (20 caracteres) no ensancha la tarjeta en el celular. */
 .campo-ico .campo-ico__input {
-  flex: 1; width: auto; min-width: 0; min-height: 46px; padding: 0 14px 0 10px;
+  flex: 1 1 0; width: 0; min-width: 0; min-height: 46px; padding: 0 14px 0 10px;
   border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; outline: none;
   box-shadow: none; transition: none;
 }
