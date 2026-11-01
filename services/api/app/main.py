@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import cuentas, log_redaction, sso
@@ -98,6 +98,13 @@ async def ir_a_login(request: Request, exc: IrALogin) -> RedirectResponse:
     return RedirectResponse(
         "/login?" + urlencode({"next": exc.destino}), status_code=303, headers={"Cache-Control": "no-store"}
     )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    """Los navegadores y los marcadores lo piden por su cuenta cuando la página no declara el ícono."""
+    return FileResponse(Path(__file__).parent / "static" / "favicon-48.png", media_type="image/png",
+                        headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/health", include_in_schema=False)

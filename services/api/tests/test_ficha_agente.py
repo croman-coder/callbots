@@ -251,3 +251,16 @@ def test_sin_gpu_el_selector_no_ofrece_voces_que_tumban_voicebox(monkeypatch):
     assert [v["id"] for v in lista] == ["a", "piper"] and lista[0]["genero"] == "Hombre" and lista[0]["nombre"] == "Alex"
     monkeypatch.setattr(settings, "voces_con_gpu", True)
     assert {v["id"] for v in voces.catalogo()[0]} == {"a", "r", "c", "piper"}
+
+
+def test_la_marca_nueva_y_los_iconos(cliente):
+    """31/10/2026: logo nuevo (C con onda de voz) y favicon, que el panel no tenía."""
+    for ruta in ("/", "/campaigns"):
+        html = cliente.get(ruta).text
+        assert 'href="/static/favicon.svg' in html and 'rel="apple-touch-icon"' in html, ruta
+    assert 'class="b b2"' in cliente.get("/").text  # la marca con sus tres barras
+    for ruta, tipo in (("/static/favicon.svg", "image/svg+xml"), ("/static/favicon-32.png", "image/png"),
+                       ("/static/apple-touch-icon.png", "image/png"), ("/favicon.ico", "image/png")):
+        r = cliente.get(ruta)
+        assert r.status_code == 200 and r.headers["content-type"].startswith(tipo), ruta
+    assert cliente.get("/favicon.ico").content[:8] == b"\x89PNG\r\n\x1a\n"

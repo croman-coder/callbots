@@ -53,7 +53,14 @@ de resultados; sí en diagnóstico, que lo lee alguien técnico.
 
 ## Principios
 
-- **La identidad es la de la Agencia IA (19/10/2026, a pedido de Croman).** Lienzo claro
+- **Tema «Vidrio» por defecto (31/10/2026, a pedido de Croman, sobre un reel de «glassy dashboard»).** Paneles
+  de vidrio ahumado sobre la fachada del Servicio Oficial Santa Rosa (foto propia, desenfocada y oscurecida),
+  dock flotante de íconos a la izquierda con el nombre al pasar el mouse, píldoras de las secciones del día a
+  día arriba, tarjetas que se elevan al pasar el mouse y contenido que entra escalonado. Claro y Oscuro (la
+  identidad de abajo) siguen como alternativas en el selector; dentro del CRM no hay vidrio. Detalle y por qué
+  el vidrio es ahumado y no blanco: `docs/tema-vidrio.md`. El logo es una «C» abierta con una onda de voz de
+  tres barras (`templates/_marca.html` y `static/favicon.svg`: mismo dibujo).
+- **La identidad de Claro y Oscuro es la de la Agencia IA (19/10/2026, a pedido de Croman).** Lienzo claro
   `#f8f9fc`, tarjetas blancas de 20 px, controles negros en píldora, etiquetas pastel, cápsula
   de secciones arriba y la banda azul curva a la izquierda (`#242276`). Claro por defecto y
   oscuro como alternativa de primera clase. Dentro del CRM (iframe) el tema lo manda el CRM por

@@ -329,3 +329,4 @@ def test_el_login_tiene_el_ojito_y_carga_el_movimiento(cli):
     assert r.status_code == 200
     assert 'class="ojo"' in r.text and "aria-pressed" in r.text and "/static/vendor/motion.min.js" in r.text
     assert 'name="clave" type="password"' in r.text
+    assert 'href="/static/favicon.svg' in r.text and 'class="b b1"' in r.text  # la marca nueva y el ícono

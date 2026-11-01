@@ -553,6 +553,9 @@ input[type=file]:hover::file-selector-button { background: var(--active-soft); }
 @media (max-width: 700px) {
   .cab, .col { padding-inline: var(--s4); }
   .bar h1 { font-size: 30px; }
+  /* Tres temas no entran con texto en 375 px: solo el ícono (el nombre queda en el botón y en su title). */
+  .cab .tema button { font-size: 0; gap: 0; padding: 7px 10px; }
+  .cab .tema button svg { width: 16px; height: 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -593,7 +596,7 @@ html[data-embed] body { background: var(--paper); }
    (<details>: abren sin JavaScript) y, abajo, atajos, tema y quién es. Dentro del CRM no se ve:
    ahí navega la cápsula de arriba, que vuelve también en pantallas angostas. */
 .menu {
-  position: fixed; inset: 0 auto 0 0; width: var(--banda-w); z-index: 20;
+  position: fixed; inset: 0 auto 0 0; width: var(--banda-w); z-index: 20; overflow-x: hidden;
   display: flex; flex-direction: column; gap: var(--s3);
   padding: var(--s5) var(--s4) var(--s4);
   background: var(--brand); color: var(--sobre-marca);
@@ -648,7 +651,9 @@ html[data-embed] body { background: var(--paper); }
 :root[data-theme="dark"] .menu-acciones .principal { color: var(--entrada-hero); }
 .menu-acciones a:hover:not(.principal), .menu-acciones button:hover { background: rgba(255,255,255,0.12); }
 .menu .tema { align-self: stretch; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
-.menu .tema button { flex: 1; justify-content: center; color: rgba(255,255,255,0.8); }
+/* Tres temas (Claro, Oscuro, Vidrio) en los 244 px del menú: los botones se reparten el ancho y achican el ícono. */
+.menu .tema button { flex: 1 1 0; min-width: 0; padding: 6px 4px; gap: 4px; justify-content: center; color: rgba(255,255,255,0.8); }
+.menu .tema button svg { width: 14px; height: 14px; }
 .menu .tema button[aria-pressed="true"] { background: var(--sobre-marca); color: var(--brand); }
 :root[data-theme="dark"] .menu .tema button[aria-pressed="true"] { color: var(--entrada-hero); }
 .menu-yo { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
@@ -1324,3 +1329,209 @@ tr.atenuada td { color: var(--ink-3); }
 .grabar-listo:focus { outline: none; }
 @media (prefers-reduced-motion: reduce) { .grabar-num { transition: none; } }
 .grabador .btn.primary[data-grabar].grabando { background: var(--bad); border-color: var(--bad); color: var(--tinta-texto); }
+
+/* ═══════════════════════════════════════════════════ tema «Vidrio» (por defecto desde el 31/10/2026)
+   Pedido de Croman sobre una referencia de «glassy dashboard»: paneles de vidrio esmerilado sobre una foto,
+   dock flotante de íconos a la izquierda, píldoras de secciones arriba, tarjetas que se elevan al pasar el
+   mouse y contenido que entra escalonado. El fondo es la fachada del Servicio Oficial Santa Rosa
+   (/static/fondos/servicio-oficial.webp), oscurecida. El vidrio es ahumado, no blanco: con el cielo claro de la
+   foto detrás, un vidrio blanco deja el texto sin contraste. Claro y Oscuro siguen como alternativas, y dentro
+   del CRM no aplica (manda el tema del CRM). */
+:root[data-theme="vidrio"] {
+  color-scheme: dark;
+
+  --paper:   rgba(255, 255, 255, 0.05);
+  --panel:   rgba(18, 20, 27, 0.52);
+  --surface: rgba(18, 20, 27, 0.52);
+  --raised:  rgba(255, 255, 255, 0.10);
+
+  --ink:   oklch(97% 0.004 260);
+  --ink-2: oklch(91% 0.006 260);
+  --ink-3: oklch(84% 0.008 260);
+
+  --line:   rgba(255, 255, 255, 0.14);
+  --line-2: rgba(255, 255, 255, 0.24);
+  --campo:  rgba(255, 255, 255, 0.5);
+
+  --link:  oklch(84% 0.09 255);
+  --focus: oklch(80% 0.12 295);
+  --active-soft: rgba(255, 255, 255, 0.12);
+
+  --tinta: oklch(97% 0.004 260); --tinta-hover: oklch(99% 0.003 260); --tinta-texto: oklch(20% 0.012 260);
+  --sobre-marca: oklch(98.6% 0.006 278);
+
+  --ok:   oklch(85% 0.13 155);  --ok-bg:   rgba(52, 211, 153, 0.18);
+  --warn: oklch(87% 0.12 85);   --warn-bg: rgba(251, 191, 36, 0.18);
+  --bad:  oklch(80% 0.11 22);   --bad-bg:  rgba(248, 113, 113, 0.20);
+  --live: oklch(84% 0.09 255);  --live-bg: rgba(96, 165, 250, 0.20);
+
+  --float: 0 24px 60px rgba(0, 0, 0, 0.45);
+
+  --p-celeste:  color-mix(in srgb, #60a5fa 20%, rgba(18, 20, 27, 0.55));  --pf-celeste:  oklch(80% 0.11 255);
+  --p-menta:    color-mix(in srgb, #34d399 18%, rgba(18, 20, 27, 0.55));  --pf-menta:    oklch(85% 0.13 165);
+  --p-lavanda:  color-mix(in srgb, #a78bfa 20%, rgba(18, 20, 27, 0.55));  --pf-lavanda:  oklch(80% 0.11 295);
+  --p-amarillo: color-mix(in srgb, #fbbf24 17%, rgba(18, 20, 27, 0.55));  --pf-amarillo: oklch(87% 0.13 85);
+  --p-durazno:  color-mix(in srgb, #fb923c 18%, rgba(18, 20, 27, 0.55));  --pf-durazno:  oklch(82% 0.12 55);
+  --p-gris:     rgba(18, 20, 27, 0.52);                                   --pf-gris:     oklch(82% 0.01 260);
+
+  --vidrio: rgba(18, 20, 27, 0.6);
+  --capsula: rgba(18, 20, 27, 0.5);
+  --entrada-hero: #242276;
+
+  --cristal: blur(22px) saturate(160%);
+  --brillo: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --sombra-vidrio: 0 12px 32px rgba(0, 0, 0, 0.22);
+  --ease-sale: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* El fondo: la foto fija detrás de todo, con un velo que la oscurece más arriba (donde está el cielo) y abajo. */
+:root[data-theme="vidrio"] body { background: oklch(20% 0.012 260); }
+:root[data-theme="vidrio"] body::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(12, 14, 20, 0.7) 0%, rgba(12, 14, 20, 0.56) 45%, rgba(12, 14, 20, 0.74) 100%),
+    url("/static/fondos/servicio-oficial.webp?v=2") center 30% / cover no-repeat;
+}
+
+/* Superficies de vidrio. Lo que va adentro de otra (pozos, filas) queda sin desenfoque propio. */
+:root[data-theme="vidrio"] :is(.metric, .tablewrap, .urgent, .panel-form, .notice, .card, .kpi, .bloque, .editor,
+  .llamada, .grafico, .canal, .conversar-panel, .aviso-evento, .locutor, .comentarios li, .lista-webhooks li,
+  dialog.asistente, .tema, .yo, .marca-app) {
+  -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal);
+  box-shadow: var(--brillo), var(--sombra-vidrio);
+}
+:root[data-theme="vidrio"] .urgent .tablewrap { -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; background: transparent; }
+:root[data-theme="vidrio"] select option { background: oklch(24% 0.012 260); color: var(--ink); }
+:root[data-theme="vidrio"] dialog.asistente::backdrop { background: rgba(8, 10, 16, 0.45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+
+/* Tarjetas que se elevan al pasar el mouse (y:-5, como la referencia). */
+:root[data-theme="vidrio"] :is(.metric, .kpi, .canal) {
+  transition: transform 280ms var(--ease-sale), box-shadow 280ms var(--ease-sale);
+}
+:root[data-theme="vidrio"] :is(.metric, .kpi, .canal):hover {
+  transform: translateY(-5px);
+  box-shadow: var(--brillo), 0 20px 44px rgba(0, 0, 0, 0.32);
+}
+
+/* Arriba: marca, píldoras de secciones y cuenta, cada una de vidrio. */
+:root[data-theme="vidrio"] .marca-app { padding: 6px 14px 6px 6px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--capsula); }
+:root[data-theme="vidrio"] .capsula { background: transparent; border: 0; box-shadow: none; padding: 0; gap: 6px; }
+:root[data-theme="vidrio"] .capsula a {
+  padding: 8px 14px; border: 1px solid var(--line); background: var(--capsula); color: var(--ink-2);
+  -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal); box-shadow: var(--brillo);
+}
+:root[data-theme="vidrio"] .capsula a:hover { background: rgba(255, 255, 255, 0.16); color: var(--ink); }
+:root[data-theme="vidrio"] .capsula a[aria-current="page"] { background: var(--tinta); color: var(--tinta-texto); border-color: transparent; }
+:root[data-theme="vidrio"] .tema { background: var(--capsula); }
+:root[data-theme="vidrio"] .tema button[aria-pressed="true"] { background: var(--tinta); color: var(--tinta-texto); }
+
+/* Contenido que entra escalonado, desde un poco abajo y desenfocado. `backwards`: terminada la entrada, la
+   animación no pisa el transform del hover. */
+@keyframes vidrio-entra {
+  from { opacity: 0; transform: translateY(12px); filter: blur(8px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+:root[data-theme="vidrio"] :is(.content > .bar, main.wrap > *, .metrics > *) {
+  animation: vidrio-entra 560ms var(--ease-sale) backwards;
+}
+:root[data-theme="vidrio"] main.wrap > :nth-child(1) { animation-delay: 80ms; }
+:root[data-theme="vidrio"] main.wrap > :nth-child(2) { animation-delay: 140ms; }
+:root[data-theme="vidrio"] main.wrap > :nth-child(3) { animation-delay: 200ms; }
+:root[data-theme="vidrio"] main.wrap > :nth-child(4) { animation-delay: 260ms; }
+:root[data-theme="vidrio"] main.wrap > :nth-child(5) { animation-delay: 320ms; }
+:root[data-theme="vidrio"] main.wrap > :nth-child(n+6) { animation-delay: 380ms; }
+:root[data-theme="vidrio"] .metrics > :nth-child(1) { animation-delay: 140ms; }
+:root[data-theme="vidrio"] .metrics > :nth-child(2) { animation-delay: 190ms; }
+:root[data-theme="vidrio"] .metrics > :nth-child(3) { animation-delay: 240ms; }
+:root[data-theme="vidrio"] .metrics > :nth-child(4) { animation-delay: 290ms; }
+:root[data-theme="vidrio"] .metrics > :nth-child(5) { animation-delay: 340ms; }
+:root[data-theme="vidrio"] .metrics > :nth-child(n+6) { animation-delay: 390ms; }
+
+/* En pantallas anchas y fuera del CRM: dock flotante de íconos a la izquierda (con el nombre al pasar el mouse o
+   con el foco del teclado) y la cabecera de píldoras arriba, con las secciones de todos los días. Las demás
+   están en el dock. */
+@media (min-width: 1001px) {
+  /* Con el avatar visible; en pantallas angostas queda oculto y el marco quedaría vacío. */
+  :root[data-theme="vidrio"] .yo { padding: 4px 6px 4px 4px; border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--capsula); }
+  :root[data-theme="vidrio"]:not([data-embed]) .app { padding-left: 92px; }
+  :root[data-theme="vidrio"]:not([data-embed]) .cab { display: grid; position: sticky; top: 0; z-index: 15; padding-top: var(--s4); }
+  :root[data-theme="vidrio"]:not([data-embed]) .capsula a.sec { display: none; }
+
+  :root[data-theme="vidrio"]:not([data-embed]) .menu {
+    inset: 50% auto auto 18px; transform: translateY(-50%);
+    width: auto; max-height: calc(100dvh - 32px); padding: 8px; gap: 6px;
+    border: 1px solid var(--line); border-radius: 30px; background: var(--capsula); color: var(--ink);
+    -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal); box-shadow: var(--brillo), var(--sombra-vidrio);
+    overflow: visible;
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) :is(.menu-marca, .menu-espacio, .menu .chip, .menu .chev, .menu .it.off,
+    .menu-pie .tema, .menu-yo) { display: none; }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu-nav { flex: none; gap: 4px; }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu :is(.it, .menu-acciones a, .menu-acciones button) {
+    position: relative; width: 42px; height: 42px; min-height: 0; padding: 0; gap: 0;
+    justify-content: center; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2);
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform 200ms var(--ease-sale);
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu :is(.it, .menu-acciones a, .menu-acciones button):hover {
+    background: rgba(255, 255, 255, 0.14); color: var(--ink); transform: scale(1.06);
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu .it[aria-current="page"],
+  :root[data-theme="vidrio"]:not([data-embed]) .menu details.grupo:has(.sub a[aria-current="page"]) > summary.it {
+    background: var(--tinta); color: var(--tinta-texto);
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu svg { width: 19px; height: 19px; }
+
+  /* El nombre de cada ícono, como globo al costado. Sigue siendo el nombre accesible del enlace. */
+  :root[data-theme="vidrio"]:not([data-embed]) .menu .rot {
+    position: absolute; left: calc(100% + 14px); top: 50%; z-index: 30;
+    transform: translate(-6px, -50%); opacity: 0; pointer-events: none; white-space: nowrap;
+    padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px;
+    background: rgba(18, 20, 27, 0.86); color: var(--ink); font-size: var(--t-xs); font-weight: 600;
+    -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal); box-shadow: var(--sombra-vidrio);
+    transition: opacity 160ms var(--ease), transform 220ms var(--ease-sale);
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu :is(.it, .menu-acciones a, .menu-acciones button):is(:hover, :focus-visible) .rot {
+    opacity: 1; transform: translate(0, -50%);
+  }
+
+  /* Los grupos se abren como panel al costado del dock, al pasar el mouse o con el foco adentro. El borde
+     izquierdo transparente es el puente: el mouse cruza del ícono al panel sin que se cierre. */
+  :root[data-theme="vidrio"]:not([data-embed]) .menu details.grupo { position: relative; }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu details.grupo > summary .rot { display: none; }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu details.grupo > .sub {
+    display: none; position: absolute; left: 100%; top: -8px; z-index: 30;
+    margin: 0; padding: 8px 8px 8px 22px; min-width: 200px; border: 0;
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu details.grupo > .sub::before {
+    content: ""; position: absolute; inset: 0 0 0 14px; z-index: -1;
+    border: 1px solid var(--line); border-radius: 16px; background: rgba(18, 20, 27, 0.86);
+    -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal); box-shadow: var(--sombra-vidrio);
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu details.grupo:is(:hover, :focus-within) > .sub {
+    display: flex; animation: vidrio-entra 280ms var(--ease-sale) backwards;
+  }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu .sub a { color: var(--ink-2); display: flex; align-items: center; gap: var(--s2); }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu .sub a:hover { background: rgba(255, 255, 255, 0.12); color: var(--ink); }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu .sub a[aria-current="page"] { background: var(--tinta); color: var(--tinta-texto); }
+
+  :root[data-theme="vidrio"]:not([data-embed]) .menu-pie { gap: 4px; padding-top: 6px; border-top-color: var(--line); }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu-acciones { gap: 4px; }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu-acciones .principal { background: rgba(255, 255, 255, 0.12); color: var(--ink); }
+}
+@media (min-width: 1001px) and (max-height: 760px) {
+  :root[data-theme="vidrio"]:not([data-embed]) .menu :is(.it, .menu-acciones a, .menu-acciones button) { width: 36px; height: 36px; }
+  :root[data-theme="vidrio"]:not([data-embed]) .menu svg { width: 17px; height: 17px; }
+}
+
+/* ═══════════════════════════════════════════════════ marca: la onda de voz se mueve
+   Las tres barras del logo (templates/_marca.html) suben y bajan al pasar el mouse o tabular a la marca, como
+   cuando habla el agente. Cada una a su ritmo, para que no parezca un ecualizador mecánico. Solo con movimiento
+   permitido. */
+.marca-svg .b { transform-box: fill-box; transform-origin: center; }
+@keyframes marca-voz-a { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.7); } }
+@keyframes marca-voz-b { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.5); } }
+@media (prefers-reduced-motion: no-preference) {
+  .marca-app:hover .marca-svg .b1, .menu-marca:hover .marca-svg .b1 { animation: marca-voz-a 760ms ease-in-out infinite; }
+  .marca-app:hover .marca-svg .b2, .menu-marca:hover .marca-svg .b2 { animation: marca-voz-b 640ms ease-in-out infinite 80ms; }
+  .marca-app:hover .marca-svg .b3, .menu-marca:hover .marca-svg .b3 { animation: marca-voz-a 880ms ease-in-out infinite 160ms; }
+}
