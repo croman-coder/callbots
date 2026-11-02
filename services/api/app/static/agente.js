@@ -358,7 +358,7 @@
   var panel = $("[data-llamada]");
   if (!panel) return;
   var campaign = panel.dataset.campaign;
-  var ws = null, ctx = null, mic = null, nodo = null, fuente = null, siguiente = 0;
+  var ws = null, ctx = null, mic = null, nodo = null, fuente = null, repro = null, bajador = null;
   var pruebaId = null, relojTimer = null, inicio = 0, terminada = false;
   var lista = $("[data-transcripcion]", panel);
 
@@ -369,6 +369,8 @@
     if (mic) { mic.getTracks().forEach(function (t) { t.stop(); }); mic = null; }
     if (nodo) { try { nodo.disconnect(); } catch (e) {} nodo = null; }
     if (fuente) { try { fuente.disconnect(); } catch (e) {} fuente = null; }
+    if (repro) { try { repro.nodo.disconnect(); } catch (e) {} repro = null; }
+    bajador = null;
     if (ctx) { ctx.close().catch(function () {}); ctx = null; }
     if (ws && ws.readyState <= 1) { try { ws.close(); } catch (e) {} }
     ws = null;
@@ -401,33 +403,21 @@
     lista.scrollTop = lista.scrollHeight;
   }
 
-  // Lo que llega del agente: PCM 16 bits a 8 kHz. Se encola uno detrás de otro, con un margen
-  // chico para que la red no corte la voz.
+  // Lo que llega del agente: PCM 16 bits a 8 kHz. Sube a la tasa de la placa con un filtro y sale por un solo nodo
+  // continuo con colchón (ver audio-llamada.js): una fuente por trama metía un clic cada 20 ms.
   function reproducir(buf) {
-    if (!ctx) return;
-    var pcm = new Int16Array(buf), n = pcm.length;
-    if (!n) return;
-    var audio = ctx.createBuffer(1, n, 8000), datos = audio.getChannelData(0);
-    for (var i = 0; i < n; i++) datos[i] = pcm[i] / 32768;
-    var s = ctx.createBufferSource();
-    s.buffer = audio; s.connect(ctx.destination);
-    var t = Math.max(ctx.currentTime + 0.08, siguiente);
-    s.start(t); siguiente = t + audio.duration;
+    if (!repro) return;
+    var pcm = new Int16Array(buf);
+    if (pcm.length) repro.encolar(pcm);
   }
 
-  // Lo que sale del micrófono: se baja a 8 kHz promediando (sirve de filtro) y se manda de a 20 ms.
-  var resto = new Float32Array(0), salida = [];
+  // Lo que sale del micrófono: se baja a 8 kHz con un pasa-bajos de verdad (promediar dejaba plegarse la «s» y la «z»
+  // sobre la voz) y se manda de a 20 ms.
+  var salida = [];
   function alimentar(f32) {
-    var junto = new Float32Array(resto.length + f32.length);
-    junto.set(resto); junto.set(f32, resto.length);
-    var paso8k = ctx.sampleRate / 8000, n = Math.floor(junto.length / paso8k);
-    for (var i = 0; i < n; i++) {
-      var a = Math.floor(i * paso8k), b = Math.max(a + 1, Math.floor((i + 1) * paso8k)), suma = 0;
-      for (var k = a; k < b; k++) suma += junto[k];
-      var v = Math.max(-1, Math.min(1, suma / (b - a)));
-      salida.push(v < 0 ? v * 32768 : v * 32767);
-    }
-    resto = junto.slice(Math.floor(n * paso8k));
+    if (!bajador) return;
+    var muestras = AudioLlamada.aEntero(bajador.procesar(f32));
+    for (var i = 0; i < muestras.length; i++) salida.push(muestras[i]);
     while (salida.length >= 160) {
       var trama = Int16Array.from(salida.splice(0, 160));
       if (ws && ws.readyState === 1) ws.send(trama.buffer);
@@ -441,7 +431,7 @@
       fallar("Este navegador no deja usar el micrófono acá. Probá con Chrome o Edge actualizados.");
       return;
     }
-    terminada = false; pruebaId = null; lista.innerHTML = ""; resto = new Float32Array(0); salida = [];
+    terminada = false; pruebaId = null; lista.innerHTML = ""; salida = [];
     paso("llamando");
     // Sin control automático de ganancia: cuando la persona calla, el navegador sube el volumen y el ruido de la oficina
     // llega al agente como si siguiera hablando (22/10/2026: cada «cero» se escuchaba 15 s, hasta el tope).
@@ -449,9 +439,12 @@
       .then(function (stream) {
         mic = stream;
         ctx = new (window.AudioContext || window.webkitAudioContext)();
-        siguiente = 0;
+        bajador = AudioLlamada.crearRemuestreador(ctx.sampleRate, 8000);
         var url = URL.createObjectURL(new Blob([CAPTURA], { type: "application/javascript" }));
         return ctx.audioWorklet.addModule(url).then(function () {
+          return AudioLlamada.crearReproductor(ctx);
+        }).then(function (r) {
+          repro = r;
           fuente = ctx.createMediaStreamSource(stream);
           nodo = new AudioWorkletNode(ctx, "captura");
           nodo.port.onmessage = function (e) { alimentar(e.data); };
@@ -485,7 +478,7 @@
       } else if (m.tipo === "fin") {
         pruebaId = m.prueba || pruebaId;
         // La voz del agente puede seguir sonando un instante: se espera a que termine.
-        var falta = ctx ? Math.max(0, siguiente - ctx.currentTime) : 0;
+        var falta = repro ? repro.pendienteS() : 0;
         setTimeout(terminar, Math.min(4000, falta * 1000 + 200));
       }
     };

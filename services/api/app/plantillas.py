@@ -33,6 +33,7 @@ def _version(archivo: str) -> str:
 templates = Jinja2Templates(directory=str(_AQUI / "templates"))
 templates.env.globals["css_v"] = _version("panel.css")
 templates.env.globals["js_v"] = _version("agente.js")
+templates.env.globals["audio_llamada_v"] = _version("audio-llamada.js")
 templates.env.globals["voces_js_v"] = _version("voces.js")
 templates.env.globals["entrada_css_v"] = _version("entrada.css")
 templates.env.globals["campos_css_v"] = _version("campos.css")

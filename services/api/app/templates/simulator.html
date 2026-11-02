@@ -55,6 +55,7 @@
   <pre id="log" class="sim-log" data-vacio="Acá se va anotando la llamada: lo que dice el bot, lo que entendió de tu respuesta y cuándo corta."></pre>
 </div>
 
+<script src="/static/audio-llamada.js?v={{ audio_llamada_v }}"></script>
 <script>
 (function () {
   "use strict";
@@ -73,6 +74,8 @@
   var nivelBot = document.getElementById("nivel-bot");
 
   var ws = null, ctx = null, stream = null, fuente = null, proc = null;
+  // Remuestreadores con filtro (audio-llamada.js): micrófono -> 8 kHz y voz del bot 8 kHz -> placa de sonido.
+  var bajador = null, subidor = null;
   var enCurso = false;
 
   // Cola de audio del bot, en muestras de 8 kHz. Se consume desde el mismo
@@ -94,9 +97,11 @@
     return Math.sqrt(s / (x.length || 1));
   }
 
+  // La cola guarda la voz del bot ya a la tasa de la placa: subirla repitiendo muestras (lo de antes) dejaba réplicas de
+  // la voz sobre 4 kHz y sonaba áspera.
   function encolar(int16) {
-    var f = new Float32Array(int16.length);
-    for (var i = 0; i < int16.length; i++) f[i] = int16[i] / 32768;
+    var f = subidor.procesar(AudioLlamada.aFlotante(int16));
+    if (!f.length) return;
     cola.push(f);
     colaLargo += f.length;
   }
@@ -114,11 +119,11 @@
   function llenarSalida(salida, tasaCtx) {
     // Arranca recién con un colchón, si no el primer segundo sale entrecortado
     if (!arrancoPlayback) {
-      if (colaLargo < TASA * COLA_MS) { salida.fill(0); return 0; }
+      if (colaLargo < tasaCtx * COLA_MS) { salida.fill(0); return 0; }
       arrancoPlayback = true;
     }
 
-    var paso = TASA / tasaCtx;     // 8000/48000 = 1/6
+    var paso = 1;                  // la cola ya viene a la tasa de la placa
     var pico = 0;
 
     for (var i = 0; i < salida.length; i++) {
@@ -132,8 +137,6 @@
         ultimaMuestraBot = m;
         restoBot -= 1;
       }
-      // Sostener la última muestra entre saltos es interpolación de orden
-      // cero: alcanza de sobra para voz telefónica y no cuesta nada.
       salida[i] = ultimaMuestraBot;
       var a = Math.abs(salida[i]);
       if (a > pico) pico = a;
@@ -143,20 +146,8 @@
     return pico;
   }
 
-  function bajarA8k(entrada, tasaOrigen) {
-    var razon = tasaOrigen / TASA;
-    var largo = Math.floor(entrada.length / razon);
-    var salida = new Int16Array(largo);
-    for (var i = 0; i < largo; i++) {
-      var desde = Math.floor(i * razon);
-      var hasta = Math.min(Math.floor((i + 1) * razon), entrada.length);
-      var suma = 0, n = 0;
-      for (var j = desde; j < hasta; j++) { suma += entrada[j]; n++; }
-      var v = n ? suma / n : 0;
-      v = Math.max(-1, Math.min(1, v));
-      salida[i] = v < 0 ? v * 0x8000 : v * 0x7fff;
-    }
-    return salida;
+  function bajarA8k(entrada) {
+    return AudioLlamada.aEntero(bajador.procesar(entrada));
   }
 
   async function llamar() {
@@ -175,6 +166,8 @@
     }
 
     ctx = new (window.AudioContext || window.webkitAudioContext)();
+    bajador = AudioLlamada.crearRemuestreador(ctx.sampleRate, TASA);
+    subidor = AudioLlamada.crearRemuestreador(TASA, ctx.sampleRate);
     cola = []; colaPos = 0; colaLargo = 0; arrancoPlayback = false;
     restoBot = 0; ultimaMuestraBot = 0; ultimaVozBot = -1e9;
 
@@ -223,7 +216,7 @@
 
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-      var muestras = bajarA8k(entrada, ctx.sampleRate);
+      var muestras = bajarA8k(entrada);
       if (botHablando) {
         // Half-duplex: mientras habla el bot mandamos silencio, si no el
         // micrófono lo capta por los parlantes, el VAD lo toma por respuesta

@@ -29,5 +29,6 @@
 {% if error %}<p class="aviso error" role="alert">{{ error }}</p>{% endif %}
 {% if ok %}<p class="aviso ok" role="status">{{ ok }}</p>{% endif %}
 {% include "agente/_" ~ tab ~ ".html" %}
+<script src="/static/audio-llamada.js?v={{ audio_llamada_v }}" defer></script>
 <script src="/static/agente.js?v={{ js_v }}" defer></script>
 {% endblock %}
