@@ -80,7 +80,6 @@
 .entrada h1 { font-size: var(--t-xl); font-weight: 800; letter-spacing: -0.03em; margin: 0 0 var(--s2); text-wrap: balance; }
 .entrada-sub { color: var(--ink-3); margin: 0 0 var(--s5); font-size: var(--t-sm); text-wrap: balance; }
 .entrada-form { display: block; }
-.entrada .campo-ico .campo-ico__input { font-size: 16px; }
 
 .entrada-temas {
   position: absolute; top: var(--s5); right: var(--s5); z-index: 2;
@@ -159,17 +158,7 @@
 }
 :root[data-theme="vidrio"] .entrada h1 { font-size: 30px; }
 :root[data-theme="vidrio"] .entrada-sub { color: var(--ink-2); font-size: 16px; margin-bottom: var(--s6); }
-:root[data-theme="vidrio"] .campo-ent label { font-size: 14.5px; color: var(--ink); }
-:root[data-theme="vidrio"] .campo-ico { background: rgba(8, 10, 16, .38); border-color: var(--line-2); }
-:root[data-theme="vidrio"] .campo-ico:hover { border-color: var(--ink-3); }
-:root[data-theme="vidrio"] .campo-ico:focus-within {
-  border-color: var(--focus); box-shadow: 0 0 0 4px color-mix(in oklch, var(--focus) 28%, transparent);
-}
-:root[data-theme="vidrio"] .campo-ico:focus-within .ico, :root[data-theme="vidrio"] .ojo[aria-pressed="true"] { color: var(--focus); }
-:root[data-theme="vidrio"] .campo-ico.invalido { border-color: var(--bad); }
-:root[data-theme="vidrio"] .campo-ico.invalido:focus-within { box-shadow: 0 0 0 4px color-mix(in oklch, var(--bad) 28%, transparent); }
-:root[data-theme="vidrio"] .campo-ico .campo-ico__input::placeholder { opacity: .8; }
-:root[data-theme="vidrio"] .ayuda-ent { font-size: 13.5px; }
+/* Los campos con ícono en Vidrio (vidrio oscuro, foco lavanda) están en campos.css: los comparte la pantalla Usuarios. */
 :root[data-theme="vidrio"] .entrada-pie { color: var(--ink-2); font-size: 14.5px; }
 :root[data-theme="vidrio"] .entrada-temas { background: var(--capsula); -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal); }
 /* Estado inicial de la entrada: la tarjeta sube entera (el barrido del hero es solo de Claro y Oscuro). */

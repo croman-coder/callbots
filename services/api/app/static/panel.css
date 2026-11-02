@@ -1090,6 +1090,9 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .chip-dato.paga { background: var(--warn-bg); color: var(--warn); }
 
 /* ══════════════════════════════════════════ usuarios (las cuentas de los dashboards) */
+/* Lo que se ve igual que el ingreso: el buscador es el mismo campo con ícono, los filtros son una cápsula como la de los
+   temas (el activo en blanco), el formulario y la confirmación van en tarjetas de vidrio y el botón grande es el del
+   ingreso. Los campos con ícono y el ojito están en campos.css. */
 .filtros-seg button {
   padding: 8px 14px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: transparent;
   font: inherit; font-size: var(--t-sm); font-weight: 600; color: var(--ink-2); cursor: pointer;
@@ -1097,6 +1100,10 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 }
 .filtros-seg button:hover { background: var(--active-soft); }
 .filtros-seg button[aria-pressed="true"] { border-color: var(--brand); background: var(--active-soft); color: var(--ink); }
+.filtros-pildora { gap: 2px; padding: 3px; border: 1px solid var(--line-2); border-radius: var(--r-pill); background: var(--surface); }
+.filtros-pildora button { min-height: 0; padding: 7px 14px; border: 0; border-radius: var(--r-pill); font-weight: 650; }
+.filtros-pildora button[aria-pressed="true"] { background: var(--tinta); color: var(--tinta-texto); }
+.buscar-usr { flex: 1 1 260px; max-width: 420px; }
 .tabla-usuarios .quien-usr { display: flex; align-items: center; gap: var(--s3); min-width: 230px; }
 .avatar-usr { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: var(--t-sm); }
 .tabla-usuarios tr.de-baja > td:not(:last-child) { opacity: .6; }
@@ -1114,14 +1121,64 @@ dialog.selector-voces { width: min(980px, calc(100vw - 32px)); }
 .marcas legend { padding: 0; margin-bottom: var(--s2); font-size: var(--t-sm); font-weight: 600; }
 .marcas .dias { margin: 0; align-items: center; }
 .marcas .dia { margin: 0; }
+.marcas .dia span { transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease); }
+.marcas .dia:hover input:not(:checked) + span { border-color: var(--ink-3); color: var(--ink); }
+.marcas .dia input:checked + span { background: var(--tinta); border-color: var(--tinta); color: var(--tinta-texto); }
 .acciones-clave { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); margin: var(--s2) 0 0; }
 .marcas-lista { font-size: var(--t-sm); color: var(--ink-2); }
-.confirmar { max-width: 460px; }
+/* Confirmar la clave: la tarjeta del ingreso, al medio. */
+.confirmar-caja { display: grid; justify-items: center; padding-top: var(--s5); }
+.confirmar { width: min(100%, 440px); max-width: none; padding: var(--s6); border-radius: 24px; }
+.confirmar h2 { margin: 0 0 var(--s2); font-size: 26px; font-weight: 800; letter-spacing: -0.03em; text-wrap: balance; }
+.confirmar-sub { margin: 0 0 var(--s5); color: var(--ink-2); line-height: 1.5; }
+.confirmar .btn.grande { margin-top: var(--s5); }
+.confirmar-pie { margin: var(--s4) 0 0; padding-top: var(--s4); border-top: 1px solid var(--line); color: var(--ink-2); font-size: var(--t-sm); overflow-wrap: anywhere; }
+/* El botón grande del ingreso. */
+.btn.grande { width: 100%; min-height: 50px; padding: 0 var(--s5); font-size: var(--t-base); }
+.btn.grande:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 22px -12px color-mix(in oklch, var(--ink) 60%, transparent); }
+.btn.grande:active:not(:disabled) { transform: none; box-shadow: none; }
+.nuevo .panel-form { padding: var(--s6); border-radius: 24px; }
+.nuevo .panel-form .row { margin-bottom: var(--s4); }
+.panel-form .campo-ent label, .panel-fila .campo-ent label { margin: 0 0 6px; }
+.panel-fila .row > .campo-ent, .nuevo .row > .campo-ent { min-width: 0; }
+.nuevo .hint[data-detalle-rol] { margin: var(--s2) 0 0; }
+/* Menú «Más» de cada persona (usuarios.js lo muda al <body> mientras está abierto: la tabla lo recortaría). */
+.acciones-usr [data-menu-abrir] svg { flex: none; transition: transform var(--dur-fast) var(--ease); }
+.acciones-usr [data-menu-abrir][aria-expanded="true"] svg { transform: rotate(180deg); }
+.menu-usr {
+  position: fixed; z-index: 70; min-width: 270px; max-width: calc(100vw - 16px); padding: 6px;
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--line-2); border-radius: 16px; background: var(--surface); box-shadow: var(--float);
+  animation: usr-entra .14s var(--ease) both;
+}
+.menu-usr[hidden] { display: none; }
+.menu-usr button {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 1px;
+  width: 100%; min-height: 0; padding: 9px 12px; border: 0; border-radius: 10px; background: transparent;
+  text-align: left; white-space: normal; font-size: var(--t-sm); font-weight: 650; color: var(--ink);
+}
+.menu-usr button small { font-size: var(--t-xs); font-weight: 450; color: var(--ink-3); }
+.menu-usr button:hover, .menu-usr button:focus-visible { background: var(--active-soft); }
+.menu-usr button.riesgo { color: var(--bad); }
+.menu-usr button.riesgo small { color: var(--ink-3); }
+:root[data-theme="vidrio"] .menu-usr { background: rgba(18, 20, 27, 0.94); -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal); }
+:root[data-theme="vidrio"] .menu-usr button { font-size: 14px; }
+:root[data-theme="vidrio"] .menu-usr button small { font-size: 13px; color: var(--ink-2); }
+.tabla-usuarios tr.persona { animation: usr-fila-entra 460ms var(--ease-sale, var(--ease)) backwards; animation-delay: calc(min(var(--n, 0), 8) * 45ms + 120ms); }
+@keyframes usr-fila-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+:root[data-theme="vidrio"] :is(.confirmar, .nuevo .panel-form) { background: var(--vidrio); }
+:root[data-theme="vidrio"] .filtros-pildora { background: var(--capsula); -webkit-backdrop-filter: var(--cristal); backdrop-filter: var(--cristal); box-shadow: var(--brillo); }
+:root[data-theme="vidrio"] .confirmar-sub { font-size: 16px; }
+:root[data-theme="vidrio"] .marcas .dia span { font-size: 14px; }
+:root[data-theme="vidrio"] .marcas legend { font-size: 14.5px; color: var(--ink); }
+:root[data-theme="vidrio"] :is(.acciones-usr, .panel-fila .actions, .acciones-clave) .btn.mini { font-size: 13px; padding: 6px 12px; }
+:root[data-theme="vidrio"] .panel-fila label.check, :root[data-theme="vidrio"] .nuevo label.check { font-size: 14.5px; }
+:root[data-theme="vidrio"] .tabla-usuarios th { font-size: 12.5px; }
 .nuevo[hidden] { display: none; }
 .nuevo { animation: usr-entra .18s var(--ease) both; }
 .btn[aria-busy="true"] { cursor: progress; opacity: .75; }
 @keyframes usr-entra { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .panel-fila, .nuevo { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .panel-fila, .nuevo, .menu-usr, .tabla-usuarios tr.persona { animation: none; } .btn.grande:hover:not(:disabled) { transform: none; } }
 
 /* Celular: cada persona es un bloque (la tabla no cabe y las acciones quedarían fuera de la vista). */
 @media (max-width: 760px) {

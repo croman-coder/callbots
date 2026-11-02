@@ -59,7 +59,7 @@
   function pedir(datos, aviso, boton) {
     if (boton) { boton.setAttribute("aria-busy", "true"); boton.disabled = true; }
     function soltar() { if (boton) { boton.removeAttribute("aria-busy"); boton.disabled = false; } }
-    function fallo(msg) { aviso.textContent = msg; aviso.hidden = false; soltar(); }
+    function fallo(msg) { aviso.textContent = msg; aviso.hidden = false; soltar(); if (aviso.scrollIntoView) aviso.scrollIntoView({ block: "nearest" }); }
     aviso.hidden = true;
     return fetch("/usuarios/api", { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify(datos), credentials: "same-origin" })
       .then(function (r) { return r.json().catch(function () { return { error: "Respuesta inesperada del servidor." }; }).then(function (j) { return { r: r, j: j }; }); })
@@ -108,6 +108,51 @@
     pedir(d, $("[data-aviso]", formNuevo), $("[data-enviar]", formNuevo));
   });
 
+  // ───────────────────────────────────────── menú «Más» de cada persona
+  // Mientras está abierto el menú se muda al <body>: dentro de la tabla lo recortaría su desplazamiento. Al elegir una
+  // opción vuelve a su fila (así el panel de esa opción sabe de qué persona es) y recién después corre la opción.
+  var menuAbierto = null;  // { menu, boton, casa }
+  function cerrarMenu(devolverFoco) {
+    if (!menuAbierto) return;
+    var m = menuAbierto; menuAbierto = null;
+    m.menu.hidden = true; m.menu.style.left = ""; m.menu.style.top = "";
+    m.casa.appendChild(m.menu);
+    m.boton.setAttribute("aria-expanded", "false");
+    if (devolverFoco) m.boton.focus();
+  }
+  function abrirMenu(boton) {
+    var casa = boton.closest(".acciones-usr");
+    var menu = menuAbierto && menuAbierto.boton === boton ? menuAbierto.menu : $("[data-menu]", casa);
+    var mismo = !!menuAbierto && menuAbierto.menu === menu;
+    cerrarMenu();
+    if (mismo) return;
+    document.body.appendChild(menu); menu.hidden = false;
+    var r = boton.getBoundingClientRect(), ancho = menu.offsetWidth, alto = menu.offsetHeight;
+    var izq = Math.max(8, Math.min(window.innerWidth - ancho - 8, r.right - ancho));
+    var top = r.bottom + 6 + alto > window.innerHeight - 8 ? Math.max(8, r.top - alto - 6) : r.bottom + 6;
+    menu.style.left = izq + "px"; menu.style.top = top + "px";
+    boton.setAttribute("aria-expanded", "true");
+    menuAbierto = { menu: menu, boton: boton, casa: casa };
+    var primero = $("button", menu); if (primero) primero.focus();
+  }
+  $$("[data-menu-abrir]").forEach(function (b) { b.addEventListener("click", function () { abrirMenu(b); }); });
+  $$("[data-menu]").forEach(function (m) {
+    m.addEventListener("click", function (e) { if (e.target.closest("button")) cerrarMenu(false); }, true);
+    m.addEventListener("keydown", function (e) {
+      var items = $$("button", m), i = items.indexOf(document.activeElement);
+      if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+      else if (e.key === "Home") { e.preventDefault(); items[0].focus(); }
+      else if (e.key === "End") { e.preventDefault(); items[items.length - 1].focus(); }
+      else if (e.key === "Tab") cerrarMenu(false);
+    });
+  });
+  document.addEventListener("click", function (e) {
+    if (menuAbierto && !menuAbierto.menu.contains(e.target) && !menuAbierto.boton.contains(e.target)) cerrarMenu(false);
+  });
+  window.addEventListener("resize", function () { cerrarMenu(false); });
+  window.addEventListener("scroll", function (e) { if (!menuAbierto || !menuAbierto.menu.contains(e.target)) cerrarMenu(false); }, true);
+
   // ───────────────────────────────────────── paneles dentro de la fila
   var abierto = null;  // { fila, detalle, boton }
   function cerrarPanel(devolverFoco) {
@@ -116,7 +161,7 @@
     abierto.fila.classList.remove("abierta");
     $$("[data-panel-id]", abierto.detalle).forEach(function (p) { p.hidden = true; var a = $("[data-aviso]", p); if (a) a.hidden = true; });
     abierto.boton.setAttribute("aria-expanded", "false");
-    var b = abierto.boton; abierto = null;
+    var b = abierto.foco || abierto.boton; abierto = null;
     if (devolverFoco) b.focus();
   }
   $$("button[data-panel]").forEach(function (b) {
@@ -129,7 +174,7 @@
       var panel = $("[data-panel-id='" + b.dataset.panel + "']", detalle);
       detalle.hidden = false; panel.hidden = false; fila.classList.add("abierta");
       b.setAttribute("aria-expanded", "true");
-      abierto = { fila: fila, detalle: detalle, boton: b };
+      abierto = { fila: fila, detalle: detalle, boton: b, foco: $("[data-menu-abrir]", fila) || b };
       var primero = $("input:not([type=hidden]):not([type=checkbox]), select:not([disabled]), button[data-enviar]", panel);
       if (primero) primero.focus();
     });
@@ -137,6 +182,7 @@
   $$("[data-cerrar-panel]").forEach(function (b) { b.addEventListener("click", function () { cerrarPanel(true); }); });
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
+    if (menuAbierto) { cerrarMenu(true); return; }
     if (abierto) cerrarPanel(true); else if (nuevo && !nuevo.hidden) toggleNuevo(false);
   });
 
@@ -151,7 +197,7 @@
   $$("button[data-accion]").forEach(function (b) {
     b.addEventListener("click", function () {
       var panel = b.closest("[data-panel-id]");
-      var aviso = panel ? $("[data-aviso]", panel) : $(".aviso-error[data-aviso]") || document.createElement("p");
+      var aviso = panel ? $("[data-aviso]", panel) : $("[data-aviso-lista]") || document.createElement("p");
       pedir({ accion: b.dataset.accion, id: b.dataset.id }, aviso, b);
     });
   });
@@ -161,6 +207,7 @@
   var filtro = "todos";
   function aplicar() {
     var q = (buscador ? buscador.value : "").trim().toLowerCase(), visibles = 0;
+    cerrarMenu();
     cerrarPanel();
     filas.forEach(function (f) {
       var ok = (!q || f.dataset.buscar.indexOf(q) !== -1) &&

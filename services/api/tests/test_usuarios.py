@@ -208,6 +208,37 @@ def test_iniciar_sesion_con_token_devuelve_el_jwt_y_cuanto_dura():
     assert (principal.usuario, principal.rol) == (YO, "admin") and token == "jwt-de-ana" and vence == 3600
 
 
+# ─────────────────────────────────────────────── enlace por correo (invitación / restablecer)
+def test_enlace_usa_el_olvide_mi_clave_de_los_dashboards_sin_mandar_el_token():
+    """Es la acción pública `recuperar_password`: la API de los dashboards manda el correo con el enlace."""
+    vistos = []
+    aviso = _ejecutar({"accion": "enlace", "id": ID_OTRO}, vistos)  # Beto nunca entró: es su invitación
+    assert vistos[-1] == (None, {"action": "recuperar_password", "email": "beto@santarosa.com.py"})
+    assert "primera vez" in aviso and "beto@santarosa.com.py" in aviso
+    # Ana ya entró: es un restablecer (lo pide otra persona, nadie se manda el enlace a sí mismo desde acá).
+    vistos.clear()
+    aviso = usuarios.ejecutar("tok", "otro@santarosa.com.py", {"accion": "enlace", "id": ID_YO}, cliente=_api(vistos=vistos))
+    assert vistos[-1][1]["email"] == YO and "clave nueva" in aviso and "sigue andando" in aviso
+
+
+def test_enlace_no_se_manda_a_uno_mismo_ni_a_quien_esta_de_baja():
+    with pytest.raises(usuarios.UsuariosError, match="Tu propia clave"):
+        _ejecutar({"accion": "enlace", "id": ID_YO})
+    with pytest.raises(usuarios.UsuariosError, match="de baja"):
+        _ejecutar({"accion": "enlace", "id": ID_BAJA})
+
+
+def test_si_los_dashboards_limitan_los_correos_se_muestra_su_motivo():
+    def manejar(req: httpx.Request) -> httpx.Response:
+        cuerpo = json.loads(req.content or b"{}")
+        if cuerpo.get("action") == "list":
+            return httpx.Response(200, json={"users": _gente()})
+        return httpx.Response(429, json={"error": "Demasiados intentos. Esperá 15 minutos y probá de nuevo."})
+
+    with pytest.raises(usuarios.UsuariosError, match="Demasiados intentos"):
+        usuarios.ejecutar("tok", YO, {"accion": "enlace", "id": ID_OTRO}, cliente=httpx.Client(transport=httpx.MockTransport(manejar)))
+
+
 # ─────────────────────────────────────────────── HTTP
 @pytest.fixture()
 def cli():
@@ -330,3 +361,23 @@ def test_el_login_tiene_el_ojito_y_carga_el_movimiento(cli):
     assert 'class="ojo"' in r.text and "aria-pressed" in r.text and "/static/vendor/motion.min.js" in r.text
     assert 'name="clave" type="password"' in r.text
     assert 'href="/static/favicon.svg' in r.text and 'class="b b1"' in r.text  # la marca nueva y el ícono
+
+
+def test_la_pantalla_usa_los_campos_y_la_tarjeta_del_ingreso(cli, monkeypatch):
+    """Usuarios se ve como el ingreso: campos con ícono (también el rol y el buscador), cápsula de filtros y botón grande."""
+    _entra(cli, monkeypatch)
+    otro = {"id": "44444444-4444-4444-4444-444444444444", "email": "dora@santarosa.com.py", "display_name": "Dora", "role": "manager",
+            "color": "#1E2A78", "brands": [], "baja": False, "last_sign_in_at": "2026-10-30T10:00:00Z", "created_at": "2026-02-01T00:00:00Z"}
+    monkeypatch.setattr(usuarios, "_llamar", lambda token, cuerpo, *, cliente=None: {"users": _gente() + [otro]})
+    html = cli.get("/usuarios").text
+    assert 'class="campo-ico__input" id="n-correo"' in html and 'class="campo-ico__input" id="n-nombre"' in html
+    assert '<select class="campo-ico__input" id="n-rol" name="rol" data-rol required>' in html
+    assert 'id="buscar-usuarios"' in html and "buscar-usr" in html and "filtros-pildora" in html
+    # Cada persona lleva su índice para escalonar la entrada, y el rol propio no se puede cambiar.
+    assert html.count('style="--n:') == 4
+    assert 'data-menu-abrir' in html and 'data-panel="enlace"' in html and "Enviar invitación" in html and "Restablecer por correo" in html
+    assert f'id="e-rol-{ID_YO}" name="rol" data-rol disabled' in html
+
+    cli.cookies.delete("callbot_sb", path="/usuarios")
+    confirmar = cli.get("/usuarios").text
+    assert "confirmar-caja" in confirmar and "btn primary grande" in confirmar and 'class="campo-ico__input" id="u-clave"' in confirmar

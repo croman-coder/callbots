@@ -68,3 +68,14 @@ Oscuro y se veía el hero violeta viejo.
 - Textos de apoyo grandes (subtítulo 16 px, pie 14,5 px) y campos a 16 px: con menos, el iPhone hace zoom al enfocar.
 - `campos.css` (compartido con la pantalla Usuarios): el `<input>` va con `width: 0` y `flex: 1`; su ancho propio
   (20 caracteres) ensanchaba la tarjeta en el celular.
+
+## Usuarios (2/11/2026)
+
+La pantalla Usuarios se ve como el ingreso: los campos (correo, nombre, rol con su flecha, buscador, clave) son los
+mismos `.campo-ico` de `campos.css`, que ahora lleva el estilo Vidrio de los campos (antes estaba en `entrada.css`); los
+filtros son una cápsula como la de los temas (el activo en blanco); el formulario «Nuevo usuario» y la confirmación de
+clave van en tarjetas de vidrio con el botón grande del ingreso; las marcas elegidas son píldoras blancas; las filas
+entran escalonadas. Cada persona tiene «Editar» y un menú «Más» (enviar invitación o restablecer por correo, nueva clave,
+dar de baja o reactivar). El menú se muda al `<body>` mientras está abierto (la tabla lo recortaría) y sigue el patrón
+de menú: flechas, Inicio/Fin, Esc y foco de vuelta al botón. Enviar el correo pide confirmación en la fila.
+

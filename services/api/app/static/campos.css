@@ -19,7 +19,7 @@
    `flex: 1`: el ancho propio del <input> (20 caracteres) no ensancha la tarjeta en el celular. */
 .campo-ico .campo-ico__input {
   flex: 1 1 0; width: 0; min-width: 0; min-height: 46px; padding: 0 14px 0 10px;
-  border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; outline: none;
+  border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 16px; outline: none;
   box-shadow: none; transition: none;
 }
 .campo-ico .campo-ico__input::placeholder { color: var(--ink-3); opacity: .75; }
@@ -33,6 +33,15 @@
 .campo-ico.invalido:focus-within { box-shadow: 0 0 0 4px color-mix(in oklch, var(--bad) 20%, transparent); }
 .campo-ico.sacudir { animation: campo-no .42s var(--ease-salida); }
 @keyframes campo-no { 0%, 100% { transform: translateX(0); } 20% { transform: translateX(-7px); } 45% { transform: translateX(6px); } 70% { transform: translateX(-3px); } 88% { transform: translateX(2px); } }
+
+/* Un <select> con el mismo aspecto que un campo de texto: sin la flecha del sistema, con la propia al final.
+   Un campo deshabilitado atenúa toda la caja (no solo el <input>, que ya viene atenuado por el panel). */
+.campo-ico select.campo-ico__input { appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 6px; text-overflow: ellipsis; }
+.campo-ico .chev { flex: none; width: 18px; height: 18px; margin-right: 14px; color: var(--ink-3); pointer-events: none; transition: color .18s; }
+.campo-ico:focus-within .chev { color: var(--brand); }
+.campo-ico .campo-ico__input:disabled { opacity: 1; background: transparent; cursor: not-allowed; }
+.campo-ico:has(.campo-ico__input:disabled) { opacity: .55; }
+.campo-ico:has(.campo-ico__input:disabled):hover { border-color: var(--campo); }
 
 /* Ojito: mostrar u ocultar la clave. */
 .ojo {
@@ -71,3 +80,18 @@
   font-size: var(--t-sm); font-weight: 550; line-height: 1.45;
 }
 .aviso-error svg { flex: none; width: 18px; height: 18px; margin-top: 1px; }
+
+/* ───────────────────────────────────────────── tema Vidrio (por defecto, como el panel)
+   Campos de vidrio oscuro sobre la tarjeta, con el foco lavanda del panel. Los usan el ingreso y la pantalla Usuarios. */
+:root[data-theme="vidrio"] .campo-ent label { font-size: 14.5px; color: var(--ink); }
+:root[data-theme="vidrio"] .campo-ico { background: rgba(8, 10, 16, .38); border-color: var(--line-2); }
+:root[data-theme="vidrio"] .campo-ico:hover { border-color: var(--ink-3); }
+:root[data-theme="vidrio"] .campo-ico:focus-within {
+  border-color: var(--focus); box-shadow: 0 0 0 4px color-mix(in oklch, var(--focus) 28%, transparent);
+}
+:root[data-theme="vidrio"] .campo-ico:focus-within :is(.ico, .chev), :root[data-theme="vidrio"] .ojo[aria-pressed="true"] { color: var(--focus); }
+:root[data-theme="vidrio"] .campo-ico.invalido { border-color: var(--bad); }
+:root[data-theme="vidrio"] .campo-ico.invalido:focus-within { box-shadow: 0 0 0 4px color-mix(in oklch, var(--bad) 28%, transparent); }
+:root[data-theme="vidrio"] .campo-ico .campo-ico__input::placeholder { opacity: .8; }
+:root[data-theme="vidrio"] .campo-ico:has(.campo-ico__input:disabled):hover { border-color: var(--line-2); }
+:root[data-theme="vidrio"] .ayuda-ent { font-size: 13.5px; }

@@ -42,7 +42,8 @@ ROLES = {
 MARCAS = (
     "JETOUR", "GWM", "RENEW", "JAC", "SOUEAST", "LEAPMOTOR", "RENAULT", "MITSUBISHI", "JMEV", "ZEEKR", "XPENG",
 )
-ACCIONES = frozenset({"crear", "editar", "baja", "reactivar", "clave"})
+# «enlace»: le manda por correo el enlace para elegir una clave (la invitación si nunca entró, el restablecer si ya entró).
+ACCIONES = frozenset({"crear", "editar", "baja", "reactivar", "clave", "enlace"})
 MIN_CLAVE = 8
 
 _CORREO = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
@@ -78,12 +79,13 @@ def _url() -> str:
     return settings.dashboards_url.rstrip("/") + "/api/admin-user"
 
 
-def _llamar(token: str, cuerpo: dict, *, cliente: httpx.Client | None = None) -> dict:
+def _llamar(token: str | None, cuerpo: dict, *, cliente: httpx.Client | None = None) -> dict:
+    """`token` None: las acciones que los dashboards atienden sin sesión (recuperar_password)."""
     propio = cliente is None
     http = cliente or httpx.Client(timeout=_TIMEOUT)
     try:
         try:
-            r = http.post(_url(), json=cuerpo, headers={"Authorization": f"Bearer {token}"})
+            r = http.post(_url(), json=cuerpo, headers={"Authorization": f"Bearer {token}"} if token else {})
         except httpx.HTTPError as exc:
             log.warning("Usuarios: no se pudo hablar con los dashboards: %s", exc)
             raise UsuariosError("No se pudo hablar con los dashboards. Probá de nuevo en un momento.", estado=502) from exc
@@ -237,6 +239,21 @@ def ejecutar(token: str, yo: str, datos: dict, *, cliente: httpx.Client | None =
         _llamar(token, {"action": "reactivate", "user_id": uid}, cliente=cliente)
         log.info("Usuarios: %s reactivó a %s", yo, persona["correo"])
         return f"{persona['nombre']} volvió a estar activo."
+
+    if accion == "enlace":
+        if es_yo:
+            raise UsuariosError("Tu propia clave se cambia desde el dashboard («¿Olvidaste tu clave?»).")
+        if persona["baja"]:
+            raise UsuariosError(f"{persona['nombre']} está de baja: reactivala primero.")
+        # Es la misma acción de «olvidé mi clave» de los dashboards: manda el enlace por correo y no revela si la cuenta
+        # existe. Tiene su propio límite (3 por correo cada 15 minutos): si se pasa, el motivo viene en la respuesta.
+        _llamar(None, {"action": "recuperar_password", "email": persona["correo"]}, cliente=cliente)
+        log.info("Usuarios: %s mandó el enlace de clave a %s", yo, persona["correo"])
+        if persona["ultimo_ingreso"] is None:
+            return (f"Le mandamos a {persona['correo']} el enlace para elegir su clave y entrar por primera vez. "
+                    "Si no le llega, que mire el correo no deseado.")
+        return (f"Le mandamos a {persona['correo']} un enlace para elegir una clave nueva. "
+                "Su clave actual sigue andando hasta que la cambie.")
 
     # accion == "clave"
     if es_yo:
