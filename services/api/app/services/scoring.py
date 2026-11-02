@@ -29,6 +29,8 @@ NUMBER_WORDS: dict[str, int] = {
     "cero": 0, "uno": 1, "dos": 2, "tres": 3,
     "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7, "ocho": 8,
     "nueve": 9, "diez": 10,
+    # Con seseo la «z» suena «s» y Whisper lo escribe como suena (2/11/2026: «¡Dies!» dos veces seguidas en una prueba).
+    "dies": 10,
 }
 
 # --- Afirmación / negación -------------------------------------------------

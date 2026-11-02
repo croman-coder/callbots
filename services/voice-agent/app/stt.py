@@ -12,6 +12,8 @@ import asyncio
 import logging
 import math
 import re
+import threading
+import time
 import unicodedata
 from difflib import SequenceMatcher
 from dataclasses import dataclass
@@ -24,6 +26,10 @@ from app.config import SAMPLE_RATE, WHISPER_SAMPLE_RATE, config
 log = logging.getLogger(__name__)
 
 _model = None
+# Si la GPU falla en plena llamada se atiende en CPU (ver _decodificar). Se carga recién cuando hace falta.
+_cpu_model = None
+_cpu_lock = threading.Lock()
+_gpu_mala_hasta = 0.0
 
 
 @dataclass
@@ -35,7 +41,7 @@ class Transcription:
 
 def load_model() -> None:
     """Carga el modelo una vez. En GPU tarda unos segundos."""
-    global _model
+    global _model, _cpu_model
 
     if _model is not None:
         return
@@ -65,6 +71,7 @@ def load_model() -> None:
                 compute_type="int8",
                 download_root="/models/whisper",
             )
+            _cpu_model = _model
         else:
             raise
 
@@ -163,7 +170,42 @@ def es_eco_del_prompt(texto: str, prompt: str) -> bool:
     return tramo.size >= 4 and tramo.size / len(dichas) >= 0.7
 
 
-def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None) -> Transcription:
+# Las palabras posibles cuando la pregunta se contesta con un número. Va como `hotwords` y no como el texto de la guía
+# (ver prompt_para): sesga a escribir «Diez.» en vez de «Dies», «Vies», «NERF» o nada. Medido el 2/11/2026 con los 42
+# audios guardados: arregló «Dies»→«Diez.», «NERF»→«nueve» y los vacíos, pero con audio dudoso a veces «cuenta»
+# («uno, dos, tres…»): eso se detecta (es_conteo) y se vuelve al camino de siempre.
+NUMEROS = "cero, uno, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez."
+_NUMEROS = {"cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"}
+# Aire que se le deja a una respuesta numérica a cada lado (siempre: «diez» dura 0,5 s y el final suena a «s»).
+MARGEN_NUMERO_SEGUNDOS = 0.3
+# Con cuántos números distintos se da por hecho que Whisper contó en vez de transcribir (igual que scoring.py).
+CONTEO_MIN = 4
+# Cuánto se espera para volver a probar la GPU después de que falló.
+ESPERA_GPU_MALA_SEGUNDOS = 60.0
+
+
+def es_conteo(texto: str) -> bool:
+    """Whisper devolvió la lista de números («uno, dos, tres, cuatro…») en vez de lo que se dijo."""
+    palabras = _palabras(texto)
+    hallados = {p for p in palabras if p in _NUMEROS} | {p for p in palabras if p.isdigit() and int(p) <= 10}
+    return len(hallados) >= CONTEO_MIN
+
+
+def _normalizar(audio: np.ndarray) -> np.ndarray:
+    """Sube el audio hasta un pico de 0,5 (como mucho 8 veces): una respuesta suave no queda por debajo de lo que
+    Whisper separa del ruido."""
+    pico = float(np.max(np.abs(audio))) if audio.size else 0.0
+    if pico <= 0.0:
+        return audio
+    return audio * min(0.5 / pico, 8.0)
+
+
+def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None, numeros: bool = False) -> Transcription:
+    if numeros:
+        resultado = _transcribir_numero(pcm)
+        if resultado.text and not es_conteo(resultado.text) and not es_alucinacion(resultado.text):
+            return resultado
+        log.info("Respuesta numérica: %r no sirve, se transcribe como siempre", resultado.text[:60])
     duracion = len(pcm) / (SAMPLE_RATE * 2)
     corto = duracion < CORTO_SEGUNDOS
     margen = duracion < MARGEN_HASTA
@@ -178,6 +220,72 @@ def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None) -> Transc
     return resultado
 
 
+def _modelo_cpu():
+    """El Whisper de respaldo, en CPU. Se carga la primera vez que la GPU falla (unos segundos y ~2 GB de memoria)."""
+    global _cpu_model
+    with _cpu_lock:
+        if _cpu_model is None:
+            from faster_whisper import WhisperModel
+
+            log.warning("Cargando Whisper %s en CPU como respaldo de la GPU...", config.whisper_model)
+            _cpu_model = WhisperModel(config.whisper_model, device="cpu", compute_type="int8", download_root="/models/whisper")
+        return _cpu_model
+
+
+def _es_error_de_gpu(exc: BaseException) -> bool:
+    texto = str(exc).lower()
+    return any(m in texto for m in ("cuda", "cudnn", "cublas", "out of memory", "device ordinal", "gpu"))
+
+
+def _correr(modelo, audio: np.ndarray, kwargs: dict) -> list[tuple[str, float | None]]:
+    """Corre Whisper y recorre los segmentos: el decodificador trabaja recién ahí, así que los errores salen acá."""
+    segments, _info = modelo.transcribe(
+        audio,
+        language=config.whisper_language,
+        beam_size=5,
+        # Sin contexto previo: cada respuesta es independiente y arrastrar el
+        # texto anterior hace que Whisper invente continuaciones.
+        condition_on_previous_text=False,
+        **kwargs,
+    )
+    return [(s.text.strip(), s.avg_logprob) for s in segments]
+
+
+def _decodificar(audio: np.ndarray, **kwargs) -> list[tuple[str, float | None]]:
+    """Whisper en la GPU y, si la GPU falla, en CPU: antes el error tumbaba la llamada entera.
+
+    El 2/11/2026 dos llamadas de prueba murieron con «CUDA out of memory» y «invalid device ordinal»: la GPU de 12 GB
+    la comparten Whisper (2,2 GB), OmniVoice (4,4 GB) y el Ollama de Hermes (4,5 GB). Una falla se reintenta una vez (a
+    veces es un pico de otro proceso) y, si sigue, esta respuesta y las de los próximos segundos van por CPU.
+    """
+    global _gpu_mala_hasta
+    en_cpu = config.whisper_device == "cpu" or _model is _cpu_model
+    if not en_cpu and time.monotonic() >= _gpu_mala_hasta:
+        for intento in (1, 2):
+            try:
+                return _correr(_model, audio, kwargs)
+            except RuntimeError as exc:
+                if not _es_error_de_gpu(exc):
+                    raise
+                log.error("La GPU falló transcribiendo (intento %d de 2): %s", intento, exc)
+                if intento == 1:
+                    time.sleep(0.3)
+        _gpu_mala_hasta = time.monotonic() + ESPERA_GPU_MALA_SEGUNDOS
+        log.error("Se transcribe en CPU durante %d s y se vuelve a probar la GPU", ESPERA_GPU_MALA_SEGUNDOS)
+    return _correr(_model if en_cpu else _modelo_cpu(), audio, kwargs)
+
+
+def _transcribir_numero(pcm: bytes) -> Transcription:
+    """Respuesta a una pregunta que se contesta con un número: sin el filtro de voz de Whisper (la respuesta ya llega
+    recortada por la escucha, y el filtro se comía la «z» final), con aire a los lados, el nivel parejo y las palabras
+    posibles como `hotwords`."""
+    duration = len(pcm) / (SAMPLE_RATE * 2)
+    aire = np.zeros(int(WHISPER_SAMPLE_RATE * MARGEN_NUMERO_SEGUNDOS), dtype=np.float32)
+    audio = np.concatenate([aire, _normalizar(_pcm_to_float32(pcm)), aire])
+    partes = _decodificar(audio, vad_filter=False, hotwords=NUMEROS)
+    return _armar(partes, duration)
+
+
 def _transcribir(pcm: bytes, prompt: str | None, margen: bool = False) -> Transcription:
     duration = len(pcm) / (SAMPLE_RATE * 2)
     audio = _pcm_to_float32(pcm)
@@ -185,30 +293,22 @@ def _transcribir(pcm: bytes, prompt: str | None, margen: bool = False) -> Transc
         aire = np.zeros(int(WHISPER_SAMPLE_RATE * MARGEN_SEGUNDOS), dtype=np.float32)
         audio = np.concatenate([aire, audio, aire])
 
-    segments, info = _model.transcribe(
+    partes = _decodificar(
         audio,
-        language=config.whisper_language,
-        beam_size=5,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 300},
-        # Sin contexto previo: cada respuesta es independiente y arrastrar el
-        # texto anterior hace que Whisper invente continuaciones.
-        condition_on_previous_text=False,
         # Sesgo hacia el dominio: mejora el reconocimiento de los números
         # hablados. Tiene que nombrar el rango real (0-10): si dice "uno al
         # cinco", Whisper transcribe "nueve" y "diez" mucho peor, y son
         # justamente los valores que definen si el cliente quedó conforme.
         initial_prompt=prompt,
     )
+    return _armar(partes, duration)
 
-    parts: list[str] = []
-    logprobs: list[float] = []
 
-    for segment in segments:
-        parts.append(segment.text.strip())
-        if segment.avg_logprob is not None:
-            logprobs.append(segment.avg_logprob)
-
+def _armar(partes: list[tuple[str, float | None]], duration: float) -> Transcription:
+    parts = [texto for texto, _ in partes]
+    logprobs = [lp for _, lp in partes if lp is not None]
     text = " ".join(p for p in parts if p).strip()
 
     # avg_logprob es log-probabilidad; exp() lo lleva a un 0-1 interpretable
@@ -220,9 +320,9 @@ def _transcribir(pcm: bytes, prompt: str | None, margen: bool = False) -> Transc
     return Transcription(text=text, confidence=confidence, duration=duration)
 
 
-async def transcribe(pcm: bytes, vocabulario: list[str] | None = None) -> Transcription:
-    """Transcribe en un thread aparte: el modelo bloquea el event loop."""
+async def transcribe(pcm: bytes, vocabulario: list[str] | None = None, numeros: bool = False) -> Transcription:
+    """Transcribe en un thread aparte: el modelo bloquea el event loop. `numeros`: la pregunta se contesta con un número."""
     if len(pcm) < MIN_SEGUNDOS * SAMPLE_RATE * 2:  # un golpe, no una palabra: no hay nada que transcribir
         return Transcription(text="", confidence=None, duration=len(pcm) / (SAMPLE_RATE * 2))
 
-    return await asyncio.to_thread(_transcribe_sync, pcm, vocabulario)
+    return await asyncio.to_thread(_transcribe_sync, pcm, vocabulario, numeros)

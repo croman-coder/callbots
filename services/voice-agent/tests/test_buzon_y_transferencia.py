@@ -149,7 +149,7 @@ def entorno(monkeypatch):
     transcriptos: list[bytes] = []
     continuaciones: list = []  # lo que devuelve `voz_mientras` en cada turno de recepción (None: no siguió)
 
-    async def transcribir(pcm, vocabulario=None):
+    async def transcribir(pcm, vocabulario=None, numeros=False):
         transcriptos.append(pcm)
         return types.SimpleNamespace(text=textos.pop(0), confidence=0.9)
 

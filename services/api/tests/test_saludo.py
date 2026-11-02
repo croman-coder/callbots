@@ -120,3 +120,12 @@ def test_el_precalentado_incluye_la_frase_de_reprogramar(Sesion, api):
     _agente(Sesion)
     textos = api.get("/internal/prompts").json()["texts"]
     assert FRASE_LLAMAR_DESPUES in textos
+
+
+def test_con_seseo_dies_es_diez():
+    """Whisper escribe «Dies» cuando la «z» suena «s» (prueba del 2/11/2026): vale 10, no «no entendí»."""
+    from app.models import QuestionType
+
+    for texto in ("¡Dies!", "dies", "Le doy un dies."):
+        r = scoring.interpret(texto, QuestionType.SCALE_1_10)
+        assert r.value == 10, (texto, r)

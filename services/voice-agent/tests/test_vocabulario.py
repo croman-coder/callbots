@@ -16,7 +16,7 @@ def test_el_prompt_suma_las_palabras_sin_perder_el_sesgo_a_los_numeros():
 def test_cada_respuesta_se_transcribe_con_el_vocabulario_del_agente(entorno, monkeypatch):
     vistos = []
 
-    async def transcribir(pcm, vocabulario=None):
+    async def transcribir(pcm, vocabulario=None, numeros=False):
         vistos.append(vocabulario)
         return types.SimpleNamespace(text="nueve", confidence=0.9)
 

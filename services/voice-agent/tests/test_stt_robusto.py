@@ -1,0 +1,135 @@
+"""Escucha robusta (2/11/2026): una GPU que falla no tumba la llamada, y las respuestas numéricas se transcriben con las
+palabras posibles («Dies», «Vies» o nada, en vez de «Diez»)."""
+from __future__ import annotations
+
+import types
+
+import numpy as np
+import pytest
+
+from app import stt
+from app.config import SAMPLE_RATE
+
+PCM = (np.sin(np.arange(SAMPLE_RATE) / 5) * 8000).astype(np.int16).tobytes()  # 1 s de tono
+
+
+def _segmento(texto, logprob=-0.2):
+    return types.SimpleNamespace(text=texto, avg_logprob=logprob)
+
+
+class Modelo:
+    """Whisper de mentira: responde según los parámetros con que lo llaman."""
+
+    def __init__(self, responder):
+        self.responder = responder
+        self.llamadas = []
+
+    def transcribe(self, audio, **kw):
+        self.llamadas.append(kw)
+        resultado = self.responder(kw)
+        if isinstance(resultado, Exception):
+            raise resultado
+        return iter([_segmento(t) for t in resultado]), None
+
+
+@pytest.fixture(autouse=True)
+def _aislar(monkeypatch):
+    monkeypatch.setattr(stt, "_gpu_mala_hasta", 0.0)
+    monkeypatch.setattr(stt, "_cpu_model", None)
+    monkeypatch.setattr(stt.time, "sleep", lambda s: None)
+    object.__setattr__(stt.config, "whisper_device", "cuda")
+
+
+# ───────────────────────────────────────────── es_conteo
+@pytest.mark.parametrize("texto,esperado", [
+    ("Uno, un, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez.", True),
+    ("Uno, ocho, tres, cuatro, cinco", True),
+    ("entre siete y ocho", False),
+    ("10", False),
+    ("Diez, muy amables todos.", False),
+    ("Un cero, no me gustó nada.", False),
+    ("", False),
+])
+def test_es_conteo(texto, esperado):
+    assert stt.es_conteo(texto) is esperado
+
+
+def test_normalizar_sube_lo_suave_con_tope_y_no_toca_el_silencio():
+    suave = np.full(100, 0.01, dtype=np.float32)
+    assert abs(float(np.max(np.abs(stt._normalizar(suave)))) - 0.08) < 1e-6  # tope: 8 veces
+    medio = np.full(100, 0.25, dtype=np.float32)
+    assert abs(float(np.max(np.abs(stt._normalizar(medio)))) - 0.5) < 1e-6
+    assert float(np.max(np.abs(stt._normalizar(np.zeros(100, dtype=np.float32))))) == 0.0
+
+
+# ───────────────────────────────────────────── respuesta numérica
+def test_una_respuesta_numerica_va_con_las_palabras_posibles_y_sin_el_filtro_de_voz(monkeypatch):
+    modelo = Modelo(lambda kw: ["Diez."])
+    monkeypatch.setattr(stt, "_model", modelo)
+    r = stt._transcribe_sync(PCM, None, numeros=True)
+    assert r.text == "Diez." and len(modelo.llamadas) == 1
+    kw = modelo.llamadas[0]
+    assert kw["hotwords"] == stt.NUMEROS and kw["vad_filter"] is False
+
+
+def test_sin_pregunta_numerica_se_transcribe_como_siempre(monkeypatch):
+    modelo = Modelo(lambda kw: ["buenas tardes"])
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM, None).text == "buenas tardes"
+    assert "hotwords" not in modelo.llamadas[0] and modelo.llamadas[0]["vad_filter"] is True
+
+
+def test_si_whisper_cuenta_se_vuelve_al_camino_de_siempre(monkeypatch):
+    def responder(kw):
+        return ["Uno, un, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez."] if "hotwords" in kw else ["uno, un desastre."]
+
+    modelo = Modelo(responder)
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM, None, numeros=True).text == "uno, un desastre."
+    assert "hotwords" in modelo.llamadas[0] and "hotwords" not in modelo.llamadas[1]
+
+
+def test_si_con_las_palabras_posibles_sale_vacio_se_prueba_como_siempre(monkeypatch):
+    modelo = Modelo(lambda kw: [] if "hotwords" in kw else ["Un 8."])
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM, None, numeros=True).text == "Un 8."
+
+
+# ───────────────────────────────────────────── GPU que falla
+def test_si_la_gpu_se_queda_sin_memoria_la_llamada_sigue_por_cpu(monkeypatch):
+    gpu = Modelo(lambda kw: RuntimeError("CUDA failed with error out of memory"))
+    cpu = Modelo(lambda kw: ["Diez."])
+    monkeypatch.setattr(stt, "_model", gpu)
+    monkeypatch.setattr(stt, "_modelo_cpu", lambda: cpu)
+    assert stt._transcribe_sync(PCM, None, numeros=True).text == "Diez."
+    assert len(gpu.llamadas) == 2  # un reintento: a veces es un pico de otro proceso
+    # Y durante un rato ni se prueba: se va directo a CPU.
+    assert stt._transcribe_sync(PCM, None, numeros=True).text == "Diez."
+    assert len(gpu.llamadas) == 2 and len(cpu.llamadas) == 2
+
+
+def test_si_el_primer_intento_falla_pero_el_segundo_anda_no_se_pasa_a_cpu(monkeypatch):
+    estado = {"n": 0}
+
+    def responder(kw):
+        estado["n"] += 1
+        return RuntimeError("parallel_for failed: cudaErrorInvalidDevice: invalid device ordinal") if estado["n"] == 1 else ["Nueve."]
+
+    gpu = Modelo(responder)
+    monkeypatch.setattr(stt, "_model", gpu)
+    monkeypatch.setattr(stt, "_modelo_cpu", lambda: pytest.fail("no hacía falta la CPU"))
+    assert stt._transcribe_sync(PCM, None, numeros=True).text == "Nueve."
+
+
+def test_un_error_que_no_es_de_la_gpu_no_se_esconde(monkeypatch):
+    monkeypatch.setattr(stt, "_model", Modelo(lambda kw: RuntimeError("audio inválido")))
+    with pytest.raises(RuntimeError, match="audio inválido"):
+        stt._transcribe_sync(PCM, None)
+
+
+def test_pasado_el_castigo_se_vuelve_a_probar_la_gpu(monkeypatch):
+    gpu = Modelo(lambda kw: ["Siete."])
+    monkeypatch.setattr(stt, "_model", gpu)
+    monkeypatch.setattr(stt, "_modelo_cpu", lambda: pytest.fail("la GPU ya andaba"))
+    monkeypatch.setattr(stt, "_gpu_mala_hasta", stt.time.monotonic() - 1)
+    assert stt._transcribe_sync(PCM, None).text == "Siete."

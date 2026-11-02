@@ -41,6 +41,8 @@ log = logging.getLogger(__name__)
 
 # Pausa después de una pregunta, antes de empezar a escuchar. Sin esto el VAD
 # capta el final de la propia voz del bot como si fuera el cliente.
+# Tipos de pregunta que se contestan con un número: ahí Whisper recibe las palabras posibles (ver stt.NUMEROS).
+RESPUESTA_NUMERICA = frozenset({"scale_1_10", "scale_1_5", "numeric"})
 PAUSE_AFTER_PROMPT_MS = 300
 # Un respiro entre la respuesta del cliente y la pregunta que sigue: sin esto el bot arranca
 # la próxima pregunta pisando el final de la respuesta y todo suena atropellado.
@@ -532,7 +534,8 @@ class SurveyDialog:
             confidence = None
 
             if recording.has_audio:
-                result = await stt.transcribe(recording.pcm, self.script.vocabulario)
+                result = await stt.transcribe(
+                    recording.pcm, self.script.vocabulario, numeros=question.qtype in RESPUESTA_NUMERICA)
                 transcript = result.text
                 confidence = result.confidence
 
