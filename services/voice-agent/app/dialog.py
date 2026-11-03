@@ -25,6 +25,7 @@ from app.api_client import (
     FRASE_EMPIEZO,
     FRASE_LLAMAR_DESPUES,
     FRASE_MOTIVO,
+    FRASE_NO_ENTENDI,
     FRASE_RETOMAR,
     FRASE_TRANSFERENCIA_FALLIDA,
     MULETILLA,
@@ -177,6 +178,8 @@ class SurveyDialog:
         # respuesta fue mala, antes de la despedida va FRASE_CIERRE_DISCONFORME.
         self._acuso = False
         self._disconforme = False
+        # La respuesta anterior no se entendió ni repreguntando: la próxima pregunta arranca con FRASE_NO_ENTENDI.
+        self._no_entendida = False
         self._acuses_dichos: list[str] = []  # para no repetir la misma frase en una llamada
         self.outcome = Outcome.PARTIAL
         self.hangup_cause: str | None = None
@@ -492,6 +495,10 @@ class SurveyDialog:
 
         if self.questions_asked > 0:
             await self.socket.play_silence(PAUSE_BEFORE_QUESTION_MS)
+        if self._no_entendida:
+            self._no_entendida = False
+            await _say(self.socket, FRASE_NO_ENTENDI, self._voz)
+            self._acuso = True  # «Perfecto. ¿Y con…?» después de «no le llegué a entender» no va
 
         # Recién se dijo el acuse de la respuesta anterior: la transición fija («Muy bien, gracias.») sobra.
         texto = question.texto_sin_acuse if (self._acuso and question.texto_sin_acuse) else question.text
@@ -640,6 +647,7 @@ class SurveyDialog:
                         question_text=question.text,
                         transcript=transcript,
                         retries_used=retries_used,
+                        question_type=question.qtype,
                     )
                 )
                 await _say(self.socket, MULETILLA, self._voz)
@@ -655,8 +663,10 @@ class SurveyDialog:
             if verdict.understood:
                 self.questions_answered += 1
                 await self._decir_acuse(pedido_acuse, question)
-            elif pedido_acuse is not None:
-                pedido_acuse.cancel()
+            else:
+                if pedido_acuse is not None:
+                    pedido_acuse.cancel()
+                self._no_entendida = True
 
             return True
 
@@ -679,7 +689,8 @@ class SurveyDialog:
         arranque = await _say(self.socket, datos["acuse"], self._voz, interrumpible=repregunta)
         self._acuses_dichos.append(datos["acuse"])
         self._acuso = True
-        if datos.get("banda") == "baja":
+        # Una nota baja o un cliente que no quedó conforme aunque la nota sea media («siete, no tan satisfecho»).
+        if datos.get("banda") == "baja" or datos.get("emocion") in ("enojado", "disconforme"):
             self._disconforme = True
         if repregunta:
             await self._escuchar_motivo(question, arranque)

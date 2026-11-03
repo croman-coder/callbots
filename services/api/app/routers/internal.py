@@ -98,6 +98,9 @@ FRASE_RETOMAR = "Perdón, le decía."
 # Puente antes de la primera pregunta cuando el cliente no contestó el «¿tiene un minutito?» o preguntó algo que no se
 # pudo contestar: arrancar en seco suena a robot. Igual en el voice-agent (api_client.py).
 FRASE_EMPIEZO = "Si me permite, empiezo."
+# Antes de la pregunta que sigue a una respuesta que no se entendió ni repreguntando, en vez de su transición fija
+# («Perfecto. ¿Y con…?»). Igual en el voice-agent (api_client.py).
+FRASE_NO_ENTENDI = "Perdón, no le llegué a entender. Sigamos."
 # La pregunta del saludo, para que Claude sepa a qué volver si el cliente pregunta algo antes de empezar.
 PREGUNTA_DEL_SALUDO = "¿Tiene un minuto para unas preguntas cortas?"
 
@@ -539,6 +542,7 @@ async def conversational_reply(
         pregunta=body.question_text,
         dijo=body.transcript,
         intento=body.retries_used,
+        tipo=body.question_type,
         extra_prompt=getattr(campaign, "conversation_prompt", None),
         conocimiento="\n\n".join(b for b in (
             conocimiento.para_respuesta(db, campaign, f"{body.question_text} {body.transcript}"),
@@ -685,7 +689,7 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
         if not recepcion.es_recepcion(campaign):
             textos += acuse.todas_las_fijas()
             textos += saludo.FIJAS
-            textos += [FRASE_RETOMAR, FRASE_EMPIEZO]
+            textos += [FRASE_RETOMAR, FRASE_EMPIEZO, FRASE_NO_ENTENDI]
         textos.append(FRASE_LLAMAR_DESPUES)
         if recepcion.es_recepcion(campaign):
             textos += list(recepcion.FRASES_FIJAS)

@@ -49,6 +49,11 @@ def _aislar(monkeypatch):
     ("Diez, muy amables todos.", False),
     ("Un cero, no me gustó nada.", False),
     ("", False),
+    # Prueba del 3/11/2026: el «Un uno, un desastre» salió así en CPU. Tres números en orden ya es contar.
+    ("Un uno, uno, dos, cuatro.", True),
+    ("Un uno, uno, dos, tres.", True),
+    ("Del cero al diez, un nueve.", False),
+    ("Uno, uno, uno.", False),
 ])
 def test_es_conteo(texto, esperado):
     assert stt.es_conteo(texto) is esperado
@@ -87,6 +92,31 @@ def test_si_whisper_cuenta_se_vuelve_al_camino_de_siempre(monkeypatch):
     monkeypatch.setattr(stt, "_model", modelo)
     assert stt._transcribe_sync(PCM, None, numeros=True).text == "uno, un desastre."
     assert "hotwords" in modelo.llamadas[0] and "hotwords" not in modelo.llamadas[1]
+
+
+PCM_LARGO = PCM * 3  # 3 s: más que CORTO_SEGUNDOS, así el camino de siempre lleva la guía de los números
+
+
+def test_si_cuenta_con_la_pista_y_con_la_guia_se_transcribe_sin_guia(monkeypatch):
+    # Prueba del 3/11/2026: «Un uno, un desastre» salió «uno, dos, tres… nueve» con la pista y con la guía, y la
+    # respuesta se perdió. Sin guía, con el mismo audio, salió bien las dos veces que se probó.
+    conteo = "Un uno, dos, tres, cuatro, cinco, seis, ocho, nueve."
+
+    def responder(kw):
+        return [conteo] if ("hotwords" in kw or kw.get("initial_prompt")) else ["Un uno, un desastre."]
+
+    modelo = Modelo(responder)
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM_LARGO, None, numeros=True).text == "Un uno, un desastre."
+    assert modelo.llamadas[-1].get("initial_prompt") is None and "hotwords" not in modelo.llamadas[-1]
+
+
+def test_un_telefono_dictado_no_se_toma_por_conteo_fuera_de_una_numerica(monkeypatch):
+    # Un teléfono en dígitos tiene números en orden, pero en una pregunta abierta es la respuesta: no se retranscribe.
+    modelo = Modelo(lambda kw: ["cero nueve ocho uno, dos tres cuatro"])
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM_LARGO, None).text == "cero nueve ocho uno, dos tres cuatro"
+    assert len(modelo.llamadas) == 1
 
 
 def test_si_con_las_palabras_posibles_sale_vacio_se_prueba_como_siempre(monkeypatch):

@@ -175,7 +175,9 @@ def es_eco_del_prompt(texto: str, prompt: str) -> bool:
 # audios guardados: arregló «Dies»→«Diez.», «NERF»→«nueve» y los vacíos, pero con audio dudoso a veces «cuenta»
 # («uno, dos, tres…»): eso se detecta (es_conteo) y se vuelve al camino de siempre.
 NUMEROS = "cero, uno, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez."
-_NUMEROS = {"cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"}
+_VALORES = {p: i for i, p in enumerate(
+    ("cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"))}
+_NUMEROS = set(_VALORES)
 # Lo que se suele contestar al «¿tiene un minutito?», con el mismo truco que los números. El 3/11/2026, de un «sí,
 # tengo» de 1,8 s el filtro de voz dejó medio segundo y Whisper escribió «Gracias.». Sin «gracias» en la lista: es
 # justo lo que Whisper inventa cuando duda.
@@ -184,6 +186,9 @@ RESPUESTAS_SALUDO = "Sí, tengo, dale, claro, bueno, cómo no, adelante, no, aho
 MARGEN_NUMERO_SEGUNDOS = 0.3
 # Con cuántos números distintos se da por hecho que Whisper contó en vez de transcribir (igual que scoring.py).
 CONTEO_MIN = 4
+# O con cuántos en orden creciente: una nota se dice con un número, o con dos («siete u ocho»). El 3/11/2026 el «Un uno,
+# un desastre» salió «Un uno, uno, dos, cuatro.»: tres distintos, y pasaba por respuesta.
+CONTEO_EN_ORDEN = 3
 # Cuánto se espera para volver a probar la GPU después de que falló.
 ESPERA_GPU_MALA_SEGUNDOS = 60.0
 
@@ -192,7 +197,17 @@ def es_conteo(texto: str) -> bool:
     """Whisper devolvió la lista de números («uno, dos, tres, cuatro…») en vez de lo que se dijo."""
     palabras = _palabras(texto)
     hallados = {p for p in palabras if p in _NUMEROS} | {p for p in palabras if p.isdigit() and int(p) <= 10}
-    return len(hallados) >= CONTEO_MIN
+    if len(hallados) >= CONTEO_MIN:
+        return True
+    valores = [_VALORES[p] if p in _VALORES else int(p) for p in palabras
+               if p in _VALORES or (p.isdigit() and int(p) <= 10)]
+    # La subsecuencia creciente más larga: «uno, uno, dos, cuatro» tiene 1-2-4; «del cero al diez, un nueve», 0-10.
+    mas_larga = [1] * len(valores)
+    for i, v in enumerate(valores):
+        for j in range(i):
+            if valores[j] < v:
+                mas_larga[i] = max(mas_larga[i], mas_larga[j] + 1)
+    return max(mas_larga, default=0) >= CONTEO_EN_ORDEN
 
 
 def _normalizar(audio: np.ndarray) -> np.ndarray:
@@ -224,6 +239,11 @@ def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None, numeros: 
     resultado = _transcribir(pcm, prompt, margen=margen)
     if prompt and es_eco_del_prompt(resultado.text, prompt):
         log.info("Whisper devolvió el prompt (%r): se transcribe de nuevo sin él", resultado.text[:60])
+        resultado = _transcribir(pcm, None, margen=margen)
+    elif prompt and numeros and es_conteo(resultado.text):
+        # Contó con la pista y también con la guía: la guía es lo que lo hace contar. Sin ella, el «Un uno, un
+        # desastre» del 3/11/2026 salió bien. Solo en una numérica: un teléfono dictado también tiene números en orden.
+        log.info("Whisper contó también con la guía (%r): se transcribe sin ella", resultado.text[:60])
         resultado = _transcribir(pcm, None, margen=margen)
     if es_alucinacion(resultado.text):
         log.info("Whisper inventó una frase donde había ruido (%r): se descarta", resultado.text[:60])

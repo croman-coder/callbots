@@ -41,6 +41,9 @@ FRASE_RETOMAR = "Perdón, le decía."
 # Puente antes de la primera pregunta si el cliente no contestó el «¿tiene un minutito?» o la API no trajo qué decir:
 # arrancar en seco suena a robot. Igual en la API (routers/internal.py), que la precalienta.
 FRASE_EMPIEZO = "Si me permite, empiezo."
+# Antes de la pregunta que sigue a una respuesta que no se entendió ni repreguntando: arrancar con su transición fija
+# («Perfecto. ¿Y con…?») festeja lo que no se entendió (prueba del 3/11/2026). Igual en la API, que la precalienta.
+FRASE_NO_ENTENDI = "Perdón, no le llegué a entender. Sigamos."
 FRASE_CIERRE_DISCONFORME = "Lamento que la experiencia no haya sido la que esperaba. Le paso sus comentarios al equipo de Calidad."
 # Después de que el cliente contó qué pasó, si la API no contesta (igual que la primera de FIJAS_MOTIVO en acuse.py).
 FRASE_MOTIVO = "Entiendo, gracias por contármelo."
@@ -254,8 +257,10 @@ class ApiClient:
         question_text: str,
         transcript: str,
         retries_used: int,
+        question_type: str = "",
     ) -> str | None:
-        """Qué decirle al cliente cuando no contestó la pregunta.
+        """Qué decirle al cliente cuando no contestó la pregunta. `question_type`: cómo se contesta (la escala), que el
+        texto de la pregunta muchas veces no dice.
 
         Devuelve None si no hay LLM configurado o si falla: el que llama usa
         la frase fija. Nunca se propaga el error, porque del otro lado hay
@@ -268,6 +273,7 @@ class ApiClient:
                     "question_text": question_text,
                     "transcript": transcript,
                     "retries_used": retries_used,
+                    "question_type": question_type,
                 },
             )
             response.raise_for_status()

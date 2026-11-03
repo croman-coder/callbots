@@ -3,7 +3,7 @@ un «Muy bien, gracias» fijo, cierra con empatía si le fue mal, y un ruido cor
 from __future__ import annotations
 
 from app import dialog
-from app.api_client import FRASE_CIERRE_DISCONFORME, Question
+from app.api_client import FRASE_CIERRE_DISCONFORME, FRASE_NO_ENTENDI, Question
 from app.listener import ListenResult, Recording
 from tests.test_buzon_y_transferencia import Api, correr, entorno, guion, habla, silencio, verdict  # noqa: F401
 from tests.test_recepcion import ApiRecepcion, recepcion
@@ -253,3 +253,52 @@ def test_si_la_api_no_contesta_el_motivo_igual_muestra_que_escucho(entorno):
     ])
     correr(guion(questions=preguntas()), api)
     assert dialog.FRASE_MOTIVO in entorno.dichas
+
+
+# ─────────────────────────────────────────────── prueba del 3/11/2026
+# P2 no se entendió (Whisper contó) y P3 arrancó «Perfecto. ¿Y con la atención…?»: festejar lo que no se entendió suena a
+# máquina. Ahora la siguiente reconoce que no se entendió y va sin su transición fija.
+def _perdida_y_otra():
+    return [verdict(understood=False, value=None, should_retry=True),
+            verdict(understood=False, value=None, should_retry=False), verdict(value=10.0)]
+
+
+def test_si_no_se_entendio_la_siguiente_no_arranca_con_perfecto(entorno):
+    entorno.escuchas += [silencio(), habla(2), habla(2), habla(2)]
+    entorno.textos += ["uno, dos, tres, cuatro, cinco", "uno, dos, tres, cuatro", "Diez."]
+    correr(guion(questions=preguntas()), Api(verdicts=_perdida_y_otra()))
+    dicho = " ".join(entorno.dichas)
+    assert FRASE_NO_ENTENDI in dicho and "Muy bien, gracias." not in dicho
+    assert dicho.index(FRASE_NO_ENTENDI) < dicho.index("¿Y con la atención del personal?")
+
+
+def test_si_la_ultima_no_se_entendio_no_dice_sigamos_antes_de_despedirse(entorno):
+    entorno.escuchas += [silencio(), habla(2), habla(2)]
+    entorno.textos += ["uno, dos, tres, cuatro, cinco", "uno, dos, tres, cuatro"]
+    correr(guion(), Api(verdicts=_perdida_y_otra()[:2]))
+    assert FRASE_NO_ENTENDI not in " ".join(entorno.dichas)
+
+
+def test_un_cliente_disconforme_con_nota_media_tambien_cierra_con_empatia(entorno):
+    # «Siete, no tan satisfecho»: no es una nota baja, pero tampoco quedó contento.
+    entorno.escuchas += [silencio(), habla(2)]
+    entorno.textos += ["Siete, no tan satisfecho."]
+    api = Api(verdicts=[verdict(value=7.0)], acuses=[
+        {"acuse": "Entiendo, lamento que no haya sido mejor.", "banda": "media", "emocion": "disconforme"}])
+    correr(guion(), api)
+    dicho = " ".join(entorno.dichas)
+    assert dicho.index(FRASE_CIERRE_DISCONFORME.split(".")[0]) < dicho.rindex("Gracias.")
+
+
+def test_a_claude_se_le_dice_como_se_contesta_la_pregunta(entorno):
+    # La pregunta «¿qué tan satisfecho quedó…?» no dice «del cero al diez»: sin el tipo, Claude no sabe la escala.
+    class ApiQueAnota(Api):
+        async def conversational_reply(self, **kw):
+            self.pedido_reply = kw
+            return None
+
+    entorno.escuchas += [silencio(), habla(2), habla(1)]
+    entorno.textos += ["La verdad que no, no tan satisfecho.", "Cinco."]
+    api = ApiQueAnota(verdicts=[verdict(understood=False, value=None, should_retry=True), verdict(value=5.0)])
+    correr(guion(), api)
+    assert api.pedido_reply["question_type"] == "scale_1_10"

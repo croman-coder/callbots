@@ -89,6 +89,8 @@ class ReplyRequest(BaseModel):
     question_text: str
     transcript: str = ""
     retries_used: int = 0
+    # Cómo se contesta (scale_1_10, yes_no…): el texto de la pregunta muchas veces no dice la escala.
+    question_type: str = ""
 
 
 class GreetingIn(BaseModel):

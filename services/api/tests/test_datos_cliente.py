@@ -104,7 +104,7 @@ def test_claude_recibe_los_datos_del_cliente(Sesion, api, monkeypatch):
     sesion = _con_datos(Sesion)
     visto = {}
 
-    async def falso(pregunta, dijo, intento=0, extra_prompt=None, conocimiento=""):
+    async def falso(pregunta, dijo, intento=0, extra_prompt=None, conocimiento="", tipo=""):
         visto["c"] = conocimiento
         return "Es por su Kardian. ¿Del cero al diez?"
 
@@ -118,7 +118,7 @@ def test_la_prueba_de_un_agente_responde_con_ese_agente_y_no_con_el_primero(Sesi
     cid_b, _ = _agente(Sesion, conversation_prompt="Sos el agente B")
     visto = {}
 
-    async def falso(pregunta, dijo, intento=0, extra_prompt=None, conocimiento=""):
+    async def falso(pregunta, dijo, intento=0, extra_prompt=None, conocimiento="", tipo=""):
         visto["p"] = extra_prompt
         return "ok ¿Del cero al diez?"
 

@@ -19,6 +19,8 @@ silencio por esperar a un tercero.
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 
 from app.services import llm
 
@@ -33,13 +35,15 @@ Tu tarea es contestarle en UNA o DOS oraciones cortas y después volver a la \
 pregunta pendiente.
 
 Reglas que no se negocian:
-- Español rioplatense neutro, tratando de usted.
+- Español de Paraguay, natural, tratando de usted.
 - Máximo 2 oraciones. Lo que escribas se va a leer en voz alta por teléfono: \
 si es largo, el cliente corta.
 - Sin emojis, sin markdown, sin viñetas, sin comillas. Solo texto plano.
 - NUNCA inventes datos: ni precios, ni plazos, ni el estado del vehículo, ni \
-nombres de empleados. Si te preguntan algo que no sabés, decí que un asesor lo \
-va a contactar.
+nombres de empleados. Si te PREGUNTAN algo concreto que no sabés (un precio, un \
+plazo, el estado del vehículo o de un servicio), decí que un asesor lo va a contactar.
+- Ante una queja o un comentario, NO prometas que alguien lo va a llamar o \
+contactar, ni soluciones ni descuentos: mostrá que lo escuchaste y volvé a la pregunta.
 - NUNCA inventes el nombre del taller, de la empresa ni de la marca. Si no \
 figura en el contexto de abajo, decí "el taller" y nada más. Inventar un \
 nombre es peor que no decirlo: el cliente se queda con el dato equivocado.
@@ -55,11 +59,23 @@ def is_configured() -> bool:
     return llm.is_configured()
 
 
-def _build_prompt(pregunta: str, dijo: str, intento: int) -> str:
+# Cómo se contesta cada tipo de pregunta: el texto de la pregunta muchas veces no lo dice («¿qué tan satisfecho
+# quedó…?») y Claude, al volver a preguntar, inventaba la escala.
+ESCALAS = {
+    "scale_1_10": "un número del cero al diez",
+    "scale_1_5": "un número del uno al cinco",
+    "yes_no": "sí o no",
+    "numeric": "un número",
+}
+
+
+def _build_prompt(pregunta: str, dijo: str, intento: int, tipo: str = "") -> str:
     partes = [
         f"Pregunta pendiente de la encuesta: {pregunta}",
         f"Lo que dijo el cliente: {dijo or '(no se entendió nada)'}",
     ]
+    if tipo in ESCALAS:
+        partes.append(f"Se contesta con {ESCALAS[tipo]}.")
     if intento >= 1:
         partes.append(
             "Ya es el segundo intento con esta pregunta: sé más breve y más "
@@ -74,10 +90,12 @@ async def reply(
     intento: int = 0,
     extra_prompt: str | None = None,
     conocimiento: str = "",
+    tipo: str = "",
 ) -> str | None:
     """Qué contestarle al cliente. None si hay que usar la frase fija.
 
-    `conocimiento` es el bloque de la base de conocimiento del agente (app/conocimiento.py), ya armado.
+    `conocimiento` es el bloque de la base de conocimiento del agente (app/conocimiento.py), ya armado. `tipo`: el tipo
+    de la pregunta (QuestionType), para que sepa con qué se contesta.
     """
     if not is_configured():
         return None
@@ -92,8 +110,44 @@ async def reply(
         instruccion += f"\n\n{conocimiento}"
 
     # Un máximo de tokens corto de verdad: esto se sintetiza y se dice por teléfono.
-    texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento), max_tokens=200, tipo="encuesta (respuesta libre)")
-    return _acortar(texto)
+    texto = await llm.complete(instruccion, _build_prompt(pregunta, dijo, intento, tipo), max_tokens=200,
+                               tipo="encuesta (respuesta libre)")
+    return _sin_promesas(_acortar(texto), dijo)
+
+
+# «Un asesor lo va a contactar», «se van a comunicar con usted», «lo llamarán»: solo vale si el cliente preguntó algo
+# que el agente no sabe. El 3/11/2026, a «No, tampoco fue claro» Claude le contestó que un asesor lo iba a contactar, y
+# nadie lo iba a llamar.
+_PROMESA = re.compile(
+    r"\b(?:va|van|vamos|voy)\s+a\s+(?:volver a\s+)?(?:contactar|comunicar|llamar|devolver|poner en contacto)"
+    r"|\b(?:contactar|llamar|comunicar)(?:a|an|e|emos)\b|\bpondr(?:a|an|emos)\s+en\s+contacto"
+)
+_PREGUNTO = re.compile(
+    r"\?|^(?:cuanto|cuando|que|como|donde|cual|quien|por que|para que)\b"
+    r"|\b(?:cuanto|cuando|precio|costo|cuesta|sale|demora|plazo|garantia|turno|presupuesto)\b"
+)
+
+
+def _plano(texto: str) -> str:
+    plano = unicodedata.normalize("NFKD", (texto or "").lower())
+    return "".join(c for c in plano if not unicodedata.combining(c)).strip()
+
+
+def _sin_promesas(texto: str | None, dijo: str) -> str | None:
+    """Saca lo que promete un llamado si el cliente no preguntó nada: de la oración, la parte que lo promete («…, y un
+    asesor lo va a contactar.»), o la oración entera. Si no queda nada, None (va la frase fija)."""
+    if not texto or _PREGUNTO.search(_plano(dijo)):
+        return texto
+    oraciones = []
+    for oracion in re.split(r"(?<=[.!?])\s+", texto):
+        if not _PROMESA.search(_plano(oracion)):
+            oraciones.append(oracion)
+            continue
+        cierre = oracion[-1] if oracion[-1] in ".!?" else "."
+        partes = [p for p in re.split(r",\s*(?:y\s+)?", oracion.rstrip(".!?")) if not _PROMESA.search(_plano(p))]
+        if partes:
+            oraciones.append(", ".join(partes) + cierre)
+    return " ".join(oraciones).strip() or None
 
 
 def _acortar(texto: str | None) -> str | None:

@@ -187,7 +187,7 @@ def test_la_respuesta_en_la_llamada_usa_la_base_del_agente(Sesion, api, monkeypa
     _, sesion = _agente(Sesion, brain_ids=[b.id])
     visto = {}
 
-    async def falso(pregunta, dijo, intento=0, extra_prompt=None, conocimiento=""):
+    async def falso(pregunta, dijo, intento=0, extra_prompt=None, conocimiento="", tipo=""):
         visto["conocimiento"] = conocimiento
         return "Abrimos los sábados de 7 a 12. ¿Del cero al diez, cómo lo atendieron?"
 

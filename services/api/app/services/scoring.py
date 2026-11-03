@@ -240,7 +240,7 @@ def interpret(transcript: str | None, qtype: QuestionType) -> Interpretation:
 
     if qtype is QuestionType.SCALE_1_5:
         value = _extract_number(text, 1, 5)
-        if value is None:
+        if value is None and not calificacion_negada(transcript):
             # "muy bueno" / "excelente" también son respuestas válidas
             value = _qualitative_to_scale(text, 5)
         if value is None:
@@ -249,7 +249,7 @@ def interpret(transcript: str | None, qtype: QuestionType) -> Interpretation:
 
     if qtype is QuestionType.SCALE_1_10:
         value = _extract_number(text, 0, 10)
-        if value is None:
+        if value is None and not calificacion_negada(transcript):
             value = _qualitative_to_scale(text, 10)
         if value is None:
             return Interpretation(understood=False)
@@ -262,6 +262,22 @@ def interpret(transcript: str | None, qtype: QuestionType) -> Interpretation:
         return Interpretation(understood=True, value=float(value))
 
     return Interpretation(understood=False)
+
+
+# Una calificación con un «no» adelante («no tan satisfecho», «no fue tan malo», «ni bien ni mal»). El 3/11/2026 «La
+# verdad que no, no tan satisfecho» se anotó 8: «satisfecho» pesaba más que el «no». Cuánto es «no tan satisfecho» lo
+# sabe solo el cliente, así que no se anota: se le pregunta el número. Va sobre el texto con la puntuación (sin
+# acentos): en «No, muy bien» la coma separa el «no», que contesta otra cosa.
+_CALIFICACION_NEGADA = re.compile(
+    r"\b(?:no|ni|nada|poco|tampoco)\s+"
+    r"(?:(?:tan|tanto|muy|mucho|del todo|estoy|estuve|esta|estuvo|quede|quedo|quedamos|fue|es|era|me|nos|le|lo|la|"
+    r"parecio|parece|resulto|salio|todo)\s+){0,3}"
+    r"(?:satisfech|conforme|content|bien\b|buen|excelente|perfect|mal\b|malo|mala|horrible|terrible|pesim)"
+)
+
+
+def calificacion_negada(transcript: str | None) -> bool:
+    return bool(_CALIFICACION_NEGADA.search(strip_accents((transcript or "").lower())))
 
 
 def _qualitative_to_scale(text: str, top: int) -> int | None:

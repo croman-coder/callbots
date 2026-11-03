@@ -25,8 +25,9 @@ from app.services.scoring import SATISFACTORY_MIN
 
 log = logging.getLogger(__name__)
 
-# Cuánto se espera a Claude. Haiku contesta una frase en ~0,6 a 1 s; más que esto ya es un silencio raro.
-ESPERA_CLAUDE = 1.6
+# Cuánto se espera a Claude. Haiku contesta una frase en 0,9 a 1,1 s (medido el 3/11/2026), pero en la prueba de ese
+# día dos de cuatro pasaron 1,6 s y salió la fija. Más que esto ya es un silencio raro.
+ESPERA_CLAUDE = 2.0
 
 FIJAS = {
     "alta": ["¡Qué bueno escuchar eso!", "¡Me alegra mucho!", "¡Excelente, muchas gracias!"],
@@ -35,6 +36,8 @@ FIJAS = {
              "Entiendo, y lo lamento. Gracias por decírmelo con franqueza."],
     "neutra": ["Muy bien, gracias.", "Perfecto, gracias.", "Bien, gracias."],
     "abierta": ["Gracias por contármelo, lo anoto.", "Entiendo, gracias por su sinceridad."],
+    # No quedó conforme aunque la nota no sea baja («siete, no tan satisfecho»): «Bien, lo anoto.» suena a que no escuchó.
+    "disconforme": ["Entiendo, lamento que no haya sido mejor.", "Comprendo, gracias por decírmelo con sinceridad."],
 }
 
 # Nota baja sin motivo («uno, un desastre»): antes de seguir, se le pregunta qué pasó (reunión del 30/10/2026: «si el
@@ -48,6 +51,14 @@ FIJAS_MOTIVO = ["Entiendo, gracias por contármelo.", "Comprendo, y lamento much
 _ENOJO = re.compile(
     r"\b(pesim|desastre|horrible|terrible|malisim|verguenza|porqueria|indignad|molest|enojad|calentad|hart[oa]s?\b|"
     r"asco|estafa|burla|nunca mas|muy mal\b|re mal\b|mal servicio|mala atencion|una cagada|cualquier cosa)"
+)
+# Disgusto suave: no está enojado, pero tampoco conforme. Va sobre el texto con la puntuación (ver _plano): en «No, muy
+# bien» la coma separa el «no». «Más o menos» no va: «ocho, más o menos» es «aproximadamente ocho».
+_DISGUSTO = re.compile(
+    r"\b(?:no\s+(?:tan|tanto|muy|mucho|del todo|me gusto|me gustaron|quede|quedo|estoy|estuve|fue\s+(?:tan|muy|lo|bueno|"
+    r"buena|claro|clara|bien)|salio bien|era lo que)|tampoco|regular\b|deja(?:ba)?\s+(?:bastante |mucho )?que desear|"
+    r"podria\s+(?:ser|haber sido|estar)\s+mejor|nada\s+(?:claro|clara|bien|content|satisfech|conforme)|"
+    r"poco\s+(?:claro|clara|content|satisfech|conforme))"
 )
 _ALEGRIA = re.compile(
     r"\b(excelente|genial|buenisim|perfect|content[oa]|feliz|encantad|muy bien\b|re bien\b|espectacular|impecable|"
@@ -88,6 +99,12 @@ def _palabras(texto: str) -> list[str]:
     return re.findall(r"[a-z]+|\d+", plano)
 
 
+def _plano(texto: str) -> str:
+    """Minúsculas y sin acentos, pero con la puntuación: para lo que una coma cambia («No, muy bien» / «no muy bien»)."""
+    plano = unicodedata.normalize("NFKD", (texto or "").lower())
+    return "".join(c for c in plano if not unicodedata.combining(c))
+
+
 def dijo_algo_mas(transcripcion: str) -> bool:
     """Si además del puntaje contó algo («uno, me lo devolvieron sucio»): ahí vale la pena que Claude lo retome."""
     resto = [p for p in _palabras(transcripcion) if p not in _PALABRAS_DE_PUNTAJE and not p.isdigit()]
@@ -118,15 +135,17 @@ Respondé solo la frase, sin comillas."""
 
 
 def emocion(valor: float | None, qtype: QuestionType | str, transcripcion: str) -> str:
-    """«enojado», «neutro» o «contento», para el tono del acuse.
+    """«enojado», «disconforme», «neutro» o «contento», para el tono del acuse.
 
-    Las palabras mandan («un desastre», «excelente»); sin ellas, el puntaje: 0 a 3 es enojado, 9 o 10 contento. Una nota
-    alta con quejas («diez, pero la espera fue terrible») queda neutra: ni festejo ni pésame.
+    Las palabras mandan («un desastre», «no tan satisfecho», «excelente»); sin ellas, el puntaje: 0 a 3 es enojado, 9 o
+    10 contento. Una nota alta con quejas («diez, pero la espera fue terrible») queda neutra: ni festejo ni pésame.
     """
     texto = " ".join(_palabras(transcripcion))
     b = banda(valor, qtype)
     if _ENOJO.search(texto):
         return "neutro" if b == "alta" else "enojado"
+    if _DISGUSTO.search(_plano(transcripcion)):
+        return "neutro" if b == "alta" else "disconforme"
     if _ALEGRIA.search(texto) or b == "alta":
         return "contento"
     if b == "baja" and valor is not None and _escala(valor, qtype) <= 3:
@@ -146,10 +165,13 @@ def _escala(valor: float, qtype: QuestionType | str) -> float:
     return valor * 2 if QuestionType(qtype) == QuestionType.SCALE_1_5 and valor <= 5 else valor
 
 
-def fija(valor: float | None, qtype: QuestionType | str, posicion: int, ya_dichos: list[str] | None = None) -> str:
+def fija(valor: float | None, qtype: QuestionType | str, posicion: int, ya_dichos: list[str] | None = None,
+         animo: str = "") -> str:
     """La frase fija de la banda. La posición rota cuál; si esa ya se dijo en la llamada, la siguiente que no. Pasaba
-    que P2 y P5 caían en la misma y el agente repetía «Entiendo, y lo lamento…» dos veces (22/10/2026)."""
-    opciones = FIJAS[banda(valor, qtype)]
+    que P2 y P5 caían en la misma y el agente repetía «Entiendo, y lo lamento…» dos veces (22/10/2026). Si no quedó
+    conforme y la nota no es baja (las de la baja ya son de empatía), una de las del disconforme."""
+    b = banda(valor, qtype)
+    opciones = FIJAS["disconforme" if animo == "disconforme" and b != "baja" else b]
     dichos = set(ya_dichos or [])
     for i in range(len(opciones)):
         candidata = opciones[(posicion + i) % len(opciones)]
@@ -200,7 +222,7 @@ async def responder(pregunta: str, qtype: QuestionType | str, transcripcion: str
     if repreguntar(valor, qtype, transcripcion, ya_dichos):
         texto = REPREGUNTAS[posicion % len(REPREGUNTAS)]
         return {"acuse": texto, "banda": b, "emocion": animo, "repregunta": True}
-    base = fija(valor, qtype, posicion, ya_dichos)
+    base = fija(valor, qtype, posicion, ya_dichos, animo)
     salida = {"acuse": base, "banda": b, "emocion": animo, "repregunta": False}
     if not llm.is_configured() or not (b == "abierta" or dijo_algo_mas(transcripcion)):
         return salida
