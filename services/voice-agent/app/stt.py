@@ -66,7 +66,7 @@ def load_model() -> None:
         if config.whisper_device != "cpu":
             log.error("Whisper no arrancó en %s (%s). Cayendo a CPU.", config.whisper_device, exc)
             _model = WhisperModel(
-                config.whisper_model,
+                config.whisper_cpu_model,
                 device="cpu",
                 compute_type="int8",
                 download_root="/models/whisper",
@@ -77,6 +77,23 @@ def load_model() -> None:
 
     _calentar()
     log.info("Whisper listo")
+    if _model is not _cpu_model:
+        # En un hilo aparte: el arranque no espera, y si la GPU falla antes de que esté, _modelo_cpu espera el lock.
+        threading.Thread(target=_preparar_respaldo_cpu, name="whisper-cpu", daemon=True).start()
+
+
+def _preparar_respaldo_cpu() -> None:
+    """Carga y calienta el Whisper de CPU. El 3/11/2026 la GPU se quedó sin memoria en plena llamada: el respaldo se
+    cargó recién ahí (3 s) y corrió en frío (7,7 s), y el cliente esperó 12 s en silencio. Cuesta ~1 GB de RAM."""
+    inicio = time.monotonic()
+    try:
+        modelo = _modelo_cpu()
+        ruido = (np.random.default_rng(0).standard_normal(WHISPER_SAMPLE_RATE * 2) * 0.01).astype(np.float32)
+        segmentos, _ = modelo.transcribe(ruido, language=config.whisper_language, beam_size=5, vad_filter=False)
+        list(segmentos)
+        log.info("Respaldo de Whisper en CPU listo en %.1f s", time.monotonic() - inicio)
+    except Exception as exc:  # noqa: BLE001 - es un respaldo: si no se puede preparar, se carga cuando haga falta
+        log.warning("No se pudo preparar el respaldo de Whisper en CPU (%s)", exc)
 
 
 def _calentar() -> None:
@@ -258,8 +275,9 @@ def _modelo_cpu():
         if _cpu_model is None:
             from faster_whisper import WhisperModel
 
-            log.warning("Cargando Whisper %s en CPU como respaldo de la GPU...", config.whisper_model)
-            _cpu_model = WhisperModel(config.whisper_model, device="cpu", compute_type="int8", download_root="/models/whisper")
+            log.warning("Cargando Whisper %s en CPU como respaldo de la GPU...", config.whisper_cpu_model)
+            _cpu_model = WhisperModel(config.whisper_cpu_model, device="cpu", compute_type="int8",
+                                      download_root="/models/whisper")
         return _cpu_model
 
 

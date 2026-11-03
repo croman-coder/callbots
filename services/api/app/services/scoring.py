@@ -240,6 +240,8 @@ def interpret(transcript: str | None, qtype: QuestionType) -> Interpretation:
 
     if qtype is QuestionType.SCALE_1_5:
         value = _extract_number(text, 1, 5)
+        if value is None and _SOLO_NUNCA.match(text):
+            value = 1
         if value is None and not calificacion_negada(transcript):
             # "muy bueno" / "excelente" también son respuestas válidas
             value = _qualitative_to_scale(text, 5)
@@ -249,6 +251,8 @@ def interpret(transcript: str | None, qtype: QuestionType) -> Interpretation:
 
     if qtype is QuestionType.SCALE_1_10:
         value = _extract_number(text, 0, 10)
+        if value is None and _SOLO_NUNCA.match(text):
+            value = 0
         if value is None and not calificacion_negada(transcript):
             value = _qualitative_to_scale(text, 10)
         if value is None:
@@ -271,9 +275,15 @@ def interpret(transcript: str | None, qtype: QuestionType) -> Interpretation:
 _CALIFICACION_NEGADA = re.compile(
     r"\b(?:no|ni|nada|poco|tampoco)\s+"
     r"(?:(?:tan|tanto|muy|mucho|del todo|estoy|estuve|esta|estuvo|quede|quedo|quedamos|fue|es|era|me|nos|le|lo|la|"
-    r"parecio|parece|resulto|salio|todo)\s+){0,3}"
-    r"(?:satisfech|conforme|content|bien\b|buen|excelente|perfect|mal\b|malo|mala|horrible|terrible|pesim)"
+    r"parecio|parece|resulto|salio|todo|un|una)\s+){0,3}"
+    r"(?:satisfech|conforme|content|bien\b|buen|excelente|perfect|mal\b|malo|mala|horrible|terrible|pesim|desastre|"
+    r"asco|fatal|porqueria)"
 )
+
+
+# «Nunca.» o «Jamás.» como respuesta entera (a «¿qué tan probable es que nos recomiende?», 3/11/2026): la nota más baja.
+# Solo sola: «nunca tuve problemas» dice otra cosa.
+_SOLO_NUNCA = re.compile(r"^(?:no )?(?:nunca|jamas)(?: (?:jamas|nunca|mas|en la vida))?$")
 
 
 def calificacion_negada(transcript: str | None) -> bool:
@@ -287,16 +297,22 @@ def _qualitative_to_scale(text: str, top: int) -> int | None:
         (("muy bueno", "muy buena", "muy bien", "muy conforme"), 0.9),
         (("bueno", "buena", "bien", "conforme", "satisfecho"), 0.75),
         (("normal", "regular", "mas o menos", "ahi nomas", "aceptable"), 0.5),
+        # Antes que «malo»: «muy malo» es un 0, no un 2.
+        (("pesimo", "pesima", "horrible", "terrible", "muy malo", "muy mala", "malisimo", "malisima", "desastre",
+          "asco", "fatal", "porqueria"), 0.0),
         (("malo", "mala", "mal", "no me gusto", "deficiente"), 0.25),
-        (("pesimo", "horrible", "terrible", "muy malo", "malisimo"), 0.0),
     ]
-    # De la frase más específica a la más genérica
-    for phrases, ratio in scale_map:
-        for phrase in phrases:
-            if phrase in text:
-                lowest = 0 if top == 10 else 1
-                return round(lowest + ratio * (top - lowest))
-    return None
+    # Palabras enteras: «también» tiene «bien» adentro, y «También un desastre» se anotaba 8 (3/11/2026).
+    halladas = [ratio for phrases, ratio in scale_map for phrase in phrases
+                if re.search(rf"\b{re.escape(phrase)}\b", text)]
+    if not halladas:
+        return None
+    # Algo bueno y algo malo a la vez («bueno, un desastre», «bien, pero no me gustó la espera»): no se adivina.
+    if max(halladas) >= 0.75 and min(halladas) <= 0.25:
+        return None
+    lowest = 0 if top == 10 else 1
+    # De la frase más específica a la más genérica (el orden de la tabla)
+    return round(lowest + halladas[0] * (top - lowest))
 
 
 def to_scale_10(value: float, qtype: QuestionType) -> float | None:

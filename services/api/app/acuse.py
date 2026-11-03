@@ -171,7 +171,8 @@ def fija(valor: float | None, qtype: QuestionType | str, posicion: int, ya_dicho
     que P2 y P5 caían en la misma y el agente repetía «Entiendo, y lo lamento…» dos veces (22/10/2026). Si no quedó
     conforme y la nota no es baja (las de la baja ya son de empatía), una de las del disconforme."""
     b = banda(valor, qtype)
-    opciones = FIJAS["disconforme" if animo == "disconforme" and b != "baja" else b]
+    # Enojado con nota media («siete, la atención un desastre»): tampoco va «Bien, lo anoto.».
+    opciones = FIJAS["disconforme" if animo in ("disconforme", "enojado") and b not in ("baja", "alta") else b]
     dichos = set(ya_dichos or [])
     for i in range(len(opciones)):
         candidata = opciones[(posicion + i) % len(opciones)]

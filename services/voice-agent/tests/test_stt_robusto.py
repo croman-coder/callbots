@@ -2,6 +2,7 @@
 palabras posibles («Dies», «Vies» o nada, en vez de «Diez»)."""
 from __future__ import annotations
 
+import sys
 import types
 
 import numpy as np
@@ -199,3 +200,53 @@ def test_el_camino_de_siempre_sube_una_respuesta_dicha_bajito(monkeypatch):
     bajito = (np.sin(np.arange(SAMPLE_RATE) / 5) * 1000).astype(np.int16).tobytes()  # pico de 0,03 (-30 dBFS)
     stt._transcribe_sync(bajito, None)
     assert picos[0] > 0.2  # sin subirlo, el filtro de voz de Whisper lo tomaba por silencio
+
+
+# ───────────────────────────────────────────── respaldo en CPU listo desde el arranque
+# Prueba del 3/11/2026: la GPU se quedó sin memoria en plena llamada y el respaldo en CPU recién se cargó ahí (3 s) y
+# corrió en frío (7,7 s): 12 s de silencio. Ahora se carga y se calienta al arrancar, sin demorar el arranque.
+class Fabrica:
+    """Reemplaza a faster_whisper.WhisperModel y anota qué modelos se crearon."""
+
+    def __init__(self):
+        self.creados = []
+
+    def __call__(self, nombre, device, compute_type, download_root):
+        modelo = Modelo(lambda kw: ["ok"])
+        modelo.nombre, modelo.device = nombre, device
+        self.creados.append(modelo)
+        return modelo
+
+
+@pytest.fixture
+def fabrica(monkeypatch):
+    f = Fabrica()
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=f))
+    monkeypatch.setattr(stt, "_model", None)
+
+    class HiloInmediato:
+        def __init__(self, target, **kw):
+            self.target = target
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(stt.threading, "Thread", HiloInmediato)
+    return f
+
+
+def test_al_arrancar_en_gpu_queda_listo_y_caliente_el_respaldo_en_cpu(fabrica):
+    stt.load_model()
+    cpu = [m for m in fabrica.creados if m.device == "cpu"]
+    assert len(cpu) == 1 and stt._cpu_model is cpu[0]
+    assert len(cpu[0].llamadas) == 1  # ya corrió una vez: la primera en frío no la paga un cliente
+
+
+def test_el_respaldo_en_cpu_es_un_modelo_liviano_aunque_la_gpu_use_uno_grande(fabrica, monkeypatch):
+    object.__setattr__(stt.config, "whisper_model", "large-v3")
+    try:
+        stt.load_model()
+    finally:
+        object.__setattr__(stt.config, "whisper_model", "medium")
+    assert {(m.nombre, m.device) for m in fabrica.creados} == {("large-v3", "cuda"), (stt.config.whisper_cpu_model, "cpu")}
+    assert stt.config.whisper_cpu_model == "medium"

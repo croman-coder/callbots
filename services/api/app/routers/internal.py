@@ -25,7 +25,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import acuse, conocimiento, datos_cliente, entrantes, fuentes, pronunciaciones, recepcion, saludo, vocabulario
+from app import acuse, conocimiento, datos_cliente, entender, entrantes, fuentes, pronunciaciones, recepcion, saludo, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -54,7 +54,7 @@ from app.schemas import (
     SurveyScript,
 )
 from app.services import conversation
-from app.services.scoring import detect_baja, detect_ocupado, interpret
+from app.services.scoring import detect_baja, detect_ocupado
 from app.services.transferir import pide_persona
 
 log = logging.getLogger(__name__)
@@ -291,7 +291,7 @@ def session_started(
 
 # ---------------------------------------------------------------------------
 @router.post("/sessions/{session_uuid}/answers", response_model=AnswerResult)
-def submit_answer(
+async def submit_answer(
     session_uuid: uuid_mod.UUID,
     payload: AnswerIn,
     db: Session = Depends(get_db),
@@ -304,7 +304,9 @@ def submit_answer(
     if question is None:
         raise HTTPException(404, f"Pregunta {payload.question_id} inexistente")
 
-    result = interpret(payload.transcript, question.qtype)
+    # Las reglas y, si no alcanzan, Claude (app/entender.py). La misma clave que /acuse: ven la misma nota.
+    result = await entender.entender(payload.transcript, question.qtype, question.text,
+                                     (session_uuid, question.id, payload.transcript))
 
     # Repreguntar solo si no se entendió y todavía quedan reintentos
     should_retry = (
@@ -351,7 +353,7 @@ def submit_answer(
     answer.duration_seconds = payload.duration_seconds
     answer.retries_used = payload.retries_used
     answer.value_numeric = result.value
-    answer.value_source = "rules" if result.understood else None
+    answer.value_source = result.source if result.understood else None
 
     if existing is None:
         db.add(answer)
@@ -485,7 +487,8 @@ async def acuse_de_respuesta(session_uuid: uuid_mod.UUID, body: AcuseIn, db: Ses
     question = db.get(Question, body.question_id)
     if question is None:
         raise HTTPException(404, f"Pregunta {body.question_id} inexistente")
-    valor = interpret(body.transcript, question.qtype).value
+    valor = (await entender.entender(body.transcript, question.qtype, question.text,
+                                     (session_uuid, question.id, body.transcript))).value
     respuesta = await acuse.responder(question.text, question.qtype, body.transcript, valor, question.position,
                                       [t[:200] for t in body.ya_dichos])
     log.info("Sesión %s P%s: acuse %s, cliente %s%s -> %r", session_uuid, question.position, respuesta["banda"],

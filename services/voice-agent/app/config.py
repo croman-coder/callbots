@@ -31,6 +31,8 @@ class Config:
 
     # --- STT ---
     whisper_model: str = os.getenv("WHISPER_MODEL", "medium")
+    # El respaldo en CPU cuando la GPU falla: liviano, para que una respuesta no tarde más de un par de segundos.
+    whisper_cpu_model: str = os.getenv("WHISPER_CPU_MODEL", "medium")
     whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
     whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
     whisper_language: str = os.getenv("WHISPER_LANGUAGE", "es")
