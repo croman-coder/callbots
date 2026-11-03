@@ -225,7 +225,7 @@
       <p class="hint">Los clientes se cargan en <a class="link" href="/targets#cargar">Destinatarios</a> (Excel o lista) o llegan solos desde Bitrix24 con esta regla:</p>
       <div class="fila-campos">
         <label>entityTypeId <input type="number" name="bitrix_entity_type_id" value="{{ campaign.bitrix_entity_type_id }}" required></label>
-        <label>Campo disparador <input type="text" name="trigger_field" value="{{ campaign.trigger_field }}" required spellcheck="false"></label>
+        <label>Campo disparador <input type="text" name="trigger_field" value="{{ campaign.trigger_field }}" placeholder="vacío si cargás por Excel" spellcheck="false"></label>
         <label>Demora (horas) <input type="number" name="delay_hours" min="0" max="720" value="{{ campaign.delay_hours }}" required></label>
       </div>
       <label class="etiqueta" for="c-vars-bitrix">Campos de Bitrix que se usan en el guion <span class="hint">· uno por línea: variable = código del campo</span></label>

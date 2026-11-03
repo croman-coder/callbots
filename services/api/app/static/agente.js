@@ -291,6 +291,17 @@
       .then(function () { gen.disabled = false; });
   });
 
+  // ------------------------------------------------------------ Campos obligatorios en secciones cerradas
+  // Si un campo obligatorio vacío está dentro de un <details> cerrado, el navegador no puede mostrar su
+  // aviso, no envía el formulario y «Guardar cambios» parece muerto. Se abre la sección para que se vea.
+  var ficha = document.getElementById("ficha");
+  if (ficha) {
+    ficha.addEventListener("invalid", function (e) {
+      var d = e.target.closest ? e.target.closest("details") : null;
+      while (d) { d.open = true; d = d.parentElement ? d.parentElement.closest("details") : null; }
+    }, true);
+  }
+
   // ------------------------------------------------------------ Selector de voces
   var dlgVoces = document.getElementById("voces");
   var audioMuestra = null, botonSonando = null;

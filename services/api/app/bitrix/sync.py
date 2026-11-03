@@ -223,8 +223,9 @@ def sync_campaign(db: Session, campaign: Campaign, client: BitrixClient) -> Sync
 
 
 def sync_all_campaigns(db: Session) -> list[SyncReport]:
+    # Sin campo disparador la campaña se alimenta por Excel o lista: no hay nada que pedirle a Bitrix.
     campaigns = db.scalars(
-        select(Campaign).where(Campaign.is_active.is_(True))
+        select(Campaign).where(Campaign.is_active.is_(True), Campaign.trigger_field != "")
     ).all()
 
     if not campaigns:

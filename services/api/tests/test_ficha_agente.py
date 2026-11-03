@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import socket
 import threading
 import uuid
@@ -102,6 +103,52 @@ def test_guardar_rechaza_lo_invalido(cliente, base, datos, motivo):
 def test_un_valor_mal_escrito_vuelve_con_el_aviso(cliente, datos):
     r = cliente.post("/campaigns/1/guardar", data={"tab": "configuracion", **datos}, headers=H)
     assert r.status_code == 303 and "error=" in r.headers["location"]
+
+
+def test_el_campo_disparador_no_es_obligatorio_en_la_ficha(cliente):
+    # Está en una sección cerrada: si fuera obligatorio y estuviera vacío, el navegador no enviaría el
+    # formulario ni mostraría el aviso, y «Guardar cambios» parecería muerto.
+    html = cliente.get("/campaigns/1?tab=configuracion").text
+    etiqueta = re.search(r'<input[^>]*name="trigger_field"[^>]*>', html).group(0)
+    assert "required" not in etiqueta
+
+
+def test_se_guarda_la_voz_con_el_disparador_vacio(cliente, base):
+    s = base()
+    s.get(Campaign, 1).trigger_field = ""
+    s.commit()
+    r = cliente.post("/campaigns/1/guardar", headers=H,
+                     data={"tab": "configuracion", "trigger_field": "", "voice_profile_id": "vs:abc123"})
+    assert r.status_code == 303 and "ok=" in r.headers["location"]
+    c = base().get(Campaign, 1)
+    assert c.voice_profile_id == "vs:abc123" and c.trigger_field == ""
+
+
+def test_el_sync_de_bitrix_saltea_los_agentes_sin_disparador(base, monkeypatch):
+    from app.bitrix import sync
+
+    s = base()
+    s.add(Campaign(name="Por Excel", description="Sin Bitrix", bitrix_entity_type_id=2,
+                   trigger_field="", delay_hours=0, is_active=True))
+    s.get(Campaign, 1).is_active = True
+    s.commit()
+    vistas = []
+
+    class ClienteFalso:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def sincronizar(db, campaign, client):
+        vistas.append(campaign.name)
+        return sync.SyncReport(campaign_id=campaign.id, campaign_name=campaign.name)
+
+    monkeypatch.setattr(sync, "BitrixClient", ClienteFalso)
+    monkeypatch.setattr(sync, "sync_campaign", sincronizar)
+    sync.sync_all_campaigns(s)
+    assert vistas == ["Posventa"]
 
 
 def test_dias_y_topes(cliente, base):
