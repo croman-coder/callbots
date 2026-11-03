@@ -176,6 +176,10 @@ def es_eco_del_prompt(texto: str, prompt: str) -> bool:
 # («uno, dos, tres…»): eso se detecta (es_conteo) y se vuelve al camino de siempre.
 NUMEROS = "cero, uno, dos, tres, cuatro, cinco, seis, siete, ocho, nueve, diez."
 _NUMEROS = {"cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez"}
+# Lo que se suele contestar al «¿tiene un minutito?», con el mismo truco que los números. El 3/11/2026, de un «sí,
+# tengo» de 1,8 s el filtro de voz dejó medio segundo y Whisper escribió «Gracias.». Sin «gracias» en la lista: es
+# justo lo que Whisper inventa cuando duda.
+RESPUESTAS_SALUDO = "Sí, tengo, dale, claro, bueno, cómo no, adelante, no, ahora no puedo, estoy ocupado, ¿quién habla?"
 # Aire que se le deja a una respuesta numérica a cada lado (siempre: «diez» dura 0,5 s y el final suena a «s»).
 MARGEN_NUMERO_SEGUNDOS = 0.3
 # Con cuántos números distintos se da por hecho que Whisper contó en vez de transcribir (igual que scoring.py).
@@ -200,12 +204,19 @@ def _normalizar(audio: np.ndarray) -> np.ndarray:
     return audio * min(0.5 / pico, 8.0)
 
 
-def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None, numeros: bool = False) -> Transcription:
+def _transcribe_sync(pcm: bytes, vocabulario: list[str] | None = None, numeros: bool = False,
+                     saludo: bool = False) -> Transcription:
     if numeros:
-        resultado = _transcribir_numero(pcm)
+        resultado = _transcribir_con_pista(pcm, NUMEROS)
         if resultado.text and not es_conteo(resultado.text) and not es_alucinacion(resultado.text):
             return resultado
         log.info("Respuesta numérica: %r no sirve, se transcribe como siempre", resultado.text[:60])
+    elif saludo:
+        resultado = _transcribir_con_pista(pcm, RESPUESTAS_SALUDO)
+        if (resultado.text and not es_alucinacion(resultado.text)
+                and not es_eco_del_prompt(resultado.text, RESPUESTAS_SALUDO)):
+            return resultado
+        log.info("Respuesta al saludo: %r no sirve, se transcribe como siempre", resultado.text[:60])
     duracion = len(pcm) / (SAMPLE_RATE * 2)
     corto = duracion < CORTO_SEGUNDOS
     margen = duracion < MARGEN_HASTA
@@ -275,20 +286,22 @@ def _decodificar(audio: np.ndarray, **kwargs) -> list[tuple[str, float | None]]:
     return _correr(_model if en_cpu else _modelo_cpu(), audio, kwargs)
 
 
-def _transcribir_numero(pcm: bytes) -> Transcription:
-    """Respuesta a una pregunta que se contesta con un número: sin el filtro de voz de Whisper (la respuesta ya llega
-    recortada por la escucha, y el filtro se comía la «z» final), con aire a los lados, el nivel parejo y las palabras
-    posibles como `hotwords`."""
+def _transcribir_con_pista(pcm: bytes, pista: str) -> Transcription:
+    """Respuesta corta con pocas respuestas posibles (un número, el sí o el no del saludo): sin el filtro de voz de
+    Whisper (la respuesta ya llega recortada por la escucha, y el filtro se comía la «z» final de «diez» y el «sí»
+    corto), con aire a los lados, el nivel parejo y las respuestas posibles como `hotwords`."""
     duration = len(pcm) / (SAMPLE_RATE * 2)
     aire = np.zeros(int(WHISPER_SAMPLE_RATE * MARGEN_NUMERO_SEGUNDOS), dtype=np.float32)
     audio = np.concatenate([aire, _normalizar(_pcm_to_float32(pcm)), aire])
-    partes = _decodificar(audio, vad_filter=False, hotwords=NUMEROS)
+    partes = _decodificar(audio, vad_filter=False, hotwords=pista)
     return _armar(partes, duration)
 
 
 def _transcribir(pcm: bytes, prompt: str | None, margen: bool = False) -> Transcription:
     duration = len(pcm) / (SAMPLE_RATE * 2)
-    audio = _pcm_to_float32(pcm)
+    # Nivel parejo antes del filtro de voz: una respuesta dicha bajito (-27 dBFS de pico el 3/11/2026) el filtro la
+    # tomaba por silencio y la tiraba entera.
+    audio = _normalizar(_pcm_to_float32(pcm))
     if margen:
         aire = np.zeros(int(WHISPER_SAMPLE_RATE * MARGEN_SEGUNDOS), dtype=np.float32)
         audio = np.concatenate([aire, audio, aire])
@@ -320,9 +333,11 @@ def _armar(partes: list[tuple[str, float | None]], duration: float) -> Transcrip
     return Transcription(text=text, confidence=confidence, duration=duration)
 
 
-async def transcribe(pcm: bytes, vocabulario: list[str] | None = None, numeros: bool = False) -> Transcription:
-    """Transcribe en un thread aparte: el modelo bloquea el event loop. `numeros`: la pregunta se contesta con un número."""
+async def transcribe(pcm: bytes, vocabulario: list[str] | None = None, numeros: bool = False,
+                     saludo: bool = False) -> Transcription:
+    """Transcribe en un thread aparte: el modelo bloquea el event loop. `numeros`: la pregunta se contesta con un número.
+    `saludo`: es la respuesta al «¿tiene un minutito?»."""
     if len(pcm) < MIN_SEGUNDOS * SAMPLE_RATE * 2:  # un golpe, no una palabra: no hay nada que transcribir
         return Transcription(text="", confidence=None, duration=len(pcm) / (SAMPLE_RATE * 2))
 
-    return await asyncio.to_thread(_transcribe_sync, pcm, vocabulario, numeros)
+    return await asyncio.to_thread(_transcribe_sync, pcm, vocabulario, numeros, saludo)

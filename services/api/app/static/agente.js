@@ -446,7 +446,9 @@
     paso("llamando");
     // Sin control automático de ganancia: cuando la persona calla, el navegador sube el volumen y el ruido de la oficina
     // llega al agente como si siguiera hablando (22/10/2026: cada «cero» se escuchaba 15 s, hasta el tope).
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } })
+    // Con volumen automático: sin él, un micrófono bajo llegaba a -27 dBFS de pico y Whisper entendía «Gracias.» por
+    // «sí, tengo» (3/11/2026). En una llamada real el nivel lo pone la red telefónica; acá lo pone el navegador.
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
       .then(function (stream) {
         mic = stream;
         ctx = new (window.AudioContext || window.webkitAudioContext)();

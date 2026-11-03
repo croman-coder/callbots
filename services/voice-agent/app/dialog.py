@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from app import buzon, stt, tts
 from app.api_client import (
     FRASE_CIERRE_DISCONFORME,
+    FRASE_EMPIEZO,
     FRASE_LLAMAR_DESPUES,
     FRASE_MOTIVO,
     FRASE_RETOMAR,
@@ -424,6 +425,10 @@ class SurveyDialog:
         Lo que conteste se transcribe y la API decide (reglas primero; Claude solo si preguntó algo): «sí, dale» o
         nada → sigue; «ahora no puedo» → corta amable y se lo llama en otro momento; «no me llamen» → frase de baja;
         pide un asesor → se transfiere; pregunta → se le contesta y se vuelve a escuchar, una sola vez.
+
+        Antes de la primera pregunta siempre se dice algo: el agradecimiento que manda la API («¡Perfecto, muchas
+        gracias!») o, si no contestó o la API no trajo qué decir, un puente («Si me permite, empiezo.»). El 3/11/2026 el
+        cliente dijo «sí, tengo» y el agente largó la primera pregunta en seco.
         """
         intro = _personalize(self.script.intro_script, self.script.contact_name)
         await _say(self.socket, intro, self._voz)
@@ -433,12 +438,14 @@ class SurveyDialog:
             if recording.result is ListenResult.HANGUP:
                 raise AudioSocketClosed("cortó durante la presentación")
             if not recording.has_audio:
-                return True  # no dijo nada: se arranca
+                await self._antes_de_empezar(FRASE_EMPIEZO)  # no dijo nada: se arranca, pero no en seco
+                return True
 
-            transcript = (await stt.transcribe(recording.pcm, self.script.vocabulario)).text.strip()
+            transcript = (await stt.transcribe(recording.pcm, self.script.vocabulario, saludo=True)).text.strip()
             await self.socket.send_event("cliente", transcript)
             log.info("[%s] Saludo -> %r", self.session_uuid, transcript)
             if not transcript:
+                await self._antes_de_empezar(FRASE_EMPIEZO)
                 return True
 
             pedido = asyncio.create_task(self.api.greeting(self.session_uuid, transcript))
@@ -465,8 +472,15 @@ class SurveyDialog:
             if accion == "responder" and decision.get("respuesta") and intento == 0:
                 await _say(self.socket, decision["respuesta"], self._voz)
                 continue  # se escucha de nuevo: la respuesta vuelve a pedir el minuto
+            await self._antes_de_empezar(decision.get("decir") or FRASE_EMPIEZO)
             return True
         return True
+
+    async def _antes_de_empezar(self, texto: str) -> None:
+        """Lo que se dice entre el «¿tiene un minutito?» y la primera pregunta. Cuenta como acuse: la transición fija de
+        la primera pregunta («Muy bien, gracias. ¿…?») sobra después de esto."""
+        await _say(self.socket, texto, self._voz)
+        self._acuso = True
 
     # ------------------------------------------------------------------
     async def _ask(self, question: Question) -> bool:

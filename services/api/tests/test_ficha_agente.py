@@ -8,6 +8,7 @@ import re
 import socket
 import threading
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -149,6 +150,13 @@ def test_el_sync_de_bitrix_saltea_los_agentes_sin_disparador(base, monkeypatch):
     monkeypatch.setattr(sync, "sync_campaign", sincronizar)
     sync.sync_all_campaigns(s)
     assert vistas == ["Posventa"]
+
+
+def test_la_prueba_del_navegador_pide_el_microfono_con_volumen_automatico():
+    # 3/11/2026: la respuesta llegó con pico de -27 dBFS y Whisper entendió «Gracias.» por «sí, tengo».
+    js = (Path(agente.__file__).resolve().parents[1] / "static" / "agente.js").read_text(encoding="utf-8")
+    pedido = re.search(r"getUserMedia\(\{\s*audio:\s*\{([^}]*)\}", js).group(1)
+    assert "autoGainControl: true" in pedido
 
 
 def test_dias_y_topes(cliente, base):

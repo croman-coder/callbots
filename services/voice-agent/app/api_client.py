@@ -38,6 +38,9 @@ FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga 
 # Igual en la API (app/acuse.py), que la precalienta.
 # Cuando lo interrumpió un golpe y se retoma la pregunta. Igual en la API (routers/internal.py), que la precalienta.
 FRASE_RETOMAR = "Perdón, le decía."
+# Puente antes de la primera pregunta si el cliente no contestó el «¿tiene un minutito?» o la API no trajo qué decir:
+# arrancar en seco suena a robot. Igual en la API (routers/internal.py), que la precalienta.
+FRASE_EMPIEZO = "Si me permite, empiezo."
 FRASE_CIERRE_DISCONFORME = "Lamento que la experiencia no haya sido la que esperaba. Le paso sus comentarios al equipo de Calidad."
 # Después de que el cliente contó qué pasó, si la API no contesta (igual que la primera de FIJAS_MOTIVO en acuse.py).
 FRASE_MOTIVO = "Entiendo, gracias por contármelo."

@@ -6,8 +6,10 @@ import uuid
 
 import pytest
 
+from app import saludo
 from app.models import SurveyTarget, TargetStatus
-from app.services import conversation, scoring
+from app.routers.internal import FRASE_EMPIEZO
+from app.services import conversation, llm, scoring
 from tests.test_buzon_y_transferencia import INTERNO, Sesion, _agente, _responder, api  # noqa: F401  (fixtures)
 
 
@@ -47,8 +49,9 @@ def _estado(S, sesion):
 
 def test_si_dale_sigue(Sesion, api):
     _, sesion = _agente(Sesion)
-    assert _saludo(api, sesion, "Sí, dale") == {"accion": "seguir"}
-    assert _saludo(api, sesion, "") == {"accion": "seguir"}
+    r = _saludo(api, sesion, "Sí, dale")
+    assert r["accion"] == "seguir" and r["decir"] in saludo.FIJAS  # se le agradece antes de la primera pregunta
+    assert _saludo(api, sesion, "") == {"accion": "seguir"}  # en silencio el agente dice su propio puente
 
 
 def test_no_me_llamen_da_de_baja(Sesion, api):
@@ -92,7 +95,80 @@ def test_si_claude_no_contesta_se_sigue(Sesion, api, monkeypatch):
 
     monkeypatch.setattr(conversation, "reply", nada)
     _, sesion = _agente(Sesion)
-    assert _saludo(api, sesion, "¿Quién habla?") == {"accion": "seguir"}
+    # Preguntó algo y no hubo respuesta: ni «¡Perfecto, gracias!» (no dijo que sí) ni arrancar en seco.
+    assert _saludo(api, sesion, "¿Quién habla?") == {"accion": "seguir", "decir": FRASE_EMPIEZO}
+
+
+# ─────────────────────────────────────────────── seguir el hilo después del «¿tiene un minutito?»
+# Prueba del 3/11/2026: el cliente dijo que sí y el agente largó «Primero, ¿qué tan satisfecho…?» sin agradecer.
+@pytest.mark.parametrize("texto", ["No, gracias.", "No.", "No, muchas gracias", "Nop", "no no"])
+def test_un_no_al_minuto_corta_amable_y_se_lo_llama_otro_dia(Sesion, api, texto):
+    _, sesion = _agente(Sesion)
+    assert _saludo(api, sesion, texto)["accion"] == "reprogramar"
+    assert _estado(Sesion, sesion) is TargetStatus.CALLING  # no es una baja
+
+
+@pytest.mark.parametrize("texto", ["No hay problema", "No, dale, pregunte", "no, todo bien", "No sé", "Sí, tengo"])
+def test_lo_que_no_es_un_no_sigue(Sesion, api, texto):
+    _, sesion = _agente(Sesion)
+    assert _saludo(api, sesion, texto)["accion"] == "seguir"
+
+
+def test_un_si_simple_se_agradece_con_una_frase_fija_sin_esperar_a_claude(Sesion, api, monkeypatch):
+    async def no_llamar(*a, **k):
+        pytest.fail("un «sí» no necesita a Claude")
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", no_llamar)
+    _, sesion = _agente(Sesion)
+    r = _saludo(api, sesion, "Sí, tengo.")
+    assert r["accion"] == "seguir" and r["decir"] in saludo.FIJAS
+
+
+def test_si_acepta_contando_algo_claude_lo_retoma(Sesion, api, monkeypatch):
+    pedidos = []
+
+    async def falso(sistema, pedido, **k):
+        pedidos.append(pedido)
+        return "Gracias, va a ser bien rapidito."
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", falso)
+    _, sesion = _agente(Sesion)
+    r = _saludo(api, sesion, "Sí, dale, pero que sea rápido por favor")
+    assert r == {"accion": "seguir", "decir": "Gracias, va a ser bien rapidito."}
+    assert "que sea rápido" in pedidos[0]
+
+
+@pytest.mark.parametrize("devuelve", [None, "¿Cuál es su nombre?", "Gracias. " * 30])
+def test_si_claude_no_sirve_va_la_frase_fija(Sesion, api, monkeypatch, devuelve):
+    async def falso(*a, **k):
+        return devuelve
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", falso)
+    _, sesion = _agente(Sesion)
+    assert _saludo(api, sesion, "Sí, dale, pero que sea rápido por favor")["decir"] in saludo.FIJAS
+
+
+def test_si_claude_tarda_va_la_frase_fija(Sesion, api, monkeypatch):
+    import asyncio
+
+    async def lento(*a, **k):
+        await asyncio.sleep(1)
+        return "Gracias, va a ser rapidito."
+
+    monkeypatch.setattr(saludo, "ESPERA_CLAUDE", 0.05)
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", lento)
+    _, sesion = _agente(Sesion)
+    assert _saludo(api, sesion, "Sí, dale, pero que sea rápido por favor")["decir"] in saludo.FIJAS
+
+
+def test_el_precalentado_incluye_las_frases_del_saludo(Sesion, api):
+    _agente(Sesion)
+    textos = api.get("/internal/prompts").json()["texts"]
+    assert set(saludo.FIJAS) <= set(textos) and FRASE_EMPIEZO in textos
 
 
 def test_en_una_prueba_no_se_marca_a_nadie(Sesion, api):

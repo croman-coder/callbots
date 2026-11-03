@@ -133,3 +133,39 @@ def test_pasado_el_castigo_se_vuelve_a_probar_la_gpu(monkeypatch):
     monkeypatch.setattr(stt, "_modelo_cpu", lambda: pytest.fail("la GPU ya andaba"))
     monkeypatch.setattr(stt, "_gpu_mala_hasta", stt.time.monotonic() - 1)
     assert stt._transcribe_sync(PCM, None).text == "Siete."
+
+
+# ───────────────────────────────────────────── respuesta al «¿tiene un minutito?»
+# 3/11/2026: de un «sí, tengo» de 1,8 s el filtro de voz dejó medio segundo y Whisper escribió «Gracias.».
+def test_el_saludo_va_con_las_respuestas_esperables_y_sin_el_filtro_de_voz(monkeypatch):
+    modelo = Modelo(lambda kw: ["Sí, tengo."])
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM, None, saludo=True).text == "Sí, tengo."
+    kw = modelo.llamadas[0]
+    assert kw["hotwords"] == stt.RESPUESTAS_SALUDO and kw["vad_filter"] is False
+
+
+def test_si_en_el_saludo_whisper_repite_la_pista_se_prueba_como_siempre(monkeypatch):
+    modelo = Modelo(lambda kw: [stt.RESPUESTAS_SALUDO] if "hotwords" in kw else ["Sí, claro."])
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM, None, saludo=True).text == "Sí, claro."
+
+
+def test_si_en_el_saludo_sale_vacio_se_prueba_como_siempre(monkeypatch):
+    modelo = Modelo(lambda kw: [] if "hotwords" in kw else ["Bueno."])
+    monkeypatch.setattr(stt, "_model", modelo)
+    assert stt._transcribe_sync(PCM, None, saludo=True).text == "Bueno."
+
+
+def test_el_camino_de_siempre_sube_una_respuesta_dicha_bajito(monkeypatch):
+    picos = []
+
+    class Mide(Modelo):
+        def transcribe(self, audio, **kw):
+            picos.append(float(np.max(np.abs(audio))))
+            return super().transcribe(audio, **kw)
+
+    monkeypatch.setattr(stt, "_model", Mide(lambda kw: ["sí"]))
+    bajito = (np.sin(np.arange(SAMPLE_RATE) / 5) * 1000).astype(np.int16).tobytes()  # pico de 0,03 (-30 dBFS)
+    stt._transcribe_sync(bajito, None)
+    assert picos[0] > 0.2  # sin subirlo, el filtro de voz de Whisper lo tomaba por silencio

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from app import dialog
-from app.api_client import FRASE_LLAMAR_DESPUES
+from app.api_client import FRASE_EMPIEZO, FRASE_LLAMAR_DESPUES
 from tests.test_buzon_y_transferencia import Api, correr, entorno, guion, habla, silencio, verdict  # noqa: F401
 
 
@@ -85,3 +85,38 @@ def test_si_no_dice_nada_arranca_igual(entorno):
     api = ApiSaludo([], verdicts=[verdict()])
     d, _ = correr(guion(), api)
     assert api.saludos == [] and d.outcome == dialog.Outcome.COMPLETED
+
+
+# ─────────────────────────────────────────────── seguir el hilo después del «¿tiene un minutito?»
+# Prueba del 3/11/2026: «Sí, tengo.» → «Primero, ¿qué tan satisfecho…?», sin un gracias de por medio.
+def test_si_dice_que_si_se_le_agradece_antes_de_la_primera_pregunta(entorno):
+    entorno.escuchas += [habla(1), habla(1)]
+    entorno.textos += ["Sí, tengo", "nueve"]
+    api = ApiSaludo([{"accion": "seguir", "decir": "¡Perfecto, muchas gracias!"}], verdicts=[verdict()])
+    correr(guion(), api)
+    assert entorno.dichas.index("¡Perfecto, muchas gracias!") < entorno.dichas.index("¿Del cero al diez?")
+
+
+def test_si_la_api_no_trae_que_decir_va_un_puente_neutro(entorno):
+    # La API no contestó: no se sabe si dijo que sí, así que nada de «¡perfecto!», pero tampoco arrancar en seco.
+    entorno.escuchas += [habla(1), habla(1)]
+    entorno.textos += ["Sí, dale", "nueve"]
+    api = ApiSaludo([{"accion": "seguir"}], verdicts=[verdict()])
+    correr(guion(), api)
+    assert entorno.dichas.index(FRASE_EMPIEZO) < entorno.dichas.index("¿Del cero al diez?")
+
+
+def test_si_no_contesta_el_saludo_hay_un_puente_antes_de_preguntar(entorno):
+    entorno.escuchas += [silencio(), habla(1)]
+    entorno.textos += ["nueve"]
+    api = ApiSaludo([], verdicts=[verdict()])
+    correr(guion(), api)
+    assert entorno.dichas.index(FRASE_EMPIEZO) < entorno.dichas.index("¿Del cero al diez?")
+
+
+def test_la_respuesta_al_saludo_se_transcribe_con_las_respuestas_esperables(entorno):
+    entorno.escuchas += [habla(1), habla(1)]
+    entorno.textos += ["Sí, tengo", "nueve"]
+    api = ApiSaludo([{"accion": "seguir", "decir": "¡Perfecto, muchas gracias!"}], verdicts=[verdict()])
+    correr(guion(), api)
+    assert entorno.opciones[0]["saludo"] is True and entorno.opciones[1]["saludo"] is False

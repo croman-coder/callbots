@@ -149,8 +149,11 @@ def entorno(monkeypatch):
     transcriptos: list[bytes] = []
     continuaciones: list = []  # lo que devuelve `voz_mientras` en cada turno de recepción (None: no siguió)
 
-    async def transcribir(pcm, vocabulario=None, numeros=False):
+    opciones: list[dict] = []  # con qué se pidió cada transcripción (¿respuesta numérica?, ¿respuesta al saludo?)
+
+    async def transcribir(pcm, vocabulario=None, numeros=False, saludo=False):
         transcriptos.append(pcm)
+        opciones.append({"numeros": numeros, "saludo": saludo})
         return types.SimpleNamespace(text=textos.pop(0), confidence=0.9)
 
     async def voz_mientras(socket, tarea, minimo_ms=300):
@@ -161,7 +164,7 @@ def entorno(monkeypatch):
     monkeypatch.setattr(dialog, "voz_mientras", voz_mientras)
     monkeypatch.setattr(stt, "transcribe", transcribir)
     return types.SimpleNamespace(dichas=dichas, escuchas=escuchas, textos=textos, transcriptos=transcriptos,
-                                 continuaciones=continuaciones, previos=previos)
+                                 continuaciones=continuaciones, previos=previos, opciones=opciones)
 
 
 def habla(segundos: float, resultado=ListenResult.SPEECH) -> Recording:

@@ -25,7 +25,7 @@ from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app import acuse, conocimiento, datos_cliente, entrantes, fuentes, pronunciaciones, recepcion, vocabulario
+from app import acuse, conocimiento, datos_cliente, entrantes, fuentes, pronunciaciones, recepcion, saludo, vocabulario
 from app.db import get_db
 from app.deps import require_internal_token
 from app.models import (
@@ -95,6 +95,9 @@ def _load_call(db: Session, session_uuid: uuid_mod.UUID) -> CallAttempt:
 FRASE_LLAMAR_DESPUES = "No hay problema, lo llamamos en otro momento. Que tenga un buen día."
 # Cuando lo interrumpió un golpe y el agente retoma la pregunta (igual en voice-agent/app/api_client.py).
 FRASE_RETOMAR = "Perdón, le decía."
+# Puente antes de la primera pregunta cuando el cliente no contestó el «¿tiene un minutito?» o preguntó algo que no se
+# pudo contestar: arrancar en seco suena a robot. Igual en el voice-agent (api_client.py).
+FRASE_EMPIEZO = "Si me permite, empiezo."
 # La pregunta del saludo, para que Claude sepa a qué volver si el cliente pregunta algo antes de empezar.
 PREGUNTA_DEL_SALUDO = "¿Tiene un minuto para unas preguntas cortas?"
 
@@ -595,7 +598,12 @@ async def respuesta_al_saludo(session_uuid: uuid_mod.UUID, body: GreetingIn, db:
         )
         if respuesta:
             return {"accion": "responder", "respuesta": respuesta}
-    return {"accion": "seguir"}
+        return {"accion": "seguir", "decir": FRASE_EMPIEZO}
+    if saludo.es_negativa(texto):
+        log.info("[%s] Al saludar dijo que no: se lo llama en otro momento", session_uuid)
+        return {"accion": "reprogramar"}
+    # Dijo que sí: se le agradece antes de la primera pregunta (ver app/saludo.py).
+    return {"accion": "seguir", "decir": await saludo.acuse(texto, session_uuid.int)}
 
 
 def _plano_pregunta(texto: str) -> str:
@@ -676,7 +684,8 @@ def all_prompts(db: Session = Depends(get_db)) -> dict:
         textos += [q.texto_sin_acuse for q in campaign.questions if q.is_active and not recepcion.es_recepcion(campaign)]
         if not recepcion.es_recepcion(campaign):
             textos += acuse.todas_las_fijas()
-            textos.append(FRASE_RETOMAR)
+            textos += saludo.FIJAS
+            textos += [FRASE_RETOMAR, FRASE_EMPIEZO]
         textos.append(FRASE_LLAMAR_DESPUES)
         if recepcion.es_recepcion(campaign):
             textos += list(recepcion.FRASES_FIJAS)
