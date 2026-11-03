@@ -125,6 +125,19 @@ def test_un_si_simple_se_agradece_con_una_frase_fija_sin_esperar_a_claude(Sesion
     assert r["accion"] == "seguir" and r["decir"] in saludo.FIJAS
 
 
+@pytest.mark.parametrize("texto", ["No hay problema", "A la orden", "Sí, no hay drama"])
+def test_un_si_de_cortesia_no_espera_a_claude(Sesion, api, monkeypatch, texto):
+    # En producción (3/11/2026) «No hay problema» esperó a Claude hasta el tope: 1,6 s de silencio por un simple sí.
+    async def no_llamar(*a, **k):
+        pytest.fail("un «sí» de cortesía no necesita a Claude")
+
+    monkeypatch.setattr(llm, "is_configured", lambda: True)
+    monkeypatch.setattr(llm, "complete", no_llamar)
+    _, sesion = _agente(Sesion)
+    r = _saludo(api, sesion, texto)
+    assert r["accion"] == "seguir" and r["decir"] in saludo.FIJAS
+
+
 def test_si_acepta_contando_algo_claude_lo_retoma(Sesion, api, monkeypatch):
     pedidos = []
 

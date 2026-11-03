@@ -39,6 +39,8 @@ _DE_UN_SI = {
     "listo", "va", "pues", "que", "tal", "un", "minuto", "minutito", "momento", "senor", "senora", "perfecto",
     "seguro", "a", "ver", "ah", "de", "acuerdo", "pregunte", "ya", "obvio", "bien", "esta", "todo", "gracias", "muchas",
     "vamos",
+    # Fórmulas de cortesía que son un sí: «no hay problema», «no hay drama», «a la orden», «con mucho gusto», «dele».
+    "hay", "problema", "drama", "la", "orden", "mucho", "dele", "vale",
 }
 
 SISTEMA = """Hacés una encuesta telefónica corta para Santa Rosa, una concesionaria de Paraguay. Le preguntaste al \
