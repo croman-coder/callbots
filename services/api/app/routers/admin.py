@@ -641,6 +641,51 @@ def trigger_call(target_id: int, db: Session = Depends(get_db)) -> RedirectRespo
     return _redirect(f"/targets?aviso={quote_plus(f'Llamando a {quien}. El resultado aparece en Historial cuando termine.')}")
 
 
+@router.post("/targets/{target_id}/editar")
+def edit_target(
+    target_id: int,
+    contact_name: str = Form(""),
+    phone: str = Form(""),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Cambia el nombre y el teléfono de un destinatario (un número mal cargado ya no obliga a recargar la lista).
+
+    Todo o nada: si el teléfono no sirve, tampoco se guarda el nombre. El teléfono se normaliza como al cargar y no
+    puede ser el de otro destinatario activo de la misma campaña (los terminados no cuentan, igual que al cargar).
+    En plena llamada no se toca: el agente está hablando con ese número.
+    """
+    target = db.get(SurveyTarget, target_id)
+    if target is None:
+        raise HTTPException(404, "Destinatario inexistente")
+
+    def no(texto: str) -> RedirectResponse:
+        return _redirect(f"/targets?problema={quote_plus(texto)}")
+
+    if target.status is TargetStatus.CALLING:
+        return no("Ahora mismo está en llamada: esperá a que termine para cambiarle los datos.")
+    telefono = normalize_phone_py(phone)
+    if not telefono:
+        return no("No se guardó: el teléfono no es válido. Probá con 0981 123 456 o +595981123456.")
+    otro = db.scalar(
+        select(SurveyTarget).where(
+            SurveyTarget.campaign_id == target.campaign_id,
+            SurveyTarget.phone == telefono,
+            SurveyTarget.id != target.id,
+            SurveyTarget.status.in_([TargetStatus.PENDING, TargetStatus.SCHEDULED, TargetStatus.QUEUED, TargetStatus.CALLING]),
+        )
+    )
+    if otro is not None:
+        return no(f"No se guardó: {telefono} ya está en esta campaña a nombre de {otro.contact_name or 'otro destinatario'}.")
+
+    anterior = (target.contact_name, target.phone)
+    target.contact_name = (contact_name or "").strip()[:160] or None
+    target.phone = telefono
+    db.commit()
+    log.info("Destinatario %s editado: %r %s -> %r %s", target_id, anterior[0], anterior[1], target.contact_name, telefono)
+    quien = target.contact_name or "Sin nombre"
+    return _redirect(f"/targets?aviso={quote_plus(f'Guardado: {quien}, {telefono}.')}")
+
+
 @router.post("/targets/{target_id}/reschedule")
 def reschedule_target(target_id: int, db: Session = Depends(get_db)) -> RedirectResponse:
     """Vuelve a poner un destinatario en cola, reseteando los intentos."""

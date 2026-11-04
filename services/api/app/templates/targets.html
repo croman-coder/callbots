@@ -24,6 +24,9 @@
 {% if request.query_params.get('aviso') %}
 <div class="notice ok" role="status">{{ request.query_params.get('aviso') }}</div>
 {% endif %}
+{% if request.query_params.get('problema') %}
+<div class="notice bad" role="alert">{{ request.query_params.get('problema') }}</div>
+{% endif %}
 {% if request.query_params.get('error') %}
 <div class="notice bad" role="alert"><strong>No se cargó el archivo.</strong> {{ request.query_params.get('error') }}</div>
 {% endif %}
@@ -74,6 +77,17 @@
               {% if t.bitrix_title %}<span class="sub-line">{{ t.bitrix_title }}</span>{% endif %}
               {% if t.datos %}<span class="sub-line">{% for k, v in t.datos.items() %}{{ k | replace("_", " ") }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
               {% if t.bitrix_entity_id %}<span class="sub-line mono">{{ t.bitrix_entity_type_id }}#{{ t.bitrix_entity_id }}</span>{% endif %}
+              {% if t.status.value != "calling" %}
+              <details class="corregir">
+                <summary>Editar</summary>
+                <form method="post" action="/targets/{{ t.id }}/editar" class="fila-revision" autocomplete="off">
+                  <input type="text" name="contact_name" value="{{ t.contact_name or '' }}" maxlength="160" placeholder="Nombre" aria-label="Nombre de {{ t.phone }}">
+                  <input type="tel" name="phone" value="{{ t.phone or '' }}" maxlength="40" required placeholder="Teléfono" aria-label="Teléfono de {{ t.contact_name or 'este destinatario' }}">
+                  <button type="submit" class="btn mini">Guardar</button>
+                </form>
+                {% if t.bitrix_entity_id %}<span class="sub-line">Viene de Bitrix: esto solo cambia en Callbot, el contacto de Bitrix queda como estaba.</span>{% endif %}
+              </details>
+              {% endif %}
             </td>
             <td class="tnum nowrap">{{ t.phone or "—" }}</td>
             <td class="muted tnum nowrap">{{ t.trigger_at | fecha("%d/%m/%y %H:%M") }}</td>
