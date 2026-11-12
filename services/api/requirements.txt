@@ -5,7 +5,10 @@ psycopg[binary]>=3.2,<4.0
 alembic>=1.14,<2.0
 pydantic>=2.9,<3.0
 pydantic-settings>=2.6,<3.0
-celery[redis]>=5.4,<6.0
+# Fijadas a lo que corría bien hasta el 12/11/2026: con el rango abierto pip bajó celery a 5.4.0
+# y subió kombu a 5.7.0, que importa `packaging` sin declararlo, y worker y beat no arrancaban.
+celery[redis]==5.6.3
+kombu[redis]==5.6.2
 redis>=5.2,<6.0
 httpx>=0.28,<1.0
 jinja2>=3.1,<4.0
