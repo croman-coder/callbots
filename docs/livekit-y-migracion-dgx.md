@@ -99,3 +99,39 @@ VoiceStudio ya estaba apagado desde el 20/11 y Voicebox corre en CPU. Los 2,15 G
 **Es factible.** Lo único que no se puede llevar tal cual es faster-whisper con GPU (se reemplaza por Whisper en PyTorch: ya está en `app/stt.py`, `WHISPER_BACKEND=torch`, y el default sigue igual para SRPY186) y VoiceStudio (imagen solo amd64 y licencia no comercial: ver arriba). El resto del stack arranca en arm64 sin cambios.
 
 Falta para el paso 1: una prueba con una llamada real de softphone a la DGX (puerto 15060, ver `deploy/dgx/docker-compose.prueba.yml`), el túnel al Cotizador en vivo, cambiar el túnel de Cloudflare de `callbot.santarosa.lat` (hoy apunta a SRPY186), la IP del Asterisk con TI y una revisión de seguridad (regla 8).
+
+## 7. Paso 1 en la DGX: validado, sin cortar (23/11/2026)
+
+El stack de producción corre en la DGX **al lado de SRPY186**, con una copia de la base y de los volúmenes (`~/callbot/`, proyecto
+`callbot`, capa `deploy/dgx/docker-compose.dgx.yml` sobre `docker-compose.coolify.yml`; variables traídas de Coolify de servidor a servidor con
+`deploy/dgx/traer-env.sh prueba`, que apaga las salidas: WhatsApp, ElevenLabs y el registro en Bitrix). **Sin `worker` ni `beat`**: no sondean Bitrix ni
+llaman. SRPY186 no se tocó.
+
+| Comprobación | Resultado |
+|---|---|
+| Imágenes y arranque | Los 6 servicios sanos (API, Postgres, Redis, Voicebox, voice-agent, Asterisk) |
+| Base de datos | Restaurada desde producción: campañas 3, destinatarios 10, intentos 26, respuestas 47, migración `0023`: **idéntico** |
+| Volúmenes | 1055 audios del caché de TTS, 3,6 MB de grabaciones y los 4 perfiles de Voicebox |
+| Panel | Las 21 pantallas responden 200 con los datos restaurados; el diagnóstico dice «Las 7 dependencias responden» (Postgres, Bitrix24, Asterisk ARI, Claude, Voicebox «Alex», VoiceStudio y ElevenLabs en el estado esperado) |
+| Whisper | Motor PyTorch en la GPU (calentado en 1,9 s; el respaldo en CPU, listo en 16 s). **La validación encontró un error**: el compose de producción lista las variables una por una y `WHISPER_BACKEND` no llegaba al contenedor (arrancaba con ctranslate2 y caía a CPU); corregido en la capa |
+| Llamada simulada | El circuito completo corre. Su precisión no mide nada: el «cliente» es Piper y el guion responde por reloj (dos respuestas se pegaron en una grabación). La paridad de reconocimiento la da el banco con grabaciones reales (sección 6) |
+| Asterisk | Sano, 2 softphones, sin troncal (a propósito); contesta SIP desde la notebook |
+| Camino del túnel | SRPY186 llega a `192.168.221.81:18000` en 3 ms; el cortafuegos de la DGX está activo. La DGX llega al login (Supabase) igual que SRPY186 (Cloudflare bloquea el User-Agent de `urllib` en las dos con el error 1010; con un navegador da 200) |
+| Seguridad (regla 8) | `revision_app --proyecto callbot`: **0 fallas** (la R03, de `.gitignore` sin `.env.*`, se corrigió) y 1 aviso R02 para que Croman lo confirme (el `database_url` de desarrollo por defecto en `config.py:17` y claves falsas en los tests; producción pasa `DATABASE_URL`). Registrada en Obsidian |
+
+### Lo que falta antes del corte
+
+1. **Túnel al Cotizador en vivo.** Sin él, los agentes pierden «Datos en vivo» (`REPUESTOS_DATABASE_URL` queda vacío). Propuesta: un contenedor `socat` nuevo en SRPY186, dentro de la red `callbot-cotizador`, que publique `127.0.0.1:15433` hacia `srpy-postgres:5432`, y un servicio de túnel SSH en la DGX con una llave restringida a ese puerto (el patrón del túnel de Supabase de la Agencia). No toca la base compartida, pero crea un acceso nuevo: decisión de Croman.
+2. **Respaldos de la base de Callbot en la DGX**: `pg_dump` diario con copia a SRPY186 (la llave `id_srpy_respaldo` ya escribe en `~/backups/agencia-dgx/`) y alerta por ntfy si se atrasa, como los demás.
+3. **Despliegue**: GitHub llega a la DGX por HTTPS; sondeo de `main` cada 3 minutos como la Agencia, o a mano con `docker compose ... up -d --build`.
+4. **Telefonía**: la troncal con Personal y el reenvío del FortiGate apuntan a SRPY186. En la DGX el Asterisk arranca sin troncal; la línea entrante real depende de TI (reenviar a `192.168.221.81` o la central SIP).
+
+### Plan de corte (≈15 minutos, con los agentes ya pausados)
+
+1. En SRPY186: `docker stop` de `worker`, `beat`, `voice-agent` y `asterisk` de Callbot (congela las escrituras y **libera los 2,15 GB de GPU**).
+2. Volcado final de la base y de los volúmenes a la DGX; `deploy/dgx/traer-env.sh corte` (puertos de producción, SIP 5060 y RTP 10000-10050); arrancar el stack completo con `worker` y `beat`.
+3. En SRPY186, `~/cloudflared-compras/config.yml`: `callbot.santarosa.lat` pasa de `http://coolify-proxy:80` a `http://192.168.221.81:18000` y se reinicia `cloudflared-compras` (**corta unos segundos todos los hostnames de ese túnel**: compras, agencia, llm…).
+4. Validar `https://callbot.santarosa.lat` (login, panel, simulador, el iframe del CRM) y repetir la revisión de seguridad con el sitio ya público.
+5. **Vuelta atrás**: restaurar la línea del túnel, reiniciar `cloudflared-compras` y `docker start` de los cuatro contenedores en SRPY186. Pasadas unas escrituras en la DGX hay que traer la base de vuelta, así que conviene decidirlo en la primera hora.
+6. A las 48 h estables: sacar la app de Callbot de Coolify en SRPY186 (queda el respaldo).
+

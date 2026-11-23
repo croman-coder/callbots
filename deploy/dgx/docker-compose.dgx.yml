@@ -1,0 +1,65 @@
+# Callbot en la DGX Spark (aarch64, GPU GB10): capa sobre docker-compose.coolify.yml, el mismo compose de producción.
+#
+#   cd ~/callbot && docker compose -p callbot -f docker-compose.coolify.yml -f deploy/dgx/docker-compose.dgx.yml up -d --build
+#
+# Lo que cambia respecto de SRPY186 y por qué:
+#  - voice-agent: Dockerfile.dgx (ctranslate2 no trae CUDA en ARM; Whisper corre en PyTorch) y `gpus: all` en vez de
+#    `runtime: nvidia` (WHISPER_BACKEND y WHISPER_CPU_MODEL se pasan acá; el resto sale del .env, ver traer-env.sh).
+#  - voicebox: acá es un servicio del mismo compose (en SRPY186 era un compose aparte unido a la red de la app). Se
+#    construye en arm64 desde el mismo código (v0.5.0) y va en CPU, como en SRPY186.
+#  - API publicada en 18000 para el túnel de Cloudflare (en SRPY186 lo hacía el proxy de Coolify). El cortafuegos de
+#    la DGX (DOCKER-USER) solo deja entrar a SRPY186 y a la notebook.
+#  - Sin la red `callbot-cotizador` (el Cotizador está en SRPY186 y falta el túnel): REPUESTOS_DATABASE_URL queda vacío.
+#  - `host.docker.internal` apunta al host de la DGX (host-gateway), no a la IP de docker0 de SRPY186.
+services:
+  api:
+    networks: !reset []
+    extra_hosts: !override
+      - "host.docker.internal:host-gateway"
+    ports: !override
+      - "18000:8000"
+  worker:
+    extra_hosts: !override
+      - "host.docker.internal:host-gateway"
+  beat:
+    extra_hosts: !override
+      - "host.docker.internal:host-gateway"
+  voice-agent:
+    build:
+      context: ./services/voice-agent
+      dockerfile: Dockerfile.dgx
+    runtime: !reset null
+    gpus: all
+    # El compose de producción lista las variables una por una: sin esto WHISPER_BACKEND del .env no llega al contenedor y
+    # el voice-agent arranca con ctranslate2 y cae a CPU (visto en la validación del 23/11/2026).
+    environment:
+      WHISPER_BACKEND: ${WHISPER_BACKEND:-torch}
+      WHISPER_CPU_MODEL: ${WHISPER_CPU_MODEL:-small}
+    extra_hosts: !override
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      api:
+        condition: service_started
+      voicebox:
+        condition: service_healthy
+  voicebox:
+    image: voicebox:0.5.0-arm64
+    build:
+      context: https://github.com/jamiepine/voicebox.git#v0.5.0
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+      NUMBA_CACHE_DIR: /tmp/numba_cache
+      OMP_NUM_THREADS: "8"
+      MKL_NUM_THREADS: "8"
+    volumes:
+      - voicebox-data:/app/data                                # perfiles, base de datos y audios de referencia
+      - voicebox-hf:/home/voicebox/.cache/huggingface          # modelos: no se vuelven a bajar
+    cpus: 8
+    mem_limit: 12g
+
+networks: !override {}
+
+volumes:
+  voicebox-data:
+  voicebox-hf:

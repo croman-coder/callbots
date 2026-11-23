@@ -37,3 +37,5 @@ Thumbs.db
 
 # Capturas intermedias del manual (el PDF si se versiona)
 docs/manual-src/
+.env.*
+!.env.example
