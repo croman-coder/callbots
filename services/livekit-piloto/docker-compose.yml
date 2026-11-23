@@ -1,0 +1,70 @@
+# Piloto de LiveKit en la DGX Spark (23/11/2026). Aislado: solo se llega desde la notebook por túnel SSH (ver README).
+#   cd ~/livekit-piloto && ./generar-env.sh && docker compose build && docker compose up -d
+name: lkpiloto
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    command: ["--config", "/etc/livekit.yaml"]
+    restart: unless-stopped
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "127.0.0.1:7880:7880"     # señalización: solo por el túnel SSH
+      - "7881:7881"               # ICE sobre TCP
+      - "7882:7882/udp"           # el audio (todo el UDP en un puerto); el cortafuegos de la DGX filtra quién entra
+
+  agente:
+    build:
+      context: .
+      args:
+        BASE: callbot-voice-agent:latest
+    image: lkpiloto-agente:latest
+    restart: unless-stopped
+    gpus: all
+    env_file: .env
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      # Los botones de la latencia (ver README): se cambian con `LK_TURNO=vad LK_MIN_DELAY=0.2 docker compose up -d agente`
+      LK_TURNO: ${LK_TURNO:-modelo}
+      LK_VAD_SILENCIO: ${LK_VAD_SILENCIO:-0.5}
+      LK_MIN_DELAY: ${LK_MIN_DELAY:-0.2}
+      LK_MAX_DELAY: ${LK_MAX_DELAY:-1.2}
+      LK_ACUSE: ${LK_ACUSE:-llm}
+      LK_CACHE: ${LK_CACHE:-1}
+      # Sonido de fondo y muletillas (README): se apagan con LK_FONDO=ninguno y LK_MULETILLAS=0
+      LK_FONDO: ${LK_FONDO:-oficina}
+      LK_FONDO_RMS: ${LK_FONDO_RMS:-0.01}
+      LK_MULETILLAS: ${LK_MULETILLAS:-1}
+      LK_MULETILLAS_VOL: ${LK_MULETILLAS_VOL:-0.8}
+      LK_BACK_DESDE: ${LK_BACK_DESDE:-3.0}
+      LK_BACK_CADA: ${LK_BACK_CADA:-7.0}
+      LK_PENSANDO_ESPERA: ${LK_PENSANDO_ESPERA:-1.0}
+      LK_PENSANDO_CADA: ${LK_PENSANDO_CADA:-10.0}
+      LK_PENSANDO_MAX: ${LK_PENSANDO_MAX:-3}
+    volumes:
+      - callbot_models:/models    # el caché de Hugging Face del voice-agent: el modelo de Whisper ya está
+      - datos:/data
+    networks: [default, callbot]  # alcanza a Voicebox del stack de Callbot
+    depends_on: [livekit]
+
+  web:
+    image: lkpiloto-agente:latest
+    command: ["python", "web/servidor.py"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LIVEKIT_URL_NAVEGADOR: ws://localhost:7880
+    ports:
+      - "127.0.0.1:8081:8081"
+    depends_on: [agente]
+
+networks:
+  callbot:
+    external: true
+    name: callbot_default
+
+volumes:
+  callbot_models:
+    external: true
+  datos:

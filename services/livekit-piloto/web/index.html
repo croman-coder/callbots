@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piloto LiveKit · Callbot</title>
+<style>
+  :root { --fondo: #12141b; --panel: #1b1e27; --linea: #2c3140; --tinta: #eef0f6; --tinta-2: #a9afc2; --foco: #9d8cff; --ok: #5ad19a; --mal: #ff8a80; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--fondo); color: var(--tinta); font: 16px/1.5 system-ui, sans-serif; display: grid; place-items: start center; padding: 24px 16px; }
+  main { width: min(100%, 680px); }
+  h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.02em; }
+  p.sub { margin: 0 0 20px; color: var(--tinta-2); }
+  .barra { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  button { font: inherit; font-weight: 650; padding: 12px 22px; border-radius: 999px; border: 0; cursor: pointer; background: var(--tinta); color: #14161d; }
+  button.colgar { background: transparent; color: var(--mal); border: 1px solid var(--mal); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid var(--foco); outline-offset: 2px; }
+  .estado { padding: 6px 14px; border-radius: 999px; border: 1px solid var(--linea); color: var(--tinta-2); font-size: 14px; }
+  .estado[data-e="listening"] { color: var(--ok); border-color: var(--ok); }
+  .estado[data-e="speaking"] { color: var(--foco); border-color: var(--foco); }
+  .estado[data-e="thinking"] { color: #ffd37a; border-color: #ffd37a; }
+  #charla { list-style: none; margin: 0; padding: 16px; background: var(--panel); border: 1px solid var(--linea); border-radius: 18px; min-height: 280px; display: flex; flex-direction: column; gap: 10px; }
+  #charla li { max-width: 88%; padding: 10px 14px; border-radius: 14px; background: #262a37; }
+  #charla li.persona { align-self: flex-end; background: #34305a; }
+  #charla li b { display: block; font-size: 12px; color: var(--tinta-2); font-weight: 600; margin-bottom: 2px; }
+  #charla li.parcial { opacity: .65; }
+  .nota { margin-top: 14px; color: var(--tinta-2); font-size: 14px; }
+  .error { color: var(--mal); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Piloto de LiveKit</h1>
+  <p class="sub">El mismo Whisper, la misma voz y Claude de Callbot, sobre el audio WebRTC de LiveKit. Hablá con el agente de la encuesta.</p>
+  <div class="barra">
+    <button id="hablar">Hablar con el agente</button>
+    <button id="colgar" class="colgar" disabled>Colgar</button>
+    <span id="estado" class="estado" data-e="">Sin conexión</span>
+  </div>
+  <ul id="charla" aria-live="polite"></ul>
+  <p class="nota" id="nota">Usá auriculares: sin ellos el micrófono puede oír al agente y cortarlo.</p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  var LK = window.LivekitClient, sala = null;
+  var $ = function (id) { return document.getElementById(id); };
+  var NOMBRES = { listening: "Escuchando", thinking: "Pensando", speaking: "Hablando", initializing: "Iniciando", idle: "En espera" };
+
+  function estado(e, texto) { var el = $("estado"); el.dataset.e = e || ""; el.textContent = texto || NOMBRES[e] || e; }
+  function linea(clave, rol, texto, parcial) {
+    var li = document.querySelector('[data-clave="' + clave + '"]');
+    if (!li) {
+      li = document.createElement("li"); li.dataset.clave = clave; li.className = rol;
+      var b = document.createElement("b"); b.textContent = rol === "persona" ? "Vos" : "Agente"; li.appendChild(b);
+      li.appendChild(document.createElement("span")); $("charla").appendChild(li);
+    }
+    li.classList.toggle("parcial", !!parcial); li.lastChild.textContent = texto; li.scrollIntoView({ block: "nearest" });
+  }
+  function error(msg) { var n = $("nota"); n.className = "nota error"; n.textContent = msg; estado("", "Sin conexión"); }
+
+  async function hablar() {
+    $("hablar").disabled = true; $("charla").innerHTML = ""; $("nota").className = "nota";
+    $("nota").textContent = "Usá auriculares: sin ellos el micrófono puede oír al agente y cortarlo.";
+    estado("initializing", "Conectando…");
+    try {
+      var r = await fetch("/api/token"); var datos = await r.json();
+      sala = new LK.Room({ adaptiveStream: true, dynacast: true });
+      sala.on(LK.RoomEvent.TrackSubscribed, function (track) {
+        if (track.kind === LK.Track.Kind.Audio) { var a = track.attach(); a.style.display = "none"; document.body.appendChild(a); }
+      });
+      sala.on(LK.RoomEvent.ParticipantAttributesChanged, function (attrs) {
+        if (attrs && attrs["lk.agent.state"]) estado(attrs["lk.agent.state"]);
+      });
+      sala.on(LK.RoomEvent.Disconnected, function () { estado("", "Llamada terminada"); $("hablar").disabled = false; $("colgar").disabled = true; });
+      sala.registerTextStreamHandler("lk.transcription", async function (lector, info) {
+        var segmento = (lector.info.attributes || {})["lk.segment_id"] || lector.info.id;
+        var final = (lector.info.attributes || {})["lk.transcription_final"] === "true";
+        var propia = info.identity === sala.localParticipant.identity, texto = "";
+        for await (var trozo of lector) { texto += trozo; linea(segmento, propia ? "persona" : "agente", texto, !final); }
+        linea(segmento, propia ? "persona" : "agente", texto, false);
+      });
+      await sala.connect(datos.url, datos.token);
+      await sala.localParticipant.setMicrophoneEnabled(true);
+      $("colgar").disabled = false; estado("listening", "Conectado");
+    } catch (e) { error("No se pudo conectar: " + (e && e.message ? e.message : e)); $("hablar").disabled = false; }
+  }
+  function colgar() { if (sala) sala.disconnect(); }
+  $("hablar").addEventListener("click", hablar); $("colgar").addEventListener("click", colgar);
+})();
+</script>
+</body>
+</html>
