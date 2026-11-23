@@ -32,6 +32,69 @@ _cpu_lock = threading.Lock()
 _gpu_mala_hasta = 0.0
 
 
+# Whisper mira ventanas de 30 s. Una respuesta más larga (la escucha corta a los 30–40 s) se parte en ventanas seguidas.
+VENTANA_SEGUNDOS = 30
+
+
+def partir_ventanas(audio: np.ndarray, segundos: int = VENTANA_SEGUNDOS) -> list[np.ndarray]:
+    """El audio en tramos de a lo sumo `segundos`, sin superposición. Uno solo si entra en una ventana."""
+    largo = segundos * WHISPER_SAMPLE_RATE
+    if audio.size <= largo:
+        return [audio]
+    return [audio[i:i + largo] for i in range(0, audio.size, largo)]
+
+
+class _Segmento:
+    def __init__(self, text: str, avg_logprob: float | None) -> None:
+        self.text = text
+        self.avg_logprob = avg_logprob
+
+
+class WhisperTorch:
+    """Whisper de HuggingFace en PyTorch con la parte de la interfaz de `faster_whisper.WhisperModel` que usa este módulo
+    (`transcribe(audio, ...)` devuelve `(segmentos, info)`). Hace falta en la DGX Spark (aarch64): el wheel de
+    ctranslate2 para ARM no trae CUDA (medido el 23/11/2026) y PyTorch sí ve la GPU GB10. Medido ahí con los audios
+    guardados: whisper-medium 0,22 s de mediana (en la RTX 5070 con faster-whisper, 0,36 a 0,41 s) y 2,4 GB;
+    large-v3-turbo 0,14 s y 1,9 GB.
+
+    Lo que no copia: `vad_filter` (la escucha ya entrega la respuesta recortada y el filtro de Whisper se comía la «z»
+    final de «diez») y `condition_on_previous_text` (cada respuesta es independiente). `initial_prompt` y `hotwords`
+    van como el texto previo de Whisper (`prompt_ids`).
+    """
+
+    def __init__(self, nombre: str, device: str = "cuda") -> None:
+        import torch
+        from transformers import WhisperForConditionalGeneration, WhisperProcessor
+
+        self._torch = torch
+        self.device = device
+        self.dtype = torch.float16 if device == "cuda" else torch.float32
+        self.proc = WhisperProcessor.from_pretrained(nombre)
+        self.modelo = WhisperForConditionalGeneration.from_pretrained(
+            nombre, dtype=self.dtype, attn_implementation="sdpa").to(device).eval()
+
+    def transcribe(self, audio, language="es", beam_size=5, condition_on_previous_text=False, vad_filter=False,  # noqa: ARG002
+                   vad_parameters=None, initial_prompt=None, hotwords=None):  # noqa: ARG002 - interfaz de faster-whisper
+        torch = self._torch
+        prompt = (initial_prompt or hotwords or "").strip()
+        prompt_ids = torch.tensor(self.proc.get_prompt_ids(prompt)).to(self.device) if prompt else None
+        segmentos = []
+        for ventana in partir_ventanas(audio):
+            feats = self.proc(ventana, sampling_rate=WHISPER_SAMPLE_RATE, return_tensors="pt").input_features
+            kw = dict(language=language, task="transcribe", num_beams=beam_size, max_new_tokens=128,
+                      output_scores=True, return_dict_in_generate=True)
+            if prompt_ids is not None:
+                kw["prompt_ids"] = prompt_ids
+            with torch.no_grad():
+                salida = self.modelo.generate(feats.to(self.device, self.dtype), **kw)
+            texto = self.proc.batch_decode(salida.sequences, skip_special_tokens=True)[0].strip()
+            if prompt and texto.startswith(prompt):
+                texto = texto[len(prompt):].strip()
+            puntaje = getattr(salida, "sequences_scores", None)
+            segmentos.append(_Segmento(texto, float(puntaje[0]) if puntaje is not None else None))
+        return iter(segmentos), None
+
+
 @dataclass
 class Transcription:
     text: str
@@ -49,17 +112,20 @@ def load_model() -> None:
     from faster_whisper import WhisperModel
 
     log.info(
-        "Cargando Whisper %s en %s (%s)...",
-        config.whisper_model, config.whisper_device, config.whisper_compute_type,
+        "Cargando Whisper %s en %s (%s, motor %s)...",
+        config.whisper_model, config.whisper_device, config.whisper_compute_type, config.whisper_backend,
     )
 
     try:
-        _model = WhisperModel(
-            config.whisper_model,
-            device=config.whisper_device,
-            compute_type=config.whisper_compute_type,
-            download_root="/models/whisper",
-        )
+        if config.whisper_backend == "torch":
+            _model = WhisperTorch(config.whisper_model, config.whisper_device)
+        else:
+            _model = WhisperModel(
+                config.whisper_model,
+                device=config.whisper_device,
+                compute_type=config.whisper_compute_type,
+                download_root="/models/whisper",
+            )
     except Exception as exc:  # noqa: BLE001
         # Falla típica: no hay GPU visible o falta cuDNN. Mejor degradar a CPU
         # que dejar el servicio caído y perder todas las llamadas.

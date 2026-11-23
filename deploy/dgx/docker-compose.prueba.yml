@@ -1,0 +1,39 @@
+# Callbot en la DGX Spark, PRUEBA DE FACTIBILIDAD (23/11/2026). No es producción: puertos y volúmenes propios, sin
+# claves de nadie. Se usa sobre el compose de desarrollo:
+#
+#   docker compose -p callbotdgx -f docker-compose.yml -f deploy/dgx/docker-compose.prueba.yml up -d --build
+#
+# Puertos: API 18000, AudioSocket 18090, SIP 15060 (UDP y TCP), RTP 20000-20050. Nada de esto toca a SRPY186.
+name: callbotdgx
+
+services:
+  postgres:
+    ports: !reset []
+  api:
+    ports: !override
+      - "18000:8000"
+  voice-agent:
+    build:
+      context: ./services/voice-agent
+      dockerfile: Dockerfile.dgx
+    gpus: all
+    environment:
+      WHISPER_BACKEND: torch
+      WHISPER_MODEL: ${WHISPER_MODEL:-openai/whisper-medium}
+      WHISPER_DEVICE: cuda
+      WHISPER_CPU_MODEL: ${WHISPER_CPU_MODEL:-small}
+    volumes: !override
+      - ./models:/models
+      - recordings:/recordings
+    ports: !override
+      - "18090:8090"
+  asterisk:
+    environment:
+      RTP_START: "20000"
+      RTP_END: "20050"
+    ports: !override
+      - "15060:5060/udp"
+      - "15060:5060/tcp"
+      - "20000-20050:20000-20050/udp"
+  ollama:
+    profiles: ["nunca"]

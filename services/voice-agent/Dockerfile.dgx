@@ -1,0 +1,38 @@
+# Variante aarch64 del voice-agent para la DGX Spark (GPU GB10, CUDA 13).
+#
+# La imagen de siempre (Dockerfile) usa faster-whisper: el wheel de ctranslate2 para ARM NO trae CUDA (medido el
+# 23/11/2026, 0 referencias a CUDA/cuBLAS/cuDNN), así que acá Whisper corre en PyTorch (WHISPER_BACKEND=torch, ver
+# app/stt.py). El wheel aarch64 de torch trae sus propias librerías CUDA y cuDNN (como en la base arm64 de
+# VoiceStudio), alcanza con Ubuntu; el driver lo pone el NVIDIA Container Toolkit.
+# faster-whisper queda instalado: es el respaldo en CPU si la GPU falla (el wheel de ARM sirve para CPU).
+FROM ubuntu:24.04
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    HF_HOME=/models/huggingface
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev build-essential ca-certificates curl libsndfile1 \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /models/piper /models/huggingface /recordings
+
+# torch del índice cu129 solamente (el mismo que usa VoiceStudio para la DGX Spark), y transformers para Whisper.
+RUN python -m pip install --index-url https://download.pytorch.org/whl/cu129 "torch==2.10.0+cu129" \
+    && python -m pip install "transformers>=5,<6" "numpy>=1.26,<3.0"
+
+COPY requirements.txt .
+RUN python -m pip install -r requirements.txt
+
+COPY . .
+
+EXPOSE 8090
+
+CMD ["python", "-m", "app.main"]

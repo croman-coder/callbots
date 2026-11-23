@@ -36,6 +36,10 @@ class Config:
     whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
     whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
     whisper_language: str = os.getenv("WHISPER_LANGUAGE", "es")
+    # «ctranslate2» (faster-whisper) es el de siempre. «torch» corre Whisper de HuggingFace en PyTorch: hace falta en la
+    # DGX Spark (aarch64), donde el wheel de ctranslate2 no trae CUDA (medido el 23/11/2026) y la GPU es la GB10.
+    # Con «torch», WHISPER_MODEL es un repositorio de HuggingFace (por ejemplo openai/whisper-large-v3-turbo).
+    whisper_backend: str = os.getenv("WHISPER_BACKEND", "ctranslate2")
 
     # --- TTS ---
     # Voicebox (voz clonada). Si VOICEBOX_URL y VOICEBOX_PROFILE_ID están
